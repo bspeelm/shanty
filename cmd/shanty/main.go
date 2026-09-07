@@ -83,7 +83,7 @@ func main() {
 
 func run(ctx context.Context, env Env, args []string) error {
 	if len(args) == 0 {
-		return errors.New("playing is not built yet; run `shanty doctor` to check the setup")
+		return play(ctx, env)
 	}
 	for _, c := range commands() {
 		if c.name == args[0] {

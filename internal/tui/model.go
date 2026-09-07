@@ -74,6 +74,7 @@ func (m Model) Init() tea.Cmd { return nil }
 func (m Model) Screen() Screen { return m.screen }
 func (m Model) Cursor() int    { return m.cursor[m.screen] }
 func (m Model) Status() string { return m.status }
+func (m Model) Paused() bool   { return m.paused }
 
 // rows is how many items the current screen lists.
 func (m Model) rows() int {

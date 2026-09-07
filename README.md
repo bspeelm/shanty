@@ -29,6 +29,7 @@ than a check on it.
 | who has read what | [`docs/reviewed.md`](docs/reviewed.md) — empty, and honest about it |
 
 ```sh
+shanty              # browse and play
 shanty doctor       # check the setup; every failure names what to type
 shanty doctor -json # the same, for a script
 shanty uninstall    # remove the four directories, and say which
