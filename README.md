@@ -12,8 +12,8 @@ Connect to a server you run, browse what is on it, queue it, play it, and tell
 the server you played it. The whole program is in service of those five verbs.
 
 **The client is not written yet.** What exists is the plan, the decisions taken
-before any code, the commands that enforce them, and the fake Subsonic server
-every other layer's tests will run against. That order is deliberate: budgets
+before any code, the commands that enforce them, the fake Subsonic server every
+other layer's tests will run against, and the config and credential layer. That order is deliberate: budgets
 introduced after a project is over them are not budgets, and a test double
 introduced after the code it doubles for is a description of that code rather
 than a check on it.
@@ -22,7 +22,7 @@ than a check on it.
 
 | | |
 |---|---|
-| code | [`internal/subsonic/fake`](internal/subsonic/fake) — the fake server, and nothing else yet |
+| code | [`internal/config`](internal/config), [`internal/subsonic/fake`](internal/subsonic/fake) |
 | plan | [`PLAN.md`](PLAN.md) — the contract; §0 is asserted by `make budgets` |
 | what it is for | [`docs/north-star.md`](docs/north-star.md) |
 | decisions | [`docs/decisions.md`](docs/decisions.md) — ADR-001 is the threat model, written first |

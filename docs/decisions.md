@@ -172,6 +172,35 @@ permissive choice keeps the door open for anyone who wants to lift the fake
 server or the isolation suite into their own client — which, given what the
 audit found in this field, would be a good outcome.
 
+## ADR-009 — Configuration is TOML, read by pelletier/go-toml/v2
+
+**Status:** accepted, before the dependency is added.
+
+The strongest argument against is that this buys almost nothing. Both files are
+a handful of `key = "value"` lines; sixty lines of `strings.Cut` over a scanner
+would read them, cost no budget slot, and never need a security advisory read.
+For parsing what shanty itself writes, that is entirely true.
+
+It is not what the parser is for. §6 makes both files hand-edited on purpose —
+a `password_file` pointing at an agenix secret or a `pass(1)` entry is
+something a person types, and the parser's real job is reading what somebody
+wrote at one in the morning: a smart quote pasted from a web page, a tab where
+a space was meant, CRLF from an editor on another machine, a `#` inside a
+quoted string. A hand-rolled parser gets those wrong quietly, and the failure a
+user sees is "shanty says my credential is missing" while the credential is
+plainly there on the screen. That is a bad hour for someone who did nothing
+wrong, and it is the kind of bug this project has no cheap test for.
+
+The second reason is smaller and still real: this is bothy's only dependency,
+at the same version. One maintainer reads one advisory when one arrives.
+
+Cost: one direct dependency and one module, against budgets of 10 and 30.
+
+**Refused with it:** a second configuration format. No JSON, no YAML, no
+per-key environment overrides. Two files in one format is the whole surface,
+and "shanty ignores my config" caused by a shadowing mechanism nobody
+remembered enabling is precisely the failure the single format avoids.
+
 ---
 
 ## Open, and assigned
@@ -183,5 +212,4 @@ guesses.
 | # | question | where it is framed |
 |---|---|---|
 | ADR-006 | MPRIS, and whether D-Bus fits the §0 budget | PLAN §12 — belongs to v0.3 |
-| ADR-009 | The TOML parser, argued before it is added | PLAN §0 — one direct dependency |
 | ADR-010 | The measured cost of ADR-003's framework | written when the number is known, not estimated |

@@ -9,6 +9,7 @@ package shanty
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -103,4 +104,46 @@ func lineContaining(t *testing.T, text, sub string) string {
 	}
 	t.Fatalf("README.md contains no line mentioning %q", sub)
 	return ""
+}
+
+// The status table names which packages exist, and it is the first thing a
+// reader believes. Held closed in both directions against the tree itself, so
+// a package added without a line here fails, and a line here naming a package
+// that was removed fails too.
+func TestTheStatusTableNamesEveryPackage(t *testing.T) {
+	var built []string
+	err := filepath.WalkDir("internal", func(path string, d os.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return err
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".go") {
+				built = append(built, filepath.ToSlash(path))
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(built) == 0 {
+		t.Fatal("the walk found no packages under internal/; it has stopped matching")
+	}
+
+	readme := read(t, "README.md")
+	for _, pkg := range built {
+		if !strings.Contains(readme, pkg) {
+			t.Errorf("package %s exists and the README's status table does not name it", pkg)
+		}
+	}
+	for _, m := range regexp.MustCompile(`internal/[a-z/]+`).FindAllString(readme, -1) {
+		if _, err := os.Stat(m); err != nil {
+			t.Errorf("README.md names %s, which is not a package in the tree", m)
+		}
+	}
 }
