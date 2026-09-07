@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only by default, named rather than inherited. The release workflow is
+# the only one that gets write, and it gets it a job at a time.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+      # make check is lint, vet, race tests, budgets and standard. The
+      # conformance check is inside the gate rather than beside it.
+      #
+      # One honest limit: the standard lives outside this repository and is not
+      # published, so `make standard` skips here and runs only on the
+      # maintainer's machine. A green check job is not evidence the standard
+      # passed. Publishing it is what would close that gap.
+      - run: make check
+
+  crossbuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: make crossbuild
+
+  # The suite runs where the artifact is built, not only where it is written.
+  # A test that asks the machine a question -- "is mpv installed" -- passes on
+  # a developer's box and fails in a minimal container, and the first anyone
+  # hears of it is a broken package. This job is that question, asked early.
+  buildroot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          docker run --rm -v "$PWD":/src:ro -w /src golang:1.24-alpine sh -c '
+            apk add --no-cache make git >/dev/null &&
+            go test -mod=readonly ./...'
+
+  # Placeholder for the jobs PLAN.md §11 names. Each arrives with the code it
+  # guards, and this list is here so the arrival is visible rather than
+  # forgotten:
+  #
+  #   isolation    scratch $HOME, diff the write set, assert the ran-count
+  #   golden       teatest screen renders
+  #   fuzz-brief   the JSON decoder and the filename sanitiser
+  #   integration  real deluan/navidrome in docker, build-tagged, CI only
