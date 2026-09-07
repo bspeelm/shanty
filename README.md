@@ -11,30 +11,34 @@ binary, mpv for playback, the Subsonic API for everything else.
 Connect to a server you run, browse what is on it, queue it, play it, and tell
 the server you played it. The whole program is in service of those five verbs.
 
-**Nothing is built yet.** This repository currently holds the plan, the
-decisions taken before any code, and the machinery that will enforce them.
-That order is deliberate: budgets introduced after a project is over them are
-not budgets.
+**The client is not written yet.** What exists is the plan, the decisions taken
+before any code, the commands that enforce them, and the fake Subsonic server
+every other layer's tests will run against. That order is deliberate: budgets
+introduced after a project is over them are not budgets, and a test double
+introduced after the code it doubles for is a description of that code rather
+than a check on it.
 
 ## Status
 
 | | |
 |---|---|
-| code | none |
+| code | [`internal/subsonic/fake`](internal/subsonic/fake) — the fake server, and nothing else yet |
 | plan | [`PLAN.md`](PLAN.md) — the contract; §0 is asserted by `make budgets` |
 | what it is for | [`docs/north-star.md`](docs/north-star.md) |
 | decisions | [`docs/decisions.md`](docs/decisions.md) — ADR-001 is the threat model, written first |
 | who has read what | [`docs/reviewed.md`](docs/reviewed.md) — empty, and honest about it |
 
 ```sh
-make check      # lint, vet, race tests, budgets
+make check      # lint, vet, race, budgets, standard - the gate
 make budgets    # the §0 numbers, on their own
 make standard   # conformance against the development standard
 ```
 
-`make budgets` passes on an empty tree and fails the moment a rule is broken —
-verified by planting a `panic` and an `InsecureSkipVerify` and watching it
-refuse both.
+`make budgets` fails the moment a rule is broken — verified by planting a
+`panic` and an `InsecureSkipVerify` and watching it refuse both. That the line
+above still lists what `make check` actually runs is verified too, by
+`TestTheDocumentedGateMatchesTheMakefile`: this table drifted from the Makefile
+within a single commit, which is what a prose compiler is for.
 
 ## Why another one
 
