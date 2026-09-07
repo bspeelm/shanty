@@ -1,8 +1,7 @@
-// Package config owns every file shanty reads or writes, and every directory
-// it may write one into. §8 names four directories and says "nothing else,
-// ever"; resolving all four here is what lets the isolation suite ask one
-// question -- did anything land outside Paths.All() -- rather than auditing
-// call sites forever.
+// Package config owns every file shanty reads or writes. §8 names four
+// directories and says "nothing else, ever"; resolving all four here lets the
+// isolation suite ask one question -- did anything land outside Paths.All() --
+// rather than auditing call sites forever.
 package config
 
 import (
@@ -22,9 +21,8 @@ type Paths struct {
 	Runtime string // the mpv socket, gone at logout
 }
 
-// Discover resolves the four directories without creating any of them: a
-// command that only reports must not leave a directory behind as the price of
-// having run.
+// Discover creates nothing: a command that only reports must not leave a
+// directory behind as the price of having run.
 func Discover() (Paths, error) {
 	configHome, err := os.UserConfigDir()
 	if err != nil {
@@ -62,8 +60,7 @@ func Discover() (Paths, error) {
 
 // xdgDir mirrors os.UserConfigDir for the variables the standard library has
 // no helper for, refusal of relative paths included: resolving one against the
-// working directory would write shanty's state into whatever directory it
-// happened to be started from.
+// working directory would scatter state wherever shanty was started from.
 func xdgDir(env string, fallback string) (string, error) {
 	if dir := os.Getenv(env); dir != "" {
 		if !filepath.IsAbs(dir) {
@@ -89,8 +86,8 @@ func (p Paths) CredentialsFile() string { return filepath.Join(p.Config, "creden
 // the isolation suite asserts nothing landed outside them.
 func (p Paths) All() []string { return []string{p.Config, p.State, p.Cache, p.Runtime} }
 
-// EnsureRuntime creates the runtime directory at 0700. The mode is not
-// advisory: the socket inside reaches a player holding a credential-bearing URL.
+// EnsureRuntime creates the runtime directory at 0700. Not advisory: the
+// socket inside reaches a player holding a credential-bearing URL.
 func (p Paths) EnsureRuntime() error {
 	if err := os.MkdirAll(p.Runtime, 0o700); err != nil {
 		return err

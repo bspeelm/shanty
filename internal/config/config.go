@@ -47,9 +47,8 @@ func (c Config) Save(path string) error {
 	return writeAtomic(path, raw, ConfigMode)
 }
 
-// Validate says whether these settings can be used, and every failure names
-// what to type: "invalid configuration" tells a user nothing they did not
-// already suspect.
+// Validate names what to type on every failure: "invalid configuration" tells
+// a user nothing they did not already suspect.
 func (c Config) Validate() error {
 	if c.Server == "" {
 		return errors.New(`no server is configured; set it with: server = "https://music.example.org"`)
@@ -67,7 +66,7 @@ func (c Config) Validate() error {
 	// http is accepted: a LAN server and a test container are real setups, and
 	// refusing them pushes this project's own user onto a client that asks
 	// fewer questions. doctor warns. TLS *verification* is the thing with no
-	// off switch (ADR-004); this is not that.
+	// off switch (ADR-004).
 	return nil
 }
 

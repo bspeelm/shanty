@@ -17,8 +17,7 @@ import (
 )
 
 // §9: the network can delay forever, so every client here has a deadline. The
-// stream has no client at all -- its URL goes to mpv, which owns that
-// connection for as long as the track plays.
+// stream has none -- its URL goes to mpv, which owns that connection.
 const (
 	MetadataTimeout = 10 * time.Second
 	ArtTimeout      = 30 * time.Second
@@ -123,12 +122,11 @@ func (c *Client) get(ctx context.Context, endpoint string, params url.Values) (*
 		return nil, fmt.Errorf("%s answered %s", Redact(u), resp.Status)
 	}
 
-	// An HTML answer is almost never the music server: it is a reverse proxy,
-	// a captive portal or a login page in front of it, and "the server's
-	// answer is not valid JSON" would send the user looking in the wrong
-	// place. Other content types are accepted -- ADR-007 makes servers other
-	// than Navidrome best-effort, and refusing an honest text/plain would
-	// break one for nothing.
+	// An HTML answer is almost never the music server: it is a proxy or a
+	// login page in front of it, and "not valid JSON" would send the user
+	// looking in the wrong place. Other types pass -- ADR-007 makes other
+	// servers best-effort, and refusing an honest text/plain breaks one for
+	// nothing.
 	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/html") {
 		return nil, fmt.Errorf("%s answered with an HTML page rather than JSON.\nSomething is in front of the server -- a reverse proxy, or a login page. Open that URL in a browser to see what", Redact(u))
 	}

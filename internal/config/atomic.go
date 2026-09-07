@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 )
 
-// writeAtomic writes data to path at mode, or leaves what was already there
-// untouched. A half-written credentials file authenticates against nothing, at
-// the moment the user least wants to debug their music player.
+// writeAtomic writes data at mode, or leaves what was there untouched. A
+// half-written credentials file authenticates against nothing, at the moment
+// the user least wants to debug their music player.
 func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
 	// 0700: this directory holds the credentials file, and one others can list
@@ -24,8 +24,8 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	tmp := f.Name()
-	// Unchecked deliberately: after a successful rename there is nothing left
-	// to remove, and after a failure the intact original is what matters.
+	// Unchecked: after a rename there is nothing left to remove, and after a
+	// failure the intact original is what matters.
 	defer func() { _ = os.Remove(tmp) }()
 
 	if _, err := f.Write(data); err != nil {

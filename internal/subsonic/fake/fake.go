@@ -1,13 +1,11 @@
 // Package fake is an in-process Subsonic server for tests. Every layer runs
 // against it, and nothing in `make check` touches the network.
 //
-// Two properties make it worth more than a stub. It refuses requests that break
-// the client's own promises -- the legacy password parameter, a missing client
-// identifier or User-Agent -- failing the test that made the request, wherever
-// in the tree that test lives; §6's "p= is never sent, in any mode" is
-// therefore a property every test enforces without being asked. And it lies on
-// request: the malice modes below make truncation, stalling, oversized bodies
-// and path-traversal filenames one-line tests rather than thought experiments.
+// Two things make it worth more than a stub. It fails the test that sends a
+// request breaking the client's own promises -- p=, a missing client name or
+// User-Agent -- wherever in the tree that test lives, so §6 is enforced by
+// every test without being asked. And it lies on request: the malice modes
+// make truncation, stalling and path traversal one-line tests.
 package fake
 
 import (
@@ -24,10 +22,9 @@ import (
 // APIVersion is what the fake claims to speak, matching ADR-007.
 const APIVersion = "1.16.1"
 
-// TB is the part of *testing.T the fake uses, an interface rather than the
-// concrete type for one reason: the fake's claim is that it fails the calling
-// test when a promise breaks, and that is only worth making if something proves
-// it. Its own tests substitute a recorder and assert on what was reported.
+// TB is an interface rather than *testing.T for one reason: the fake's claim
+// is that it fails the calling test when a promise breaks, and that is only
+// worth making if its own tests can substitute a recorder and check.
 type TB interface {
 	Errorf(format string, args ...any)
 	Fatalf(format string, args ...any)
@@ -58,8 +55,8 @@ type Malice struct {
 // this project's own client caps a metadata response at.
 const oversizeBytes = 24 << 20
 
-// Options configures a fake. A server with no credential accepts nothing,
-// which is the right default for a thing whose job is checking credentials.
+// Options configures a fake. With no credential it accepts nothing, which is
+// the right default for a thing whose job is checking credentials.
 type Options struct {
 	User     string
 	Password string
@@ -211,9 +208,8 @@ func (s *Server) authenticated(q url.Values) bool {
 	return token == hex.EncodeToString(sum[:])
 }
 
-// maybeTraverse replaces server-supplied paths with ones that escape the tree.
-// The client is expected to have exactly one function that makes this harmless,
-// and exactly one place it is called.
+// maybeTraverse replaces server paths with ones that escape the tree. The
+// client is expected to have one function making this harmless.
 func (s *Server) maybeTraverse(in []song) []song {
 	if !s.opt.Malice.Traversal {
 		return in

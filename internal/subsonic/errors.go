@@ -42,6 +42,6 @@ func (e *Error) messageOr(fallback string) string {
 // that vanished between listing and opening is a refresh, not a failure.
 func (e *Error) NotFound() bool { return e.Code == 70 }
 
-// Unauthorized covers the credential failures, which doctor reports together
-// because the user's next action is the same for all of them.
+// Unauthorized groups the credential failures: the user's next action is the
+// same for all of them.
 func (e *Error) Unauthorized() bool { return e.Code == 40 || e.Code == 41 || e.Code == 50 }

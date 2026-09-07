@@ -5,12 +5,10 @@ import (
 	"strings"
 )
 
-// The wire types are declared here rather than imported from the client, and
-// that duplication is the point. A fake that marshals the client's own structs
-// agrees with the client about every field name by construction, including the
-// wrong ones, and so can never catch a decoding mistake. These are a second,
-// independent statement of the same wire format; when the two disagree, a test
-// fails, which is the only reason to have a fake at all.
+// The wire types are declared here rather than imported, and the duplication
+// is the point: a fake marshalling the client's own structs agrees with it
+// about every field name by construction, wrong ones included, and can never
+// catch a decoding mistake.
 
 // envelope is the "subsonic-response" wrapper every endpoint returns.
 type envelope struct {
@@ -88,10 +86,9 @@ type Library struct {
 	Artists []artist
 }
 
-// DefaultLibrary is two artists across three albums, deliberately small enough
-// that a golden test can hold the whole thing in view, and deliberately
-// containing an artist whose name sorts under a different index letter than
-// its first character would suggest.
+// DefaultLibrary is two artists across three albums: small enough for a golden
+// test to hold in view, and containing one artist whose name sorts under a
+// different letter than its first character suggests.
 func DefaultLibrary() Library {
 	return Library{Artists: []artist{
 		{
