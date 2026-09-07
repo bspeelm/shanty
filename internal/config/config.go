@@ -65,8 +65,10 @@ func (c Config) Validate() error {
 	}
 	// http is accepted: a LAN server and a test container are real setups, and
 	// refusing them pushes this project's own user onto a client that asks
-	// fewer questions. doctor warns. TLS *verification* is the thing with no
-	// off switch (ADR-004).
+	// fewer questions. doctor warns, and the user can see the scheme they
+	// typed. TLS *verification* is the one that cannot be weakened without
+	// lying to them about what the connection proves, so it has no off switch
+	// at all (ADR-004).
 	return nil
 }
 

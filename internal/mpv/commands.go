@@ -126,12 +126,10 @@ func (p *Player) Stop(ctx context.Context) error {
 	return err
 }
 
-// SetPause pauses or resumes.
 func (p *Player) SetPause(ctx context.Context, paused bool) error {
 	return p.setProperty(ctx, "pause", paused)
 }
 
-// Seek moves by a duration, forwards or back.
 func (p *Player) Seek(ctx context.Context, d time.Duration) error {
 	_, err := p.command(ctx, "seek", d.Seconds(), "relative")
 	return err
