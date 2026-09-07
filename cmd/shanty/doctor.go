@@ -178,9 +178,10 @@ func checkMpvVersion(ctx context.Context, env Env, mpv Result) Result {
 	return Result{ID: "mpv-version", Severity: Pass, Summary: line}
 }
 
-// checkRuntimeDir reports without creating. Making the directory here would
-// mean `sudo shanty doctor` leaves a root-owned one behind that breaks every
-// later run -- and a command that only reports should leave nothing at all.
+// checkRuntimeDir reports without creating, because internal/config already
+// says a command that only reports must not leave a directory behind as the
+// price of having run, and doctor is that command. `doctor -json` is meant for
+// a script, and a check with side effects is not one.
 func checkRuntimeDir(env Env) Result {
 	info, err := os.Stat(env.Paths.Runtime)
 	if errors.Is(err, os.ErrNotExist) {
