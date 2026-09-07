@@ -22,11 +22,19 @@ than a check on it.
 
 | | |
 |---|---|
-| code | [`internal/config`](internal/config), [`internal/mpv`](internal/mpv), [`internal/queue`](internal/queue), [`internal/subsonic`](internal/subsonic) and its [`fake`](internal/subsonic/fake), [`internal/tui`](internal/tui) |
+| code | [`cmd/shanty`](cmd/shanty), [`internal/config`](internal/config), [`internal/mpv`](internal/mpv), [`internal/queue`](internal/queue), [`internal/subsonic`](internal/subsonic) and its [`fake`](internal/subsonic/fake), [`internal/tui`](internal/tui) |
 | plan | [`PLAN.md`](PLAN.md) — the contract; §0 is asserted by `make budgets` |
 | what it is for | [`docs/north-star.md`](docs/north-star.md) |
 | decisions | [`docs/decisions.md`](docs/decisions.md) — ADR-001 is the threat model, written first |
 | who has read what | [`docs/reviewed.md`](docs/reviewed.md) — empty, and honest about it |
+
+```sh
+shanty doctor       # check the setup; every failure names what to type
+shanty doctor -json # the same, for a script
+shanty uninstall    # remove the four directories, and say which
+shanty version      # what this binary is
+shanty help         # the list
+```
 
 ```sh
 make check      # lint, vet, race, budgets, standard - the gate
