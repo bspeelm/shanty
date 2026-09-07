@@ -249,6 +249,13 @@ silently respawn in a loop.
 $XDG_RUNTIME_DIR/shanty/  the mpv socket, gone at logout
 ```
 
+Those are the Linux paths, and they are the contract there. macOS resolves
+elsewhere — Go's `os.UserConfigDir` is `~/Library/Application Support` and
+`os.UserCacheDir` is `~/Library/Caches`, and there is no `XDG_RUNTIME_DIR` at
+all — so the table above is one platform's shape of a promise, not the promise.
+ADR-012 owes the other, and until it is answered the isolation suite asserts a
+write set that differs by platform.
+
 Nothing else, ever — not `~/.config/mpv`, not the user's shell files, nothing.
 The isolation suite runs shanty's install-free first run against a scratch
 HOME and asserts the write set matches this list exactly, which is bothy's
@@ -357,11 +364,16 @@ simultaneous servers (profiles that switch, yes; two connections at once, no).
 
 ## §13 Open ADRs, assigned to the dev
 
-ADR-002 the name. ADR-003 TUI framework (Bubble Tea default; argue if not).
-ADR-004 no TLS bypass (drafted in §2; make it stick). ADR-005 server-side
-scrobbling only (§9). ADR-006 MPRIS and the dependency budget. ADR-007
-minimum supported server: Navidrome current-minus-two, plus gonic smoke
-tests? ADR-008 license — MIT to match bothy, unless there is a reason.
+Settled ones live in `docs/decisions.md`; this is what is still open. It is a
+pointer, not a second list — the log is the record.
+
+ADR-006 MPRIS, and whether D-Bus fits the §0 budget: v0.3, not before.
+ADR-012 the macOS shape of §7 and §8, answered before darwin is claimed as a
+supported platform rather than after. And one number with no record yet: the
+**minimum mpv version**, which §8 has `doctor` checking against something
+nobody has chosen. `--input-ipc-server` and `--prefetch-playlist=yes` each have
+a floor; the floor is whichever is later, established by reading mpv's
+changelog rather than by guessing.
 
 ## §14 On writing things down
 

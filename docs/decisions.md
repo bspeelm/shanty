@@ -201,6 +201,92 @@ per-key environment overrides. Two files in one format is the whole surface,
 and "shanty ignores my config" caused by a shadowing mechanism nobody
 remembered enabling is precisely the failure the single format avoids.
 
+## ADR-011 — Playback is mpv, in a process of its own
+
+**Status:** accepted. The consequences were written throughout PLAN.md §7 from
+the start; the choice itself was never argued, which is what this record fixes.
+
+The alternative is a Go audio library — `oto` for output with decoders beside
+it, or `beep` over the top — and it wins on the two things this project says it
+cares about most. There would be **no prerequisite at all**: `go install` and
+the user is listening, against a north star that measures itself in "under two
+minutes". And decoding would happen in-process, where `make check` could test
+it, instead of behind a process boundary nothing in the fast suite can cross.
+
+Both are real. Neither survives the other three.
+
+**The budget says no**, and by a margin rather than a hair. Measured, with the
+TUI and `teatest` on both sides: mpv is 28 modules against a budget of 30; one
+mp3 decoder and `oto` is 33; adding FLAC is 43; `beep` is 55. There is no
+version of the Go path that fits, and the smallest one buys only mp3 — which
+means every play is transcoded server-side, spending the server's CPU to turn
+the user's lossless library into a lossy stream. That is the wrong trade for
+someone who runs Navidrome on purpose.
+
+**It contradicts ADR-001.** That record answers "what can a malicious or
+compromised server do" with, in part, *stream data goes to mpv, whose job that
+is*. A Go decoder moves the parsing of hostile binary audio into the process
+holding the credential. mpv is not chosen for being unexploitable; it is chosen
+for being **elsewhere** — a malformed FLAC there is a player we report as dead,
+not a corruption in the program with the token in memory. Choosing otherwise
+would not be a new decision, it would be an amendment weakening an existing
+one.
+
+**And it is a great deal of code we would have to be right about.** Seeking
+inside an HTTP stream, gapless prefetch, resampling, output device selection,
+ReplayGain: all free from mpv, all ours to write and to get wrong audibly,
+against a 6,000-line cap.
+
+The costs are accepted and named, because they are real. mpv is an external
+runtime dependency that §0's budget cannot see, so the largest thing shanty
+depends on is the one thing no number here counts. Playback cannot be tested by
+anything in `make check`, which is the whole reason the integration job in §11
+is not optional. And `doctor` must name the install command per platform, since
+"install mpv" is not a fix line.
+
+This is not a one-way door: `internal/mpv` is a couple of hundred lines behind
+a narrow interface, so if the prerequisite turns out to cost more than it looks
+like, replacing it is contained rather than a rewrite.
+
+## ADR-012 — macOS gets the same shape, and the shape is not yet described
+
+**Status:** open, and deliberately recorded before it is needed.
+
+Everything above is settled for Linux and applies unchanged to macOS in
+intent — one mpv, one socket, the credential over IPC and never in argv. What
+is **not** settled is the shape that intent takes there, and the code already
+diverges in ways PLAN.md §8 does not admit to.
+
+Verified against the Go standard library rather than assumed:
+`os.UserConfigDir` returns `~/Library/Application Support` on darwin, and
+`os.UserCacheDir` returns `~/Library/Caches`. So §8's filesystem contract —
+four directories, written as `~/.config/shanty` and the rest — describes Linux
+only. `Discover` today resolves somewhere else entirely on macOS, and the
+isolation suite will assert a write set that differs by platform.
+
+The open questions, to be answered together rather than one at a time when each
+first bites:
+
+- Which four directories are the contract on macOS, and does §8 gain a second
+  table or does shanty use XDG paths everywhere regardless of platform custom?
+- There is no `XDG_RUNTIME_DIR`. The socket falls back to the cache directory,
+  which unlike a runtime directory is **not** cleared at logout, so a stale
+  socket outlives a reboot. `Start` already removes one, but a socket living in
+  a cache is a different promise from one that disappears.
+- `TestChildProcessHygiene` reads `/proc`, which does not exist there. The
+  child's own report covers macOS today; whether the kernel's view should be
+  checked through `sysctl KERN_PROCARGS2` is undecided.
+- `Start` inherits the environment because PipeWire, PulseAudio and ALSA need
+  it. CoreAudio does not, so the reasoning that justifies inheriting is
+  Linux-only, and the decision should be re-argued rather than inherited.
+- A downloaded binary is quarantined until signed or notarised, and the sibling
+  project has already met this one: *macOS refuses the binary, and nothing said
+  why*. §11 must answer it before the first release claims darwin support.
+
+Recorded now because these are architecture, not packaging. Answering them
+after the Linux shape has hardened is how a client ends up with a second,
+worse implementation on the platform nobody developed on.
+
 ---
 
 ## Open, and assigned
@@ -212,4 +298,5 @@ guesses.
 | # | question | where it is framed |
 |---|---|---|
 | ADR-006 | MPRIS, and whether D-Bus fits the §0 budget | PLAN §12 — belongs to v0.3 |
+| ADR-012 | The macOS shape of §7 and §8 | above; before darwin is claimed as supported |
 | ADR-010 | The measured cost of ADR-003's framework | written when the number is known, not estimated |
