@@ -1,0 +1,187 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// chromeLines is everything that is not a list row: title, two rules, the
+// player line and the help line.
+const chromeLines = 5
+
+const (
+	defaultWidth  = 80
+	defaultHeight = 24
+)
+
+// Styling is terminal-native on purpose. Bold, faint and reverse work on every
+// emulator and against every background; a palette is ADR territory and
+// belongs with themes in v0.3, not smuggled in as a default nobody chose.
+var (
+	titleStyle    = lipgloss.NewStyle().Bold(true)
+	selectedStyle = lipgloss.NewStyle().Reverse(true)
+	faintStyle    = lipgloss.NewStyle().Faint(true)
+)
+
+// View renders the whole frame. Every string that came from the server passes
+// through Sanitise on its way here (ADR-013).
+func (m Model) View() string {
+	w, h := m.width, m.height
+	if w <= 0 {
+		w = defaultWidth
+	}
+	if h <= 0 {
+		h = defaultHeight
+	}
+	visible := max(1, h-chromeLines)
+
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(fit("shanty · "+m.heading(), w)))
+	b.WriteString("\n" + rule(w) + "\n")
+	b.WriteString(m.list(w, visible))
+	b.WriteString(rule(w) + "\n")
+	b.WriteString(fit(m.player(), w) + "\n")
+	b.WriteString(faintStyle.Render(fit(help, w)))
+	return b.String()
+}
+
+func (m Model) heading() string {
+	switch m.screen {
+	case ScreenAlbums:
+		return Sanitise(m.artist.Name)
+	case ScreenTracks:
+		return Sanitise(m.album.Artist) + " · " + Sanitise(m.album.Name)
+	}
+	return "artists"
+}
+
+func (m Model) list(w, visible int) string {
+	rows := m.rows()
+	if rows == 0 {
+		body := m.status
+		if body == "" {
+			body = "nothing here"
+		}
+		return pad(faintStyle.Render(fit("  "+Sanitise(body), w)), visible)
+	}
+
+	start := window(m.cursor[m.screen], rows, visible)
+	var b strings.Builder
+	for i := start; i < min(rows, start+visible); i++ {
+		left, right := m.row(i)
+		line := fit(gutter(i == m.cursor[m.screen])+columns(left, right, w-2), w)
+		if i == m.cursor[m.screen] {
+			line = selectedStyle.Render(line)
+		}
+		b.WriteString(line + "\n")
+	}
+	return pad(strings.TrimRight(b.String(), "\n"), visible)
+}
+
+// row is the two halves of one line: what it is on the left, and its count or
+// duration on the right.
+func (m Model) row(i int) (string, string) {
+	switch m.screen {
+	case ScreenArtists:
+		a := m.artists[i]
+		return Sanitise(a.Name), plural(a.AlbumCount, "album")
+	case ScreenAlbums:
+		a := m.artist.Albums[i]
+		return Sanitise(a.Name), plural(a.SongCount, "track")
+	case ScreenTracks:
+		s := m.album.Songs[i]
+		return fmt.Sprintf("%2d. %s", s.Track, Sanitise(s.Title)), clock(time.Duration(s.Duration) * time.Second)
+	}
+	return "", ""
+}
+
+func (m Model) player() string {
+	if m.nowPlaying == "" {
+		return faintStyle.Render("nothing playing")
+	}
+	mark := "▶"
+	if m.paused {
+		mark = "❚❚"
+	}
+	left := fmt.Sprintf("%s %s · %s", mark, Sanitise(m.nowPlaying), Sanitise(m.nowArtist))
+	right := fmt.Sprintf("%s / %s   vol %d%%", clock(m.position), clock(m.duration), m.volume)
+	return columns(left, right, m.viewWidth())
+}
+
+func (m Model) viewWidth() int {
+	if m.width > 0 {
+		return m.width
+	}
+	return defaultWidth
+}
+
+const help = "↑↓ move · enter open · esc back · space pause · n/p skip · [ ] seek · +/- volume · q quit"
+
+// window is the first row to draw, scrolling only as much as it takes to keep
+// the cursor on screen.
+func window(cursor, rows, visible int) int {
+	if rows <= visible || cursor < visible/2 {
+		return 0
+	}
+	start := cursor - visible/2
+	return min(start, rows-visible)
+}
+
+// columns puts right flush against the edge, and gives up on the gap rather
+// than the text when the terminal is too narrow for both.
+func columns(left, right string, w int) string {
+	gap := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		return left
+	}
+	return left + strings.Repeat(" ", gap) + right
+}
+
+// fit truncates to a display width rather than a rune count, so a CJK title
+// takes the two cells it occupies instead of the one it counts as.
+func fit(s string, w int) string {
+	if w <= 0 || lipgloss.Width(s) <= w {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if lipgloss.Width(b.String()+string(r)) > w-1 {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String() + "…"
+}
+
+func gutter(selected bool) string {
+	if selected {
+		return "> "
+	}
+	return "  "
+}
+
+func rule(w int) string { return faintStyle.Render(strings.Repeat("─", max(1, w))) }
+
+// pad keeps the list the same height whatever it holds, so the player line
+// does not walk up the screen as a shorter album is opened.
+func pad(body string, lines int) string {
+	have := strings.Count(body, "\n") + 1
+	return body + strings.Repeat("\n", max(1, lines-have+1))
+}
+
+func plural(n int, unit string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", unit)
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
+}
+
+func clock(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+}

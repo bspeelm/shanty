@@ -22,7 +22,7 @@ than a check on it.
 
 | | |
 |---|---|
-| code | [`internal/config`](internal/config), [`internal/mpv`](internal/mpv), [`internal/queue`](internal/queue), [`internal/subsonic`](internal/subsonic) and its [`fake`](internal/subsonic/fake) |
+| code | [`internal/config`](internal/config), [`internal/mpv`](internal/mpv), [`internal/queue`](internal/queue), [`internal/subsonic`](internal/subsonic) and its [`fake`](internal/subsonic/fake), [`internal/tui`](internal/tui) |
 | plan | [`PLAN.md`](PLAN.md) — the contract; §0 is asserted by `make budgets` |
 | what it is for | [`docs/north-star.md`](docs/north-star.md) |
 | decisions | [`docs/decisions.md`](docs/decisions.md) — ADR-001 is the threat model, written first |

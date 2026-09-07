@@ -1,0 +1,164 @@
+package tui
+
+import (
+	"flag"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/bspeelm/shanty/internal/subsonic"
+)
+
+var update = flag.Bool("update", false, "rewrite the golden files")
+
+// The screens are rendered through View rather than through a driven terminal.
+// teatest drives the real program and captures what bubbletea's renderer
+// writes, cursor positioning and all, which makes a regression a diff nobody
+// can read -- and readable diffs are the entire reason for golden files. The
+// interaction is covered by the update tests; this covers the pixels.
+func golden(t *testing.T, name, got string) {
+	t.Helper()
+	path := filepath.Join("testdata", name+".golden")
+	if *update {
+		if err := os.MkdirAll("testdata", 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%v\nRun: go test ./internal/tui/ -update", err)
+	}
+	if got != string(want) {
+		t.Errorf("%s changed.\n--- want ---\n%s\n--- got ---\n%s", name, want, got)
+	}
+}
+
+func library() []subsonic.Artist {
+	return []subsonic.Artist{
+		{ID: "ar-1", Name: "Aoi", AlbumCount: 2, Albums: []subsonic.Album{
+			{ID: "al-1", Name: "Harbour", Artist: "Aoi", ArtistID: "ar-1", SongCount: 2, Duration: 360, Songs: []subsonic.Song{
+				{ID: "tr-1", Title: "Slipway", Track: 1, Duration: 180},
+				{ID: "tr-2", Title: "Ballast", Track: 2, Duration: 180},
+			}},
+			{ID: "al-2", Name: "Low Water", Artist: "Aoi", ArtistID: "ar-1", SongCount: 1, Duration: 200},
+		}},
+		{ID: "ar-2", Name: "The Bilge Pumps", AlbumCount: 1},
+		{ID: "ar-3", Name: "坂本龍一", AlbumCount: 3},
+	}
+}
+
+func sized(m Model) Model {
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 64, Height: 12})
+	return next.(Model)
+}
+
+func send(t *testing.T, m Model, msgs ...tea.Msg) Model {
+	t.Helper()
+	for _, msg := range msgs {
+		next, _ := m.Update(msg)
+		m = next.(Model)
+	}
+	return m
+}
+
+func TestGoldenScreens(t *testing.T) {
+	base := sized(New())
+	artists := send(t, base, ArtistsLoaded(library()))
+	albums := send(t, artists, ArtistLoaded(library()[0]))
+	tracks := send(t, albums, AlbumLoaded(library()[0].Albums[0]))
+
+	for _, tc := range []struct {
+		name string
+		m    Model
+	}{
+		{"loading", base},
+		{"artists", artists},
+		{"artists-cursor-moved", send(t, artists, tea.KeyMsg{Type: tea.KeyDown})},
+		{"albums", albums},
+		{"tracks", tracks},
+		{"tracks-playing", send(t, tracks,
+			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
+			Progress(83*time.Second),
+			VolumeChanged(80))},
+		{"tracks-paused", send(t, tracks,
+			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
+			Progress(83*time.Second),
+			PausedChanged(true))},
+		{"failed", send(t, base, Failed{Message: "the server refused; check credentials.toml"})},
+	} {
+		t.Run(tc.name, func(t *testing.T) { golden(t, tc.name, tc.m.View()) })
+	}
+}
+
+// ADR-013 as a screen test rather than a unit test: whatever the server sends,
+// no frame this program prints contains a byte a terminal would obey.
+func TestNoFrameEverCarriesAnEscape(t *testing.T) {
+	poison := func(s string) string { return hostile + s }
+
+	arts := library()
+	for i := range arts {
+		arts[i].Name = poison(arts[i].Name)
+		for j := range arts[i].Albums {
+			arts[i].Albums[j].Name = poison(arts[i].Albums[j].Name)
+			arts[i].Albums[j].Artist = poison(arts[i].Albums[j].Artist)
+			for k := range arts[i].Albums[j].Songs {
+				arts[i].Albums[j].Songs[k].Title = poison(arts[i].Albums[j].Songs[k].Title)
+			}
+		}
+	}
+
+	base := sized(New())
+	artists := send(t, base, ArtistsLoaded(arts))
+	albums := send(t, artists, ArtistLoaded(arts[0]))
+	tracks := send(t, albums, AlbumLoaded(arts[0].Albums[0]))
+	playing := send(t, tracks, NowPlaying{Title: poison("Slipway"), Artist: poison("Aoi"), Duration: time.Minute})
+	failed := send(t, base, Failed{Message: poison("the server refused")})
+
+	for name, m := range map[string]Model{
+		"artists": artists, "albums": albums, "tracks": tracks,
+		"playing": playing, "failed": failed,
+	} {
+		frame := m.View()
+		// The styles themselves emit SGR codes, so the assertion is on the
+		// sequences a hostile string would introduce, not on ESC outright.
+		for _, forbidden := range []string{"\x1b[2J", "\x1b[H", "\x1b[6n", "\x1b[1;1r", "\a", "\r", "\n\x9b"} {
+			if strings.Contains(frame, forbidden) {
+				t.Errorf("the %s frame carries %q", name, forbidden)
+			}
+		}
+		for _, r := range stripSGR(frame) {
+			if control(r) && r != '\n' {
+				t.Errorf("the %s frame carries control character %U", name, r)
+			}
+		}
+	}
+}
+
+// stripSGR removes the colour and attribute sequences lipgloss writes, leaving
+// what a hostile string would have contributed.
+func stripSGR(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
+			j := i + 2
+			for j < len(s) && s[j] != 'm' && s[j] != 'J' && s[j] != 'H' && s[j] != 'n' && s[j] != 'r' {
+				j++
+			}
+			if j < len(s) && s[j] == 'm' {
+				i = j + 1
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}

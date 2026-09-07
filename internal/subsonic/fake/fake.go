@@ -49,11 +49,21 @@ type Malice struct {
 	RejectAuth bool
 	// Stall never responds: the client's timeout is the only way out.
 	Stall bool
+	// HostileText puts terminal escape sequences in every displayable string.
+	// A terminal is an interpreter, not a display, and these are the cheapest
+	// attack a server has against a program that prints what it is told
+	// (ADR-013).
+	HostileText bool
 }
 
 // oversizeBytes is what OversizeBody pads with: comfortably past the 16 MiB
 // this project's own client caps a metadata response at.
 const oversizeBytes = 24 << 20
+
+// Hostile is what HostileText wraps every displayable string in: a cursor
+// move, a screen clear, a scroll-region change, and a device-status query
+// whose reply some terminals inject back as if it had been typed.
+const Hostile = "\x1b[2J\x1b[H\x1b[1;1r\x1b[6n\x07\r\n\x9b31m"
 
 // Options configures a fake. With no credential it accepts nothing, which is
 // the right default for a thing whose job is checking credentials.
@@ -137,12 +147,25 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		s.ok(w, response{Extensions: ext})
 	case "getArtists":
 		list := s.opt.Library.indexed()
+		if s.opt.Malice.HostileText {
+			for i := range list.Index {
+				for j := range list.Index[i].Artists {
+					list.Index[i].Artists[j].Name = Hostile + list.Index[i].Artists[j].Name
+				}
+			}
+		}
 		s.ok(w, response{Artists: &list})
 	case "getArtist":
 		a, found := s.opt.Library.findArtist(q.Get("id"))
 		if !found {
 			s.fail(w, 70, "Artist not found")
 			return
+		}
+		if s.opt.Malice.HostileText {
+			a.Name = Hostile + a.Name
+			for i := range a.Albums {
+				a.Albums[i].Name = Hostile + a.Albums[i].Name
+			}
 		}
 		s.ok(w, response{Artist: &a})
 	case "getAlbum":
@@ -152,6 +175,13 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		al.Songs = s.maybeTraverse(al.Songs)
+		if s.opt.Malice.HostileText {
+			al.Name = Hostile + al.Name
+			al.Artist = Hostile + al.Artist
+			for i := range al.Songs {
+				al.Songs[i].Title = Hostile + al.Songs[i].Title
+			}
+		}
 		s.ok(w, response{Album: &al})
 	case "stream":
 		sg, found := s.opt.Library.findSong(q.Get("id"))

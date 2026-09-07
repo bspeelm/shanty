@@ -287,6 +287,55 @@ Recorded now because these are architecture, not packaging. Answering them
 after the Linux shape has hardened is how a client ends up with a second,
 worse implementation on the platform nobody developed on.
 
+## ADR-013 — The terminal is a fourth thing a hostile server can reach, and ADR-001 did not say so
+
+**Status:** accepted. Amends ADR-001, which stands; this adds a therefore it
+was missing.
+
+ADR-001 asks what a malicious or compromised server can do and answers in three
+parts: it controls the JSON we parse, the image data we decode, and the strings
+we might turn into filesystem paths. It missed the fourth, which is the one
+v0.1 actually reaches first.
+
+Every artist name, album title and track title is chosen by the server and
+printed to a terminal. A terminal is not a text display; it is an interpreter,
+and the bytes it interprets include cursor movement, screen clearing, scroll
+region changes, and on many emulators a query whose *reply is injected back
+into the input stream as if the user had typed it*. A track called `Slipway`
+followed by an escape sequence is a track that can redraw the screen around it,
+or push characters into the program reading the keyboard.
+
+This is not exotic. It is the cheapest attack a hostile server has against this
+program, it needs no vulnerability in any parser, and every field the browse
+screens display is a delivery mechanism.
+
+**Therefore: no server-supplied string reaches the terminal without passing
+through one function that strips it, and that function lives at the render
+boundary in `internal/tui`.**
+
+Two placements were considered. Stripping at the decode boundary in
+`internal/subsonic` would be a stronger guarantee — nothing downstream could
+ever hold a hostile string — but it silently alters what the server sent. A
+track genuinely named with an unusual character comes back changed, and the
+`scrobble` sent back to the server would carry the altered form, which makes
+shanty lie to the server about its own library. The rendering layer is the
+place where the string stops being data and becomes an instruction, so that is
+where it stops being an instruction.
+
+**What is stripped:** the C0 controls, DEL, and the C1 range, which is every
+byte a terminal can read as the start of a sequence. Newline and tab are
+stripped with them; a title is one line and a title containing a newline is a
+title that breaks the layout whether or not it was hostile.
+
+**What is not stripped, and why:** the Unicode bidirectional overrides. They
+can reorder text visually, which is a real attack in source code, but an artist
+name in Arabic or Hebrew is an ordinary thing for this program to display and
+mangling it would be a bug affecting real users to prevent a display trick
+affecting none. If that changes, it is a later record, not a quiet edit here.
+
+The fake grows a malice mode that returns hostile titles, so this is a property
+every screen's golden test carries rather than one function's unit test.
+
 ---
 
 ## Open, and assigned
