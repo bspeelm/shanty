@@ -1,11 +1,10 @@
 // Package queue is the play queue, as pure functions over data.
 //
 // The strange bugs music players accumulate here -- a track that plays twice,
-// a skip that loses the rest of the album -- are not hard to reason about.
-// They are hard to reproduce, because the queue is usually mutable state
-// shared between a UI thread and a playback callback. Here it is a value:
-// every operation returns a new Queue, so each of those bugs is a property a
-// test can check without a player, a socket, or a clock (§4).
+// a skip that loses the album -- are not hard to reason about; they are hard
+// to reproduce, because the queue is usually mutable state shared between a UI
+// thread and a playback callback. Here it is a value, so each of those bugs is
+// a property a test checks without a player, a socket, or a clock (§4).
 package queue
 
 import "time"

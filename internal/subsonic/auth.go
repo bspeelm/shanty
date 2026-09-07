@@ -15,10 +15,10 @@ const (
 	ClientName = "shanty"
 )
 
-// Authenticator adds one credential to a request's query. A function rather
-// than a struct, so a password-backed credential can mint a fresh salt per
-// request while a stored token cannot, and so nothing assembles a credential
-// except the three constructors below -- none of which can produce p=.
+// Authenticator adds one credential to a request's query. A function so a
+// password-backed credential can mint a fresh salt per request, and so nothing
+// assembles a credential except the three constructors -- none of which can
+// produce p=.
 type Authenticator func(url.Values)
 
 // APIKeyAuth is the strongest mode: one revocable string, killed server-side.
@@ -26,9 +26,8 @@ func APIKeyAuth(key string) Authenticator {
 	return func(q url.Values) { q.Set("apiKey", key) }
 }
 
-// TokenAuth replays a stored pair. It is fixed, so a server logging query
-// strings sees the same one every time: the cost of storing a token rather
-// than a password, and still not the password.
+// TokenAuth replays a stored pair, so a server logging query strings sees the
+// same one every time: the cost of storing a token, and still not the password.
 func TokenAuth(username, token, salt string) Authenticator {
 	return func(q url.Values) {
 		q.Set("u", username)
