@@ -9,35 +9,29 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// CredentialsMode is the only mode a credentials file may have. Stricter is
-// accepted -- 0400 is what an agenix secret arrives as -- but anything a
-// second account can read is refused outright.
+// CredentialsMode is the loosest mode a credentials file may have. Stricter is
+// accepted -- 0400 is what an agenix secret arrives as.
 const CredentialsMode os.FileMode = 0o600
 
 // AuthMode is how shanty proves who it is to the server.
 type AuthMode string
 
 const (
-	// AuthAPIKey is one revocable string, killed server-side in a click.
-	AuthAPIKey AuthMode = "api key"
-	// AuthToken is replayable against this server and useless anywhere else,
-	// because it is not the password.
-	AuthToken AuthMode = "token and salt"
-	// AuthPasswordFile is a secret the user's own tooling manages.
-	AuthPasswordFile AuthMode = "password file"
-	// AuthPassword is a password shanty will read and will never write.
-	AuthPassword AuthMode = "plaintext password"
+	AuthAPIKey       AuthMode = "api key"            // revocable server-side in a click
+	AuthToken        AuthMode = "token and salt"     // replayable here, useless elsewhere
+	AuthPasswordFile AuthMode = "password file"      // a secret the user's tooling manages
+	AuthPassword     AuthMode = "plaintext password" // read, never written
 )
 
 // AuthModes is every mode, strongest first. ADR-001's preference order is this
 // slice and nothing else, so doctor names a better option by reading it rather
-// than by carrying a second copy of the ranking that could disagree.
+// than carrying a second copy that could disagree.
 var AuthModes = []AuthMode{AuthAPIKey, AuthToken, AuthPasswordFile, AuthPassword}
 
-// PermissionError is what a readable credentials file gets. It is an error
-// rather than a warning on purpose: the audit that started this project found
-// the field's best-engineered client shipping a world-readable password for
-// want of exactly this check, and a warning is a thing people scroll past.
+// PermissionError is what a readable credentials file gets. An error rather
+// than a warning on purpose: the audit found the field's best-engineered client
+// shipping a world-readable password for want of this check, and a warning is a
+// thing people scroll past on the way to their music.
 type PermissionError struct {
 	Path string
 	Mode os.FileMode
@@ -49,30 +43,28 @@ func (e *PermissionError) Error() string {
 		e.Path, e.Mode, e.Path)
 }
 
-// ErrWontWritePassword is returned rather than silently dropping the line. A
-// user who wrote a password by hand gets to keep it; shanty declines to be the
-// program that put it on disk, and equally declines to be the one that deleted
-// it without saying so.
+// ErrWontWritePassword is returned rather than dropping the line. shanty
+// declines to be the program that put a password on disk, and equally the one
+// that deleted the user's without saying so.
 var ErrWontWritePassword = errors.New(
 	"shanty does not write plaintext passwords; remove the password line by hand, or set an api_key or token and salt instead")
 
-// Credentials is the secret half. Exactly one mode is used -- Mode picks it --
-// but more than one may be present, because a user migrating from a password
-// to an API key should not have to get the order right.
+// Credentials is the secret half. Mode picks the one used; more than one may
+// be present, because a user migrating to an API key should not have to get
+// the order right.
 type Credentials struct {
 	APIKey       string `toml:"api_key,omitempty"`
 	Token        string `toml:"token,omitempty"`
 	Salt         string `toml:"salt,omitempty"`
 	PasswordFile string `toml:"password_file,omitempty"`
-	// Password is read if a user wrote one, because refusing to read it only
-	// moves them to a client that will. It is never written: see persisted.
+	// Read if a user wrote one, because refusing only moves them to a client
+	// that will. Never written: see persisted.
 	Password string `toml:"password,omitempty"`
 }
 
-// persisted is what Save is allowed to write, and the plaintext password is
-// not a field on it. "shanty never writes a password" is therefore a property
-// of the type rather than a check somebody could forget to run, or delete to
-// make a test go green.
+// persisted is what Save may write, and the plaintext password is not a field
+// on it. "shanty never writes a password" is a property of the type rather than
+// a check somebody could forget to run, or delete to go green.
 type persisted struct {
 	APIKey       string `toml:"api_key,omitempty"`
 	Token        string `toml:"token,omitempty"`
@@ -80,9 +72,8 @@ type persisted struct {
 	PasswordFile string `toml:"password_file,omitempty"`
 }
 
-// LoadCredentials reads credentials.toml, refusing to go on if anyone else on
-// the machine could have read it first. A missing file is not an error; an
-// unprotected one is.
+// LoadCredentials refuses to go on if anyone else on the machine could have
+// read the file first. A missing file is not an error; an unprotected one is.
 func LoadCredentials(path string) (Credentials, error) {
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -106,8 +97,7 @@ func LoadCredentials(path string) (Credentials, error) {
 	return c, nil
 }
 
-// Save writes credentials.toml atomically at 0600, and refuses outright when
-// asked to persist a plaintext password.
+// Save writes atomically at 0600, and refuses a plaintext password outright.
 func (c Credentials) Save(path string) error {
 	if c.Password != "" {
 		return ErrWontWritePassword
@@ -124,8 +114,8 @@ func (c Credentials) Save(path string) error {
 	return writeAtomic(path, raw, CredentialsMode)
 }
 
-// Mode reports which credential shanty will actually use, following ADR-001's
-// order. The second return is false when nothing is configured at all.
+// Mode reports which credential shanty will use, in ADR-001's order. The
+// second return is false when nothing is configured.
 func (c Credentials) Mode() (AuthMode, bool) {
 	switch {
 	case c.APIKey != "":
@@ -140,10 +130,9 @@ func (c Credentials) Mode() (AuthMode, bool) {
 	return "", false
 }
 
-// ResolvePassword returns the plaintext behind a password-file or password
-// credential, for the one caller that has to hash it. The other two modes have
-// no password behind them and say so rather than returning an empty string
-// that would hash into a valid-looking token.
+// ResolvePassword returns the plaintext behind a password or password-file
+// credential, for the one caller that hashes it. The other modes say so rather
+// than returning an empty string, which would hash into a valid-looking token.
 func (c Credentials) ResolvePassword() (string, error) {
 	mode, ok := c.Mode()
 	if !ok {
@@ -164,9 +153,8 @@ func readPasswordFile(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("password_file %s: %w", path, err)
 	}
-	// The mode check applies to regular files only. §6 invites a pass(1) entry
-	// through process substitution, which arrives as a pipe, and a pipe's
-	// permissions are not the thing protecting it.
+	// Regular files only: §6 invites a pass(1) entry through process
+	// substitution, and a pipe's permissions are not what protects it.
 	if info.Mode().IsRegular() {
 		if perm := info.Mode().Perm(); perm&^CredentialsMode != 0 {
 			return "", &PermissionError{Path: path, Mode: perm}
@@ -176,8 +164,7 @@ func readPasswordFile(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("password_file %s: %w", path, err)
 	}
-	// A trailing newline is what every editor and every secret manager adds,
-	// and a password with one on the end authenticates against nothing while
-	// looking correct in the file.
+	// Every editor and secret manager adds one, and a password carrying it
+	// authenticates against nothing while looking correct in the file.
 	return strings.TrimRight(string(raw), "\r\n"), nil
 }

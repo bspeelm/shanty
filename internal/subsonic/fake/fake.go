@@ -1,20 +1,13 @@
-// Package fake is an in-process Subsonic server for tests.
+// Package fake is an in-process Subsonic server for tests. Every layer runs
+// against it, and nothing in `make check` touches the network.
 //
-// It is the centre of gravity for this project's testing: every layer runs
-// against it, and nothing in `make check` touches the network. Two properties
-// make it worth more than a stub.
-//
-// It refuses to answer a request that breaks the client's own promises. The
-// legacy password parameter, a missing client identifier, a missing
-// User-Agent, an unauthenticated call -- each fails the test that made the
-// request, wherever in the tree that test lives. §6's "the legacy p= parameter
-// is never sent, in any mode" is therefore not a review standard but a
-// property every test in the repository enforces without being asked.
-//
-// And it lies on request. A server the client does not control can truncate,
-// stall, oversize, or hand back a filename shaped like a path traversal, and
-// the malice modes below make each of those a one-line test rather than a
-// thought experiment.
+// Two properties make it worth more than a stub. It refuses requests that break
+// the client's own promises -- the legacy password parameter, a missing client
+// identifier or User-Agent -- failing the test that made the request, wherever
+// in the tree that test lives; §6's "p= is never sent, in any mode" is
+// therefore a property every test enforces without being asked. And it lies on
+// request: the malice modes below make truncation, stalling, oversized bodies
+// and path-traversal filenames one-line tests rather than thought experiments.
 package fake
 
 import (
@@ -31,11 +24,10 @@ import (
 // APIVersion is what the fake claims to speak, matching ADR-007.
 const APIVersion = "1.16.1"
 
-// TB is the part of *testing.T the fake uses. It is an interface rather than
-// the concrete type for one reason: the fake's whole claim is that it fails
-// the calling test when a request breaks a promise, and that claim is only
-// worth making if something proves it. Its own tests substitute a recorder
-// here and assert on what would have been reported.
+// TB is the part of *testing.T the fake uses, an interface rather than the
+// concrete type for one reason: the fake's claim is that it fails the calling
+// test when a promise breaks, and that is only worth making if something proves
+// it. Its own tests substitute a recorder and assert on what was reported.
 type TB interface {
 	Errorf(format string, args ...any)
 	Fatalf(format string, args ...any)
@@ -48,38 +40,34 @@ type TB interface {
 type Malice struct {
 	// TruncateJSON cuts the response body in half mid-object.
 	TruncateJSON bool
-	// OversizeBody pads the response past any sane cap, so a client reading
-	// without an io.LimitReader exhausts memory instead of failing a request.
+	// OversizeBody pads past any sane cap, so a client reading without an
+	// io.LimitReader exhausts memory instead of failing a request.
 	OversizeBody bool
-	// Traversal rewrites every server-supplied path into one that escapes the
-	// tree if it is ever joined onto a directory unsanitised.
+	// Traversal rewrites every server-supplied path into one that escapes if
+	// joined onto a directory unsanitised.
 	Traversal bool
 	// WrongContentType answers JSON requests as text/html.
 	WrongContentType bool
 	// RejectAuth fails every credential, however correct.
 	RejectAuth bool
-	// Stall never responds, leaving the client's timeout or context
-	// cancellation as the only way out.
+	// Stall never responds: the client's timeout is the only way out.
 	Stall bool
 }
 
-// Options configures a fake. The zero value is not useful: a server with no
-// credential accepts nothing, which is the correct default for a thing whose
-// job is to check credentials.
+// Options configures a fake. A server with no credential accepts nothing,
+// which is the right default for a thing whose job is checking credentials.
 type Options struct {
 	User     string
 	Password string
-	// APIKey, when set, is accepted as OpenSubsonic apiKey authentication.
-	APIKey string
-	// OpenSubsonic controls whether the server advertises the API-key
-	// extension, so a test can exercise the client's downgrade to token+salt.
+	APIKey   string // accepted as OpenSubsonic apiKey authentication
+	// OpenSubsonic advertises the API-key extension, so a test can exercise
+	// the client's downgrade to token+salt.
 	OpenSubsonic bool
 	Library      Library
 	Malice       Malice
 }
 
-// Server is a running fake. Close is registered with the test's cleanup, so a
-// caller never has to remember it.
+// Server is a running fake; its shutdown is registered with the test.
 type Server struct {
 	*httptest.Server
 	t    TB
@@ -88,17 +76,14 @@ type Server struct {
 	reqs []Request
 }
 
-// Request is one call as the server saw it, for tests that assert on what was
-// sent rather than on what came back. Credentials are deliberately not
-// recorded: a test that wants to know whether a token was correct asks the
-// server, which already refused if it was not.
+// Request is one call as the server saw it, for tests asserting on what was
+// sent. Credentials are not recorded: the server already refused a wrong one.
 type Request struct {
 	Endpoint string
 	Query    url.Values
 }
 
-// New starts a fake and registers its shutdown. Options.Library defaults to
-// DefaultLibrary.
+// New starts a fake. Options.Library defaults to DefaultLibrary.
 func New(t TB, opt Options) *Server {
 	t.Helper()
 	if len(opt.Library.Artists) == 0 {
@@ -130,9 +115,8 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.opt.Malice.Stall {
-		// Hold the connection open until the client gives up. The client's
-		// timeout or context is the only thing that ends this exchange, which
-		// is exactly what the test wants to prove exists.
+		// Held open until the client gives up: its timeout is the only thing
+		// that ends this exchange, which is what the test proves exists.
 		<-r.Context().Done()
 		return
 	}
@@ -175,8 +159,8 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "audio/flac")
-		// Deterministic, not real FLAC: nothing in the unit suite decodes it,
-		// and the integration job is where real audio meets real mpv.
+		// Not real FLAC: nothing in the unit suite decodes it, and the
+		// integration job is where real audio meets real mpv.
 		_, _ = w.Write([]byte(strings.Repeat(sg.ID+" ", 64)))
 	case "scrobble":
 		s.ok(w, response{})
@@ -185,9 +169,8 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// hygienic checks the promises the client makes about every request it sends.
-// A violation fails the calling test rather than merely erroring, because the
-// point is to name the mistake at the place that made it.
+// hygienic checks the promises the client makes about every request. A
+// violation fails the calling test, naming the mistake where it was made.
 func (s *Server) hygienic(r *http.Request, q url.Values) bool {
 	ok := true
 	if q.Has("p") {
@@ -224,10 +207,9 @@ func (s *Server) authenticated(q url.Values) bool {
 	return token == hex.EncodeToString(sum[:])
 }
 
-// maybeTraverse replaces server-supplied paths with ones that escape the tree,
-// so a client that joins them onto a directory without sanitising writes
-// outside it. The client is expected to have exactly one function that makes
-// this harmless, and exactly one place it is called.
+// maybeTraverse replaces server-supplied paths with ones that escape the tree.
+// The client is expected to have exactly one function that makes this harmless,
+// and exactly one place it is called.
 func (s *Server) maybeTraverse(in []song) []song {
 	if !s.opt.Malice.Traversal {
 		return in
@@ -261,9 +243,8 @@ func (s *Server) write(w http.ResponseWriter, body response) {
 		s.t.Fatalf("fake: encoding a response it built itself: %v", err)
 	}
 	if s.opt.Malice.OversizeBody {
-		// Padding inside the envelope rather than after it, so a client that
-		// caps its reader fails to decode instead of quietly succeeding on a
-		// prefix.
+		// Padded so a client that caps its reader fails to decode rather than
+		// quietly succeeding on a prefix.
 		raw = append(raw[:len(raw)-1], []byte(`,"pad":"`+strings.Repeat("A", 1<<20)+`"}`)...)
 	}
 	if s.opt.Malice.TruncateJSON {

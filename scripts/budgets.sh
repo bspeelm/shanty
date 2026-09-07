@@ -18,6 +18,9 @@ MAX_DIRECT_DEPS=10
 MAX_MODULES=30
 MAX_PANICS=0
 MAX_HTTP_PACKAGES=2
+MAX_CODE_LINES=6000
+MAX_COMMENT_RATIO=25        # hard ceiling: over budget retires prose, never raises this
+MAX_DOC_LINES=4500          # 75% of the code cap, which is bothy's ratio at full size
 MAX_BINARY_BYTES=15728640   # 15 MiB, linux_amd64, stripped
 MIN_TEST_RATIO=3            # at least one test line per three code lines
 
@@ -58,11 +61,45 @@ fi
 testlines=$(find . -name '*_test.go' -not -path './vendor/*' -exec cat {} + 2>/dev/null | wc -l)
 codelines=$(find . -name '*.go' -not -name '*_test.go' -not -path './vendor/*' -exec cat {} + 2>/dev/null | wc -l)
 
-printf 'code:          %s lines\n' "$codelines"
+printf 'code(raw):     %s lines\n' "$codelines"
 printf 'tests:         %s lines (floor: 1 per %s of code)\n' "$testlines" "$MIN_TEST_RATIO"
 if [ "$codelines" -gt 0 ] && [ $((testlines * MIN_TEST_RATIO)) -lt "$codelines" ]; then
 	over "under the test floor -- this is a floor, not a target."
 fi
+
+# --- code, comments, prose ---------------------------------------------------
+# Counted the way bothy counts them, so the two projects' numbers mean the same
+# thing: code is non-test, non-comment, non-blank; comments are measured
+# against it rather than against the file, so prose stays proportionate to what
+# it explains rather than competing with it for room.
+#
+# The comment ratio is the one hard ceiling. Over budget means retiring a
+# comment, never raising the number -- an agent produces prose the way a fire
+# produces smoke, and this is the only line in the file that pushes back.
+#
+# Prose is an absolute line count rather than bothy's share-of-code, and the
+# reason is this project's own order of work: the plan is written in full
+# before the code, so a ratio would report a project that planned first as
+# worse than one that did not. 4500 is 75% of the code cap -- the same number
+# bothy's rule produces at the size shanty says it will stop growing at -- and
+# like every number here it may tighten and may not grow.
+SOURCES=$(find cmd internal -name '*.go' -not -name '*_test.go' 2>/dev/null || true)
+if [ -n "$SOURCES" ]; then
+	# shellcheck disable=SC2086
+	code=$(cat $SOURCES | awk '/^[[:space:]]*\/\*/{b=1} b{if(/\*\//)b=0; next} !/^[[:space:]]*\/\// && NF' | wc -l)
+	# shellcheck disable=SC2086
+	comments=$(cat $SOURCES | awk '/^[[:space:]]*\/\*/{b=1} b{c++; if(/\*\//)b=0; next} /^[[:space:]]*\/\//{c++} END{print c+0}')
+	ratio=$(( comments * 100 / code ))
+	printf 'code:          %s lines (budget %s)\n' "$code" "$MAX_CODE_LINES"
+	printf 'comments:      %s lines, %s%% of code (budget %s%%)\n' "$comments" "$ratio" "$MAX_COMMENT_RATIO"
+	[ "$code" -le "$MAX_CODE_LINES" ] || over "over the code budget."
+	[ "$ratio" -le "$MAX_COMMENT_RATIO" ] || over "over the comment budget -- retire a comment; this ceiling does not move."
+fi
+
+docs=$(find . -name '*.md' -not -path './.git/*' -not -path './vendor/*' \
+	-not -path './docs/history/*' -not -path './docs/review/*' -exec cat {} + | wc -l)
+printf 'prose:         %s lines (budget %s)\n' "$docs" "$MAX_DOC_LINES"
+[ "$docs" -le "$MAX_DOC_LINES" ] || over "over the prose budget -- retire a doc to docs/history/, do not raise the cap."
 
 # --- panic -------------------------------------------------------------------
 # A panic in a TUI takes the terminal with it. Errors are values here.

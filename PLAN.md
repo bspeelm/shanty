@@ -36,7 +36,20 @@ like code. Numbers may start generous and tighten; they may not silently grow.
 | binary size (linux_amd64, stripped) | 15 MiB | `make budgets` builds exactly that and measures it |
 | packages importing `net/http` | 2 | `internal/subsonic` and its `fake` test server, nothing else |
 | test lines : code lines | ≥ 1 : 3 | `wc -l` over `_test.go` vs the rest; a floor, not a target |
+| code lines | 6,000 | `cmd` and `internal`, non-test, comments and blanks excluded |
+| comment lines : code lines | 25% | the one **hard** ceiling: over budget retires a comment |
+| live prose | 4,500 lines | every `.md` outside `docs/history/` and `docs/review/` |
 | lockfile-equivalent | go.sum only | no second pinning mechanism; `go.sum` is the lockfile and CI builds with `-mod=readonly` |
+
+Two of these need their reasoning stated, because their shape differs from
+bothy's. The **comment ratio** is hard where the others are soft: over budget
+means retiring a comment, never raising the number, since an agent produces
+prose the way a fire produces smoke and this is the only line in the file that
+pushes back. **Live prose** is an absolute count rather than bothy's
+share-of-code, because this project writes its plan in full before its code — a
+ratio would report a project that planned first as worse than one that did not.
+4,500 is 75% of the code cap: the same number bothy's rule produces at the size
+shanty says it will stop growing at.
 
 Rationale for the dependency budget: the existing field ranges from nd's 19
 modules to Navidrome-tui's 599 crates. A Bubble Tea TUI honestly costs
@@ -186,7 +199,7 @@ client.
 | CI tokens least-privilege | `permissions: contents: read` at workflow top level; release workflow alone gets write |
 | isolation tests actually ran | CI job asserts `--- PASS` count ≥ N, exactly bothy's drifted-filter guard |
 | releases carry checksums and provenance | goreleaser `checksums.txt` + `actions/attest-build-provenance`; install script verifies the first always and the second on `--verify` |
-| reasoning is written down | ADR per irreversible decision; comment density is not budgeted but bothy's ~16% is the house style, against the ~1% typical of this field |
+| reasoning is written down | ADR per irreversible decision; `make budgets`; the house style is bothy's 25% of code, against the ~1% typical of this field |
 
 ## §6 Credentials
 
