@@ -54,6 +54,10 @@ type Malice struct {
 	Stall bool
 }
 
+// oversizeBytes is what OversizeBody pads with: comfortably past the 16 MiB
+// this project's own client caps a metadata response at.
+const oversizeBytes = 24 << 20
+
 // Options configures a fake. A server with no credential accepts nothing,
 // which is the right default for a thing whose job is checking credentials.
 type Options struct {
@@ -243,9 +247,11 @@ func (s *Server) write(w http.ResponseWriter, body response) {
 		s.t.Fatalf("fake: encoding a response it built itself: %v", err)
 	}
 	if s.opt.Malice.OversizeBody {
-		// Padded so a client that caps its reader fails to decode rather than
-		// quietly succeeding on a prefix.
-		raw = append(raw[:len(raw)-1], []byte(`,"pad":"`+strings.Repeat("A", 1<<20)+`"}`)...)
+		// Larger than any cap this project sets, because a padding smaller
+		// than the client's limit tests the client's patience and nothing
+		// else. Padded inside the body so a client that caps its reader fails
+		// to decode rather than quietly succeeding on a prefix.
+		raw = append(raw[:len(raw)-1], []byte(`,"pad":"`+strings.Repeat("A", oversizeBytes)+`"}`)...)
 	}
 	if s.opt.Malice.TruncateJSON {
 		raw = raw[:len(raw)/2]

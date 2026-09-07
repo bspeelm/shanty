@@ -233,7 +233,9 @@ func TestTruncatedJSONDoesNotDecode(t *testing.T) {
 }
 
 func TestAnOversizeBodyExceedsAnySaneCap(t *testing.T) {
-	const cap = 1 << 16
+	// 16 MiB is what this project's client caps a metadata response at, so a
+	// mode that stops short of it proves nothing about the cap.
+	const cap = 16 << 20
 	s := New(t, Options{User: testUser, Password: testPass, Malice: Malice{OversizeBody: true}})
 
 	n, err := io.Copy(io.Discard, get(t, s, "getArtists", wellFormed()).Body)
