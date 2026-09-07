@@ -4,7 +4,11 @@
 # commit. Everything else here is a component of it or a convenience.
 
 BINARY := shanty
-GOFLAGS := -mod=readonly
+
+# Exported rather than spliced into each recipe: go reads GOFLAGS from the
+# environment itself, and `go vet` puts the flag before the
+# subcommand, where go does not look for it.
+export GOFLAGS := -mod=readonly
 
 .PHONY: help lint vet test race budgets standard check build crossbuild clean
 
@@ -21,16 +25,16 @@ lint:
 	gofmt -l . | grep -v '^vendor/' | (! grep .) || { echo "gofmt -w the files above"; exit 1; }
 
 vet:
-	@if ls ./*/*.go ./*.go >/dev/null 2>&1 || [ -d cmd ]; then go $(GOFLAGS) vet ./...; else echo "no packages yet"; fi
+	go vet ./...
 
 test:
-	@if ls ./*/*.go ./*.go >/dev/null 2>&1 || [ -d cmd ]; then go $(GOFLAGS) test ./...; else echo "no packages yet"; fi
+	go test ./...
 
 # The race detector is not optional here: a TUI, a persistent child process and
 # an HTTP client is three sources of concurrency, and a data race in that mix
 # shows up as a rendering artifact nobody can reproduce.
 race:
-	@if ls ./*/*.go ./*.go >/dev/null 2>&1 || [ -d cmd ]; then go $(GOFLAGS) test -race ./...; else echo "no packages yet"; fi
+	go test -race ./...
 
 budgets:
 	@sh scripts/budgets.sh
@@ -47,7 +51,7 @@ standard:
 check: lint vet race budgets standard
 
 build:
-	CGO_ENABLED=0 go $(GOFLAGS) build -trimpath -ldflags '-s -w' -o $(BINARY) ./cmd/$(BINARY)
+	CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' -o $(BINARY) ./cmd/$(BINARY)
 
 # Every platform the release ships, compiled on every check, because a build
 # that only ever runs on the maintainer's machine is a claim about one machine.
@@ -55,7 +59,7 @@ crossbuild:
 	@for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
 	    echo "  $$t"; \
 	    GOOS=$${t%/*} GOARCH=$${t#*/} CGO_ENABLED=0 \
-	        go $(GOFLAGS) build -trimpath -o /dev/null ./... || exit 1; \
+	        go build -trimpath -o /dev/null ./... || exit 1; \
 	done
 
 clean:
