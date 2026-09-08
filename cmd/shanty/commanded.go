@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,10 @@ import (
 // stateRequest asks the session what it is doing. The answer comes back on the
 // channel, because the model is only reachable through its own messages.
 type stateRequest struct{ reply chan control.State }
+
+// handoverRequest asks the session for everything an interface needs to take
+// over, and tells it to let go of the player.
+type handoverRequest struct{ reply chan handoff }
 
 // answerTimeout bounds how long a control command waits for the model. A
 // session busy with the server must not hold up the shell that asked.
@@ -31,6 +36,22 @@ func commanded(program *tea.Program) control.Handler {
 				return control.Response{Error: "the session did not answer"}
 			}
 			return control.Response{OK: true, State: &state}
+
+		case control.Attach:
+			reply := make(chan handoff, 1)
+			program.Send(handoverRequest{reply: reply})
+			select {
+			case h := <-reply:
+				doc, err := json.Marshal(h)
+				if err != nil {
+					return control.Response{Error: err.Error()}
+				}
+				// The interface has what it needs, so the session goes.
+				return control.Response{OK: true, Handover: doc,
+					After: func() { program.Send(tui.Quit{}) }}
+			case <-time.After(answerTimeout):
+				return control.Response{Error: "the session did not answer"}
+			}
 
 		case control.Stop:
 			// The answer is written before the session acts on it.

@@ -282,3 +282,37 @@ func contains[T tea.Msg](msgs []tea.Msg) bool {
 
 // quits reports whether the batch asked bubbletea to end the program.
 func quits(msgs []tea.Msg) bool { return contains[tea.QuitMsg](msgs) }
+
+// TestHandingOverReleasesThePlayerAndTheQueue covers what a session does when
+// an interface takes it back. It must let go of the player rather than
+// stopping it, and stop advancing a queue that is no longer its own.
+func TestHandingOverReleasesThePlayerAndTheQueue(t *testing.T) {
+	a, _, srv := wired(t)
+	a.headless = true
+	a, _ = step(t, a, tui.PlayFrom{Album: twoTracks, Index: 0})
+
+	reply := make(chan handoff, 1)
+	a, _ = step(t, a, handoverRequest{reply: reply})
+	given := <-reply
+
+	if !a.released {
+		t.Error("the session will stop the player it handed over")
+	}
+	if !a.detaching {
+		t.Error("the session is still advancing a queue it gave away")
+	}
+	if len(given.Tracks) != 2 {
+		t.Errorf("the interface was given %d tracks, want 2", len(given.Tracks))
+	}
+
+	// A track ending now belongs to whoever took over.
+	a, _ = step(t, a, playerEvent(mpv.Event{Name: "end-file", Reason: "eof"}))
+	for _, r := range srv.Requests() {
+		if r.Endpoint == "scrobble" {
+			t.Error("the session reported a play after handing the queue over")
+		}
+	}
+	if current, _ := a.queue.Current(); current.ID != "tr-1" {
+		t.Errorf("the session advanced to %q after handing over", current.ID)
+	}
+}

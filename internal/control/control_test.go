@@ -37,7 +37,7 @@ func TestEveryVerbReachesTheSession(t *testing.T) {
 	var seen []Request
 	socket := serve(t, echoes(&seen))
 
-	for verb := range verbs {
+	for _, verb := range Typed() {
 		arg := ""
 		if TakesArgument(verb) {
 			arg = "40"
@@ -53,8 +53,8 @@ func TestEveryVerbReachesTheSession(t *testing.T) {
 			t.Errorf("%s: the session answered about something else: %+v", verb, res.State)
 		}
 	}
-	if len(seen) != len(verbs) {
-		t.Errorf("the session saw %d requests and %d verbs were sent", len(seen), len(verbs))
+	if len(seen) != len(Typed()) {
+		t.Errorf("the session saw %d requests and %d verbs were sent", len(seen), len(Typed()))
 	}
 }
 

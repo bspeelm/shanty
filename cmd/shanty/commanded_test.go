@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -196,5 +197,96 @@ func TestASessionRendersNothing(t *testing.T) {
 	a.headless = false
 	if a.View() == "" {
 		t.Error("an interface rendered nothing")
+	}
+}
+
+// TestAnInterfaceTakesASessionBack covers running shanty again while a session
+// is playing. The interface gets what the session was doing, and the session
+// goes without stopping the player it was holding.
+func TestAnInterfaceTakesASessionBack(t *testing.T) {
+	socket, rec := session(t)
+
+	res, err := control.Send(socket, control.Request{Verb: control.Attach})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK {
+		t.Fatalf("the session refused to hand over: %s", res.Error)
+	}
+
+	h, err := readHandoff(bytes.NewReader(res.Handover))
+	if err != nil {
+		t.Fatalf("what the session handed over could not be read: %v", err)
+	}
+	if len(h.Tracks) != 2 || h.Volume != 80 {
+		t.Errorf("the interface was given %d tracks at volume %d, want 2 at 80", len(h.Tracks), h.Volume)
+	}
+
+	// The session goes.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := control.Send(socket, control.Request{Verb: control.Status}); err != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the session handed over and kept running")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// It let go of the player rather than stopping it.
+	for _, said := range rec.said() {
+		if strings.Contains(said, "close") {
+			t.Errorf("the session stopped the player it handed over: %v", rec.said())
+		}
+	}
+}
+
+// TestTheHandoverCarriesNoCredential covers what crosses the socket. The
+// interface builds its own stream URLs from the credential it reads itself.
+func TestTheHandoverCarriesNoCredential(t *testing.T) {
+	socket, _ := session(t)
+
+	res, err := control.Send(socket, control.Request{Verb: control.Attach})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{pass, "stream", "&p=", "&t=", "&s="} {
+		if bytes.Contains(res.Handover, []byte(secret)) {
+			t.Errorf("the handover contains %q:\n%s", secret, res.Handover)
+		}
+	}
+}
+
+// TestAnInterfaceResumesWhereTheSessionWas covers what the screen shows after
+// taking a session back.
+func TestAnInterfaceResumesWhereTheSessionWas(t *testing.T) {
+	a, _, _ := wired(t)
+	h := handoff{
+		Protocol: control.Protocol,
+		Tracks:   queueFrom(twoTracks).Tracks(),
+		At:       1, Volume: 40, Paused: true,
+		Position: 83 * time.Second,
+	}
+
+	a = a.resume(h)
+
+	if current, _ := a.queue.Current(); current.ID != "tr-2" {
+		t.Errorf("the interface resumed on %q, want tr-2", current.ID)
+	}
+	if a.volume != 40 {
+		t.Errorf("the interface resumed at volume %d, want 40", a.volume)
+	}
+	if !a.ui.Paused() {
+		t.Error("the interface resumed playing a session that was paused")
+	}
+	if got := a.ui.Position(); got != 83*time.Second {
+		t.Errorf("the interface resumed at %v, want 1m23s", got)
+	}
+	if !strings.Contains(a.ui.Status(), "carried on") {
+		t.Errorf("the screen says %q", a.ui.Status())
+	}
+	if view := a.View(); !strings.Contains(view, "Ballast") {
+		t.Error("the screen does not show what the session was playing")
 	}
 }

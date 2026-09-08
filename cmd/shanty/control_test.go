@@ -22,7 +22,7 @@ func TestEveryVerbIsASubcommandAndEverySubcommandIsAVerb(t *testing.T) {
 		}
 		typed[c.verb] = c.name
 	}
-	for _, verb := range control.Verbs() {
+	for _, verb := range control.Typed() {
 		if _, ok := typed[verb]; !ok {
 			t.Errorf("a session accepts %q and no command sends it", verb)
 		}

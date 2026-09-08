@@ -56,7 +56,7 @@ func (r *recorder) Observe(_ context.Context, p string) error {
 }
 func (r *recorder) Events() <-chan mpv.Event { return r.events }
 func (r *recorder) Detach() error            { return r.note("detach") }
-func (r *recorder) Close() error             { return nil }
+func (r *recorder) Close() error             { return r.note("close") }
 func (r *recorder) Err() error               { return nil }
 
 func sprintf(format string, args ...any) string { return fmt.Sprintf(format, args...) }

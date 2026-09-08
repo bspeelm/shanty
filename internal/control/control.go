@@ -35,30 +35,49 @@ const (
 	Seek   Verb = "seek"
 	Status Verb = "status"
 	Stop   Verb = "stop"
+	// Attach asks the session for what it is playing and to let go of it. It
+	// is sent by an interface starting up, not typed.
+	Attach Verb = "attach"
 )
 
-// verbs is every verb, with whether it takes an argument. The set is closed:
-// a verb that is not here is refused before it reaches the session.
-var verbs = map[Verb]bool{
-	Pause: false, Next: false, Prev: false,
-	Volume: true, Seek: true,
-	Status: false, Stop: false,
+// shape is what is true of one verb.
+type shape struct {
+	// argument is set for a verb that needs something after it.
+	argument bool
+	// typed is set for a verb a person sends by name. Attach is sent by an
+	// interface starting up and is not one.
+	typed bool
+}
+
+// verbs is every verb a session accepts. The set is closed: a verb that is not
+// here is refused before it reaches the session.
+var verbs = map[Verb]shape{
+	Pause:  {typed: true},
+	Next:   {typed: true},
+	Prev:   {typed: true},
+	Volume: {argument: true, typed: true},
+	Seek:   {argument: true, typed: true},
+	Status: {typed: true},
+	Stop:   {typed: true},
+	Attach: {},
 }
 
 // Known reports whether the verb is one a session accepts.
 func Known(v Verb) bool { _, ok := verbs[v]; return ok }
 
-// Verbs is every verb a session accepts.
-func Verbs() []Verb {
+// Typed is every verb a person sends by name.
+func Typed() []Verb {
 	out := make([]Verb, 0, len(verbs))
-	for v := range verbs {
-		out = append(out, v)
+	for v, s := range verbs {
+		if s.typed {
+			out = append(out, v)
+		}
 	}
 	return out
 }
 
 // TakesArgument reports whether the verb needs something after it.
-func TakesArgument(v Verb) bool { return verbs[v] }
+func TakesArgument(v Verb) bool { return verbs[v].argument }
 
 // Request is one command sent to a session.
 type Request struct {
@@ -72,6 +91,10 @@ type Response struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
 	State *State `json:"state,omitempty"`
+
+	// Handover is what an interface needs to take a session over. It is set
+	// only in the answer to Attach, and carries no credential.
+	Handover json.RawMessage `json:"handover,omitempty"`
 
 	// After runs once the response has reached the other end. A session that
 	// is stopping uses it, so that it does not exit before answering the

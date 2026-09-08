@@ -62,7 +62,18 @@ func play(ctx context.Context, env Env) error {
 		return err
 	}
 
-	p, err := mpv.Start(ctx, mpv.Options{Socket: env.Paths.Socket()})
+	// A session that is playing is taken back rather than competed with.
+	resumed, running, err := takeOver(env)
+	if err != nil {
+		return err
+	}
+
+	var p *mpv.Player
+	if running {
+		p, err = mpv.Attach(ctx, env.Paths.Socket())
+	} else {
+		p, err = mpv.Start(ctx, mpv.Options{Socket: env.Paths.Socket()})
+	}
 	if err != nil {
 		return err
 	}
@@ -78,6 +89,9 @@ func play(ctx context.Context, env Env) error {
 
 	a := newApp(ctx, client, p)
 	a.detach = detacher(env)
+	if running {
+		a = a.resume(resumed)
+	}
 	program := tea.NewProgram(a,
 		tea.WithContext(ctx), tea.WithAltScreen(), tea.WithOutput(env.Stdout))
 	final, err := program.Run()

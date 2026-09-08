@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -23,6 +24,10 @@ type handoff struct {
 	At       int           `json:"at"`
 	Volume   int           `json:"volume"`
 	Paused   bool          `json:"paused"`
+	// Position is how far into the current track playback has reached. It is
+	// zero in the handoff that starts a session, which is taking over a player
+	// that is already at the right place.
+	Position time.Duration `json:"position,omitempty"`
 }
 
 // startSession hands the queue to a session and quits once it has it. The
@@ -35,13 +40,7 @@ func (a app) startSession() (tea.Model, tea.Cmd) {
 		return a.forward(tui.Failed{Message: "there is nothing playing to leave behind\n\nplay something, then type :headless"})
 	}
 
-	h := handoff{
-		Protocol: control.Protocol,
-		Tracks:   a.queue.Tracks(),
-		At:       a.queue.At(),
-		Volume:   a.volume,
-		Paused:   a.paused(),
-	}
+	h := a.handoff()
 	// The queue belongs to the session from here, whether or not it starts.
 	// Losing one report if it fails is better than making two if it works.
 	a.detaching = true
@@ -55,6 +54,18 @@ func (a app) startSession() (tea.Model, tea.Cmd) {
 	ui, _ := a.ui.Update(tui.Notice("leaving the interface; the music keeps playing"))
 	a.ui = ui.(tui.Model)
 	return a, start
+}
+
+// handoff is what this process would give another to carry on from here.
+func (a app) handoff() handoff {
+	return handoff{
+		Protocol: control.Protocol,
+		Tracks:   a.queue.Tracks(),
+		At:       a.queue.At(),
+		Volume:   a.volume,
+		Paused:   a.paused(),
+		Position: a.ui.Position(),
+	}
 }
 
 // readHandoff reads what the interface left for this session.
@@ -86,4 +97,43 @@ func (h handoff) resume() queue.Queue { return queue.New(h.Tracks...).Jump(h.At)
 func (h handoff) nowPlaying() (tui.NowPlaying, time.Duration) {
 	t := h.Tracks[min(h.At, len(h.Tracks)-1)]
 	return tui.NowPlaying{Title: t.Title, Artist: t.Artist, Duration: t.Duration}, t.Duration
+}
+
+// takeOver asks a running session for what it is playing. The second result
+// reports whether there was one.
+func takeOver(env Env) (handoff, bool, error) {
+	res, err := control.Send(env.Paths.ControlSocket(), control.Request{Verb: control.Attach})
+	if err != nil {
+		var none control.ErrNoSession
+		if errors.As(err, &none) {
+			return handoff{}, false, nil
+		}
+		return handoff{}, false, err
+	}
+	if !res.OK {
+		return handoff{}, false, errors.New(res.Error)
+	}
+	h, err := readHandoff(bytes.NewReader(res.Handover))
+	if err != nil {
+		return handoff{}, false, err
+	}
+	return h, true, nil
+}
+
+// resume returns the app showing what a session was playing.
+func (a app) resume(h handoff) app {
+	a.queue = h.resume()
+	a.volume = h.Volume
+	playing, _ := h.nowPlaying()
+	for _, msg := range []tea.Msg{
+		playing,
+		tui.Progress(h.Position),
+		tui.PausedChanged(h.Paused),
+		tui.VolumeChanged(h.Volume),
+		tui.Notice("carried on from the session that was playing"),
+	} {
+		ui, _ := a.ui.Update(msg)
+		a.ui = ui.(tui.Model)
+	}
+	return a
 }

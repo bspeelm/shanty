@@ -126,6 +126,12 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateRequest:
 		msg.reply <- a.state()
 		return a, nil
+	case handoverRequest:
+		// The player goes to whoever asked, so this one must not stop it.
+		a.released = true
+		a.detaching = true
+		msg.reply <- a.handoff()
+		return a, nil
 
 	case playerEvent:
 		return a.playerSaid(mpv.Event(msg))

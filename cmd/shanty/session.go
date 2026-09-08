@@ -106,7 +106,16 @@ func runSession(ctx context.Context, env Env) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = p.Close() }()
+	// The player is stopped when the session ends, unless an interface has
+	// taken it back.
+	released := false
+	defer func() {
+		if released {
+			_ = p.Detach()
+			return
+		}
+		_ = p.Close()
+	}()
 
 	a := newApp(ctx, client, p)
 	a.headless = true
@@ -130,6 +139,9 @@ func runSession(ctx context.Context, env Env) error {
 	}()
 	go func() { _ = control.Serve(l, commanded(program)) }()
 
-	_, err = program.Run()
+	final, err := program.Run()
+	if m, ok := final.(app); ok && m.released {
+		released = true
+	}
 	return err
 }
