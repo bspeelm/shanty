@@ -290,3 +290,69 @@ func TestAnInterfaceResumesWhereTheSessionWas(t *testing.T) {
 		t.Error("the screen does not show what the session was playing")
 	}
 }
+
+// TestACommandReportsWhatItDidRatherThanWhatWasTrueBefore covers the answer a
+// command prints. The work runs on a command bubbletea starts after Update
+// returns, so a session that reads its own state straight back describes how
+// things were before it was asked to change them: `shanty pause` said
+// "playing".
+func TestACommandReportsWhatItDidRatherThanWhatWasTrueBefore(t *testing.T) {
+	socket, _ := session(t)
+
+	res, err := control.Send(socket, control.Request{Verb: control.Pause})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK {
+		t.Fatalf("pausing was refused: %s", res.Error)
+	}
+	if !res.State.Paused {
+		t.Error("`shanty pause` reported the session as playing")
+	}
+	if line := describe(control.Pause, res.State); !strings.Contains(line, "paused") {
+		t.Errorf("it printed %q", line)
+	}
+
+	res, err = control.Send(socket, control.Request{Verb: control.Play})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.State.Paused {
+		t.Error("`shanty play` reported the session as paused")
+	}
+
+	got, err := control.Send(socket, control.Request{Verb: control.Volume, Arg: "35"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State.Volume != 35 {
+		t.Errorf("`shanty vol 35` reported volume %d", got.State.Volume)
+	}
+}
+
+// TestPlayAndPauseAreAbsolute covers why they are two commands rather than one
+// that toggles. In the interface the screen says which way a toggle will go;
+// a command in another shell has nothing to look at, so `shanty pause` has to
+// mean paused however many times it is run.
+func TestPlayAndPauseAreAbsolute(t *testing.T) {
+	socket, _ := session(t)
+
+	for i := range 3 {
+		res, err := control.Send(socket, control.Request{Verb: control.Pause})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.State.Paused {
+			t.Fatalf("pause number %d left the session playing", i+1)
+		}
+	}
+	for i := range 3 {
+		res, err := control.Send(socket, control.Request{Verb: control.Play})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.State.Paused {
+			t.Fatalf("play number %d left the session paused", i+1)
+		}
+	}
+}

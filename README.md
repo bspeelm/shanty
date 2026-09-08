@@ -73,7 +73,8 @@ command the session it leaves behind, from any shell:
 
 ```sh
 shanty status       # say what is playing
-shanty pause        # pause or resume
+shanty play         # resume
+shanty pause        # pause
 shanty next         # skip to the next track
 shanty prev         # go back to the previous track
 shanty vol 40       # set the volume, from 0 to 100

@@ -99,7 +99,8 @@ These command what is left, from any shell:
 | Command | What it does |
 |---|---|
 | `shanty status` | Say what is playing |
-| `shanty pause` | Pause, or resume if already paused |
+| `shanty play` | Resume |
+| `shanty pause` | Pause |
 | `shanty next` | Skip to the next track |
 | `shanty prev` | Go back to the previous track |
 | `shanty vol 40` | Set the volume, from 0 to 100 |

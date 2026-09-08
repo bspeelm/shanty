@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bspeelm/shanty/internal/control"
 	"github.com/bspeelm/shanty/internal/mpv"
@@ -18,7 +19,8 @@ var commanding = []struct {
 	verb    control.Verb
 	summary string
 }{
-	{"pause", control.Pause, "pause or resume the session that is playing"},
+	{"play", control.Play, "resume the session that is paused"},
+	{"pause", control.Pause, "pause the session that is playing"},
 	{"next", control.Next, "skip to the next track in the session"},
 	{"prev", control.Prev, "go back to the previous track in the session"},
 	{"vol", control.Volume, "set the volume of the session, from 0 to 100"},
@@ -90,5 +92,6 @@ func describe(verb control.Verb, s *control.State) string {
 		mark = "paused"
 	}
 	return fmt.Sprintf("%s · %s — %s   %s / %s   vol %d%%   track %d of %d",
-		mark, s.Title, s.Artist, s.Position, s.Duration, s.Volume, s.Track, s.Of)
+		mark, s.Title, s.Artist, clock(time.Duration(s.Position)*time.Second),
+		clock(time.Duration(s.Duration)*time.Second), s.Volume, s.Track, s.Of)
 }

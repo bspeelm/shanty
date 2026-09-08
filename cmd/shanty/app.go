@@ -96,7 +96,9 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.playCurrent()
 
 	case tui.TogglePause:
-		return a, a.togglePause()
+		return a, a.setPaused(!a.paused())
+	case tui.SetPaused:
+		return a, a.setPaused(bool(msg))
 	case tui.SkipNext:
 		a.queue = a.queue.Next()
 		return a, a.playCurrent()
@@ -236,9 +238,8 @@ func (a app) setVolume(to int) (tea.Model, tea.Cmd) {
 		emit(tui.VolumeChanged(volume)))
 }
 
-func (a app) togglePause() tea.Cmd {
+func (a app) setPaused(paused bool) tea.Cmd {
 	p := a.player
-	paused := !a.paused()
 	return func() tea.Msg {
 		if err := p.SetPause(a.ctx, paused); err != nil {
 			return tui.Failed{Message: err.Error()}
@@ -334,13 +335,13 @@ func (a app) state() control.State {
 	track, playing := a.queue.Current()
 	s := control.State{
 		Paused:   a.paused(),
-		Position: clock(a.ui.Position()),
+		Position: int(a.ui.Position().Seconds()),
 		Volume:   a.volume,
 		Track:    a.queue.At() + 1,
 		Of:       a.queue.Len(),
 	}
 	if playing {
-		s.Title, s.Artist, s.Duration = track.Title, track.Artist, clock(track.Duration)
+		s.Title, s.Artist, s.Duration = track.Title, track.Artist, int(track.Duration.Seconds())
 	}
 	return s
 }

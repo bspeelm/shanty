@@ -18,9 +18,13 @@ type (
 		Index int
 	}
 	TogglePause struct{}
-	SkipNext    struct{}
-	SkipPrev    struct{}
-	SeekBy      struct{ By time.Duration }
+	// SetPaused is an absolute pause state. TogglePause is what the space key
+	// sends, where the screen says which way it will go; a command in another
+	// shell has no screen and says which state it wants.
+	SetPaused bool
+	SkipNext  struct{}
+	SkipPrev  struct{}
+	SeekBy    struct{ By time.Duration }
 	// SeekTo is a position in the track, where SeekBy is the relative step the
 	// keys make.
 	SeekTo time.Duration

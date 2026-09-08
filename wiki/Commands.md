@@ -1,6 +1,6 @@
 # Commands
 
-shanty has thirteen commands. Running `shanty` with no arguments browses and
+shanty has fourteen commands. Running `shanty` with no arguments browses and
 plays; the rest are named. Seven of them command a session left running by
 `:headless`, and are listed together at the end.
 
@@ -67,16 +67,27 @@ Lists the commands with a one-line description of each.
 ## Commanding a session
 
 Typing `:headless` in the interface closes it and leaves the music playing.
-These seven command what it leaves behind, and each works from any shell.
+These eight command what it leaves behind, and each works from any shell.
 
 ## `shanty status`
 
 Says what is playing: the track, the artist, how far into it you are, the
 volume, and which track of how many.
 
+## `shanty play`
+
+Resumes a session that is paused. It does nothing to one that is already
+playing.
+
 ## `shanty pause`
 
-Pauses the session, or resumes it if it is already paused.
+Pauses a session that is playing. It does nothing to one that is already
+paused.
+
+Pausing and resuming are separate commands rather than one that toggles. In
+the interface, `space` toggles because the screen tells you which way it will
+go; a command typed in another shell has nothing to look at, and `shanty pause`
+in a script must mean paused rather than "the other one".
 
 ## `shanty next`
 
@@ -106,6 +117,6 @@ complaint.
 
 ---
 
-With no session running, the first six say so and name what to run instead.
+With no session running, all but `shanty stop` say so and name what to run instead.
 Running `shanty` on its own returns the interface to a session that is playing.
 

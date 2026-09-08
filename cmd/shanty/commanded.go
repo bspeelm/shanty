@@ -58,32 +58,60 @@ func commanded(program *tea.Program) control.Handler {
 			return control.Response{OK: true, After: func() { program.Send(tui.Quit{}) }}
 
 		case control.Pause:
-			program.Send(tui.TogglePause{})
-		case control.Next:
-			program.Send(tui.SkipNext{})
-		case control.Prev:
-			program.Send(tui.SkipPrev{})
+			return settled(program, tui.SetPaused(true), func(s control.State) bool { return s.Paused })
+		case control.Play:
+			return settled(program, tui.SetPaused(false), func(s control.State) bool { return !s.Paused })
+
+		case control.Next, control.Prev:
+			before, ok := askState(program)
+			if !ok {
+				return control.Response{Error: "the session did not answer"}
+			}
+			var intent tea.Msg = tui.SkipNext{}
+			if req.Verb == control.Prev {
+				intent = tui.SkipPrev{}
+			}
+			return settled(program, intent, func(s control.State) bool { return s.Track != before.Track })
 
 		case control.Volume:
 			n, err := strconv.Atoi(strings.TrimSpace(req.Arg))
 			if err != nil || n < 0 || n > 100 {
 				return control.Response{Error: "the volume is a number from 0 to 100, not " + strconv.Quote(req.Arg)}
 			}
-			program.Send(tui.VolumeSet(n))
+			return settled(program, tui.VolumeSet(n), func(s control.State) bool { return s.Volume == n })
 
 		case control.Seek:
 			d, err := parseClock(req.Arg)
 			if err != nil {
 				return control.Response{Error: err.Error()}
 			}
-			program.Send(tui.SeekTo(d))
+			want := int(d.Seconds())
+			return settled(program, tui.SeekTo(d), func(s control.State) bool { return s.Position >= want })
 		}
+		return control.Response{Error: "a session cannot " + strconv.Quote(string(req.Verb))}
+	}
+}
 
+// settled sends an intent and reports the state once the change has happened.
+// The work runs on a command bubbletea starts after Update returns, so reading
+// the state straight back describes how things were before the command was
+// sent.
+//
+// A change that never arrives is reported as it stands rather than as a
+// failure. The session answered, and what it says about itself is true.
+func settled(program *tea.Program, intent tea.Msg, done func(control.State) bool) control.Response {
+	program.Send(intent)
+
+	deadline := time.Now().Add(answerTimeout)
+	for {
 		state, ok := askState(program)
 		if !ok {
 			return control.Response{Error: "the session did not answer"}
 		}
-		return control.Response{OK: true, State: &state}
+		if done(state) || time.Now().After(deadline) {
+			return control.Response{OK: true, State: &state}
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

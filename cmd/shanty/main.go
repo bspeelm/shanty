@@ -107,6 +107,13 @@ func run(ctx context.Context, env Env, args []string) error {
 	if args[0] == sessionArg {
 		return runSession(ctx, env)
 	}
+	// The conventional spellings reach the same place as the command.
+	switch args[0] {
+	case "-h", "--help", "-help":
+		return runHelp(ctx, env, nil)
+	case "--version":
+		return runVersion(ctx, env, nil)
+	}
 	for _, c := range commands() {
 		if c.name == args[0] {
 			return c.run(ctx, env, args[1:])

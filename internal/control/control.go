@@ -29,6 +29,7 @@ type Verb string
 
 const (
 	Pause  Verb = "pause"
+	Play   Verb = "play"
 	Next   Verb = "next"
 	Prev   Verb = "prev"
 	Volume Verb = "volume"
@@ -53,6 +54,7 @@ type shape struct {
 // here is refused before it reaches the session.
 var verbs = map[Verb]shape{
 	Pause:  {typed: true},
+	Play:   {typed: true},
 	Next:   {typed: true},
 	Prev:   {typed: true},
 	Volume: {argument: true, typed: true},
@@ -104,14 +106,17 @@ type Response struct {
 
 // State is what the session is doing, as it should be displayed.
 type State struct {
-	Title    string `json:"title"`
-	Artist   string `json:"artist"`
-	Paused   bool   `json:"paused"`
-	Position string `json:"position"`
-	Duration string `json:"duration"`
-	Volume   int    `json:"volume"`
-	Track    int    `json:"track"`
-	Of       int    `json:"of"`
+	Title  string `json:"title"`
+	Artist string `json:"artist"`
+	Paused bool   `json:"paused"`
+	// Position and Duration are in seconds. The command line formats them,
+	// so what crosses the socket is a number rather than somebody's idea of
+	// how a clock should look.
+	Position int `json:"position"`
+	Duration int `json:"duration"`
+	Volume   int `json:"volume"`
+	Track    int `json:"track"`
+	Of       int `json:"of"`
 }
 
 // ErrNoSession reports that nothing is listening on the socket.
