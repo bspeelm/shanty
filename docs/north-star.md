@@ -25,8 +25,8 @@ refusals in §3 of the plan cheap to keep.
 
 ## What "good" means here
 
-It should feel the way bothy feels: one command, sensible on first run, honest
-when something is broken, and removable without residue.
+One command, sensible on first run, honest when something is broken, and
+removable without residue.
 
 Concretely, and each of these is a test rather than an aspiration:
 
@@ -49,10 +49,9 @@ Not "it has few users" — the audience is small by construction. These:
 - Someone reads the code and cannot tell why a decision was made, because it
   was made silently.
 
-The audit that started this project scored five existing clients in an
-afternoon, and could only do that because one project in this family had
-written its reasoning down and the others had not. Being auditable that way by
-a stranger with grep and an afternoon is the standard being aimed at.
+A stranger with `grep` and an afternoon should be able to check every claim
+this project makes. That is the standard being aimed at, and it is only
+possible because the reasoning is written down where they can find it.
 
 ## The scope fence
 
