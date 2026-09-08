@@ -1,5 +1,9 @@
 <p align="center">
-  <img alt="shanty — a hut on the shore, drawn in ASCII" src="docs/images/shanty.png" width="820">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/shanty-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/shanty-light.png">
+    <img alt="shanty — a hut on the shore, drawn in ASCII" src="docs/images/shanty-light.png" width="820">
+  </picture>
 </p>
 
 <h1 align="center">shanty</h1>
