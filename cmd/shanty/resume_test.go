@@ -152,3 +152,31 @@ func TestATrackEndingSavesWhereItGotTo(t *testing.T) {
 	}
 	t.Error("a track ending told the server nothing")
 }
+
+// TestTheOfferSaysWhoLeftIt covers the wording. The server keeps one queue for
+// the whole account rather than one per machine, so what is there was left
+// either by this program somewhere or by another client, and the two read
+// differently.
+func TestTheOfferSaysWhoLeftIt(t *testing.T) {
+	for _, tc := range []struct{ by, want string }{
+		{subsonic.ClientName, "you left"},
+		{"DSub", "DSub left"},
+		{"", "your server has"},
+	} {
+		t.Run(tc.by, func(t *testing.T) {
+			a, _, _ := wired(t)
+
+			a, _ = step(t, a, savedQueue(subsonic.PlayQueue{
+				Songs:   []subsonic.Song{{ID: "tr-1", Title: "Slipway"}},
+				Current: "tr-1", ChangedBy: tc.by,
+			}))
+
+			if got := a.ui.Status(); !strings.HasPrefix(got, tc.want) {
+				t.Errorf("a queue left by %q is offered as %q, want it to start %q", tc.by, got, tc.want)
+			}
+			if got := a.ui.Status(); !strings.Contains(got, "Slipway") {
+				t.Errorf("the offer does not name what was playing: %q", got)
+			}
+		})
+	}
+}

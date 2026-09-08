@@ -29,17 +29,27 @@ go back, the album you opened is still highlighted.
 
 ## Carrying on from another machine
 
-Your server keeps the queue and the position in it, so what you were playing on
+Your server keeps a queue and the position in it, so what you were playing on
 one machine can be picked up on another. shanty saves it when a track changes
 and when you quit.
 
-When you start shanty and your server is holding a queue, the last line says
-so and names where it came from. Type `:resume` to take it up, on the track and
-at the second the other machine left it.
+When you start shanty and your server is holding a queue, the last line says so
+and names who left it — you, or another client by name. Type `:resume` to take
+it up, on the track and at the second it was left.
 
 It is offered rather than applied, because quitting is usually deliberate and
 having the music start again by itself would be a surprise. Nothing is offered
 if something is already playing.
+
+**Your server keeps one queue for your whole account, not one per machine.**
+Every client that supports this writes to the same place, so the queue you are
+offered is whichever one saved last. While shanty is playing it saves on every
+track change, which means it overwrites what your phone left; your phone will
+do the same to shanty. This is how the feature works everywhere rather than
+anything particular to shanty, and it is worth knowing before you rely on it.
+
+A client that does not support this leaves nothing for shanty to offer, however
+long you played on it.
 
 ## Searching the server
 

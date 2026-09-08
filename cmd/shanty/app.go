@@ -562,13 +562,20 @@ func (a app) offerSaved(found subsonic.PlayQueue) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	a.saved = found
-	where := "your server"
-	if found.ChangedBy != "" {
-		where = found.ChangedBy
+
+	// The server keeps one queue for the whole account rather than one per
+	// machine, so what is there was left either by this program somewhere or
+	// by another client. The two read differently and are worth telling apart.
+	who := "you left"
+	switch {
+	case found.ChangedBy == "":
+		who = "your server has"
+	case found.ChangedBy != subsonic.ClientName:
+		who = found.ChangedBy + " left"
 	}
 	return a.forward(tui.Notice(fmt.Sprintf(
-		"%s left %s playing — type :resume to carry on from it",
-		where, found.Songs[found.Index()].Title)))
+		"%s %s playing — type :resume to carry on from it",
+		who, found.Songs[found.Index()].Title)))
 }
 
 // resumeSaved takes up the queue the server was holding.
