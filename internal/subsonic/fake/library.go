@@ -28,6 +28,23 @@ type response struct {
 	Starred       *results    `json:"starred2,omitempty"`
 	PlayQueue     *playQueue  `json:"playQueue,omitempty"`
 	ScanStatus    *scanStatus `json:"scanStatus,omitempty"`
+	Playlists     *playlists  `json:"playlists,omitempty"`
+	Playlist      *playlist   `json:"playlist,omitempty"`
+}
+
+type playlists struct {
+	Playlist []playlist `json:"playlist"`
+}
+
+// playlist is a list somebody made. Its tracks are sent only when it is asked
+// for by itself.
+type playlist struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Owner     string `json:"owner"`
+	SongCount int    `json:"songCount"`
+	Duration  int    `json:"duration"`
+	Songs     []song `json:"entry,omitempty"`
 }
 
 // scanStatus is how a scan of the server's own music folder is going.

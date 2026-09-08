@@ -653,3 +653,176 @@ func TestAnAccountNotAllowedToScanIsToldWhy(t *testing.T) {
 		t.Errorf("the message does not say who can change it: %q", e.Error())
 	}
 }
+
+// TestAPlaylistIsMadeFilledAndEmptied covers the five calls together, which is
+// the only way to see that what one writes another reads.
+func TestAPlaylistIsMadeFilledAndEmptied(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+
+	// Nothing yet.
+	lists, err := c.Playlists(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lists) != 0 {
+		t.Fatalf("a server with no playlists returned %d", len(lists))
+	}
+
+	made, err := c.CreatePlaylist(t.Context(), "Evening")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if made.ID == "" {
+		t.Fatal("the server made a playlist and did not say which")
+	}
+	if made.Name != "Evening" {
+		t.Errorf("the playlist is called %q", made.Name)
+	}
+
+	// A new playlist is empty, which is what was decided over making one from
+	// whatever is queued.
+	got, err := c.Playlist(t.Context(), made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Songs) != 0 {
+		t.Errorf("a new playlist holds %d tracks", len(got.Songs))
+	}
+
+	for _, id := range []string{"tr-1", "tr-2"} {
+		if err := c.AddToPlaylist(t.Context(), made.ID, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err = c.Playlist(t.Context(), made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Songs) != 2 || got.Songs[0].ID != "tr-1" || got.Songs[1].ID != "tr-2" {
+		t.Fatalf("the playlist holds %+v, want tr-1 then tr-2", got.Songs)
+	}
+	if got.SongCount != 2 {
+		t.Errorf("the playlist counts %d tracks", got.SongCount)
+	}
+
+	// Removal is by position, because a track may be in a playlist twice.
+	if err := c.RemoveFromPlaylist(t.Context(), made.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	got, err = c.Playlist(t.Context(), made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Songs) != 1 || got.Songs[0].ID != "tr-2" {
+		t.Errorf("after removing the first the playlist holds %+v", got.Songs)
+	}
+
+	if err := c.RenamePlaylist(t.Context(), made.ID, "Late"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeletePlaylist(t.Context(), made.ID); err != nil {
+		t.Fatal(err)
+	}
+	lists, err = c.Playlists(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lists) != 0 {
+		t.Errorf("the playlist survived being deleted: %+v", lists)
+	}
+}
+
+// TestTheSameTrackCanBeInAPlaylistTwice covers why removal is by position.
+func TestTheSameTrackCanBeInAPlaylistTwice(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+	made, err := c.CreatePlaylist(t.Context(), "Twice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if err := c.AddToPlaylist(t.Context(), made.ID, "tr-1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.RemoveFromPlaylist(t.Context(), made.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := c.Playlist(t.Context(), made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Songs) != 1 {
+		t.Errorf("removing one of two identical tracks left %d", len(got.Songs))
+	}
+}
+
+// TestAFailedChangeLeavesThePlaylistAsItWas is what issue #6 asks for: a
+// rejected update must not half-apply.
+func TestAFailedChangeLeavesThePlaylistAsItWas(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+	made, err := c.CreatePlaylist(t.Context(), "Evening")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AddToPlaylist(t.Context(), made.ID, "tr-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		do   func() error
+	}{
+		{"a track the server does not have", func() error {
+			return c.AddToPlaylist(t.Context(), made.ID, "tr-nope")
+		}},
+		{"a position that is not there", func() error {
+			return c.RemoveFromPlaylist(t.Context(), made.ID, 9)
+		}},
+		{"a playlist that is not there", func() error {
+			return c.AddToPlaylist(t.Context(), "pl-nope", "tr-2")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.do(); err == nil {
+				t.Fatal("the server accepted it")
+			}
+			got, err := c.Playlist(t.Context(), made.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Songs) != 1 || got.Songs[0].ID != "tr-1" {
+				t.Errorf("a refused change left the playlist as %+v", got.Songs)
+			}
+		})
+	}
+}
+
+// TestPlaylistsComeBackSortedByName covers the order the screen shows them in.
+func TestPlaylistsComeBackSortedByName(t *testing.T) {
+	c, srv := dial(t, fake.Options{User: user, Password: pass})
+	srv.SetPlaylists(map[string][]string{
+		"Zephyr":  {"tr-1"},
+		"Anchor":  {"tr-2"},
+		"Mooring": {"tr-3"},
+	})
+
+	lists, err := c.Playlists(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, p := range lists {
+		names = append(names, p.Name)
+	}
+	if strings.Join(names, ",") != "Anchor,Mooring,Zephyr" {
+		t.Errorf("the playlists came back as %v", names)
+	}
+	// A listing names them without their tracks, as a server does.
+	for _, p := range lists {
+		if len(p.Songs) != 0 {
+			t.Errorf("%s came back with its tracks in a listing", p.Name)
+		}
+	}
+}

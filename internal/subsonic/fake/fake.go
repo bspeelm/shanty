@@ -9,9 +9,11 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -97,6 +99,10 @@ type Server struct {
 	scrobbles int
 	// queue is what savePlayQueue last stored, which getPlayQueue returns.
 	queue *playQueue
+	// playlists is what the playlist endpoints have made and changed, so a
+	// test reads back what it actually did.
+	playlists []playlist
+	nextID    int
 	// scanning counts down: each getScanStatus reports one step of a scan and
 	// the last one reports it finished, so a test sees progress without
 	// waiting for anything.
@@ -260,6 +266,59 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.ok(w, response{SearchResult: &found})
+	case "getPlaylists":
+		s.mu.Lock()
+		// The tracks are left out, as a server leaves them out of a listing.
+		bare := make([]playlist, 0, len(s.playlists))
+		for _, p := range s.playlists {
+			p.Songs = nil
+			bare = append(bare, p)
+		}
+		s.mu.Unlock()
+		s.ok(w, response{Playlists: &playlists{Playlist: bare}})
+	case "getPlaylist":
+		p, found := s.playlistByID(q.Get("id"))
+		if !found {
+			s.fail(w, 70, "Playlist not found")
+			return
+		}
+		s.ok(w, response{Playlist: &p})
+	case "createPlaylist":
+		name := q.Get("name")
+		if name == "" {
+			s.fail(w, 10, "Required parameter name is missing")
+			return
+		}
+		s.mu.Lock()
+		s.nextID++
+		made := playlist{ID: fmt.Sprintf("pl-%d", s.nextID), Name: name, Owner: s.opt.User}
+		s.playlists = append(s.playlists, made)
+		s.mu.Unlock()
+		s.ok(w, response{Playlist: &made})
+	case "updatePlaylist":
+		if code, why := s.changePlaylist(q); code != 0 {
+			s.fail(w, code, why)
+			return
+		}
+		s.ok(w, response{})
+	case "deletePlaylist":
+		s.mu.Lock()
+		kept := s.playlists[:0]
+		var gone bool
+		for _, p := range s.playlists {
+			if p.ID == q.Get("id") {
+				gone = true
+				continue
+			}
+			kept = append(kept, p)
+		}
+		s.playlists = kept
+		s.mu.Unlock()
+		if !gone {
+			s.fail(w, 70, "Playlist not found")
+			return
+		}
+		s.ok(w, response{})
 	case "startScan", "getScanStatus":
 		if s.opt.Malice.NoScanning {
 			// The protocol has no code for an endpoint a server does not
@@ -458,4 +517,79 @@ func firstOf(q url.Values, names ...string) string {
 		}
 	}
 	return ""
+}
+
+// Playlists is what the server is holding, for a test to assert on.
+func (s *Server) Playlists() []playlist {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]playlist(nil), s.playlists...)
+}
+
+// SetPlaylists puts playlists on the server as another client would have left
+// them.
+func (s *Server) SetPlaylists(names map[string][]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name, ids := range names {
+		s.nextID++
+		made := playlist{ID: fmt.Sprintf("pl-%d", s.nextID), Name: name, Owner: s.opt.User}
+		for _, id := range ids {
+			if sg, found := s.opt.Library.findSong(id); found {
+				made.Songs = append(made.Songs, sg)
+			}
+		}
+		made.SongCount = len(made.Songs)
+		s.playlists = append(s.playlists, made)
+	}
+	// Left in the order they were made rather than sorted. A server has its
+	// own order, and putting them in the one the screen wants would be the
+	// fake doing the client's work.
+	sort.Slice(s.playlists, func(i, j int) bool { return s.playlists[i].ID > s.playlists[j].ID })
+}
+
+// playlistByID returns one playlist with its tracks.
+func (s *Server) playlistByID(id string) (playlist, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.playlists {
+		if p.ID == id {
+			p.SongCount = len(p.Songs)
+			return p, true
+		}
+	}
+	return playlist{}, false
+}
+
+// changePlaylist adds a track, removes one by position, or renames. It reports
+// a protocol error code and message, or zero when the change was made.
+func (s *Server) changePlaylist(q url.Values) (int, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range s.playlists {
+		if s.playlists[i].ID != q.Get("playlistId") {
+			continue
+		}
+		if name := q.Get("name"); name != "" {
+			s.playlists[i].Name = name
+		}
+		if add := q.Get("songIdToAdd"); add != "" {
+			sg, found := s.opt.Library.findSong(add)
+			if !found {
+				return 70, "Song not found"
+			}
+			s.playlists[i].Songs = append(s.playlists[i].Songs, sg)
+		}
+		if at := q.Get("songIndexToRemove"); at != "" {
+			n, err := strconv.Atoi(at)
+			if err != nil || n < 0 || n >= len(s.playlists[i].Songs) {
+				return 70, "No such track in the playlist"
+			}
+			s.playlists[i].Songs = append(s.playlists[i].Songs[:n], s.playlists[i].Songs[n+1:]...)
+		}
+		s.playlists[i].SongCount = len(s.playlists[i].Songs)
+		return 0, ""
+	}
+	return 70, "Playlist not found"
 }

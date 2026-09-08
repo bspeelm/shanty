@@ -29,6 +29,12 @@ type response struct {
 	Starred      *Results    `json:"starred2"`
 	PlayQueue    *PlayQueue  `json:"playQueue"`
 	ScanStatus   *Scan       `json:"scanStatus"`
+	Playlists    *playlists  `json:"playlists"`
+	Playlist     *Playlist   `json:"playlist"`
+}
+
+type playlists struct {
+	Playlist []Playlist `json:"playlist"`
 }
 
 type artistList struct {
@@ -251,6 +257,93 @@ func (c *Client) PlayQueue(ctx context.Context) (PlayQueue, error) {
 		return PlayQueue{}, nil
 	}
 	return *res.PlayQueue, nil
+}
+
+// Playlist is a list somebody made, with its tracks when it was asked for by
+// itself.
+type Playlist struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Owner     string `json:"owner"`
+	SongCount int    `json:"songCount"`
+	Duration  int    `json:"duration"`
+	Songs     []Song `json:"entry"`
+}
+
+// Playlists returns the playlists the server will show this account, sorted by
+// name.
+func (c *Client) Playlists(ctx context.Context) ([]Playlist, error) {
+	res, err := c.get(ctx, "getPlaylists", nil)
+	if err != nil {
+		return nil, err
+	}
+	if res.Playlists == nil {
+		return nil, nil
+	}
+	out := res.Playlists.Playlist
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// Playlist returns one playlist with its tracks.
+func (c *Client) Playlist(ctx context.Context, id string) (Playlist, error) {
+	res, err := c.get(ctx, "getPlaylist", url.Values{"id": {id}})
+	if err != nil {
+		return Playlist{}, err
+	}
+	if res.Playlist == nil {
+		return Playlist{}, fmt.Errorf("the server answered ok to getPlaylist(%s) with no playlist", id)
+	}
+	return *res.Playlist, nil
+}
+
+// CreatePlaylist makes an empty playlist and returns it.
+func (c *Client) CreatePlaylist(ctx context.Context, name string) (Playlist, error) {
+	res, err := c.get(ctx, "createPlaylist", url.Values{"name": {name}})
+	if err != nil {
+		return Playlist{}, err
+	}
+	// Not every server answers with the playlist it made.
+	if res.Playlist == nil {
+		return Playlist{Name: name}, nil
+	}
+	return *res.Playlist, nil
+}
+
+// AddToPlaylist puts a track at the end of a playlist.
+func (c *Client) AddToPlaylist(ctx context.Context, id, songID string) error {
+	_, err := c.get(ctx, "updatePlaylist", url.Values{
+		"playlistId":  {id},
+		"songIdToAdd": {songID},
+	})
+	return err
+}
+
+// RemoveFromPlaylist takes the track at a position out of a playlist.
+//
+// The server removes by position rather than by identifier, because the same
+// track may be in a playlist more than once.
+func (c *Client) RemoveFromPlaylist(ctx context.Context, id string, index int) error {
+	_, err := c.get(ctx, "updatePlaylist", url.Values{
+		"playlistId":        {id},
+		"songIndexToRemove": {strconv.Itoa(index)},
+	})
+	return err
+}
+
+// RenamePlaylist changes the name of a playlist.
+func (c *Client) RenamePlaylist(ctx context.Context, id, name string) error {
+	_, err := c.get(ctx, "updatePlaylist", url.Values{
+		"playlistId": {id},
+		"name":       {name},
+	})
+	return err
+}
+
+// DeletePlaylist removes a playlist from the server.
+func (c *Client) DeletePlaylist(ctx context.Context, id string) error {
+	_, err := c.get(ctx, "deletePlaylist", url.Values{"id": {id}})
+	return err
 }
 
 // Scan is how a server's scan of its own music folder is going.
