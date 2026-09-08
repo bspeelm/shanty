@@ -42,6 +42,19 @@ only the screen you are on rather than the whole library, which on a large one
 would take a while to see one new album; the screens above are asked for again
 when you next open them.
 
+If you have just copied files onto the server, it has not looked at them yet
+and reloading will not find them. `:scan` asks it to look. The last row reports
+how many tracks it has got through, and the library is reloaded by itself when
+the scan finishes, so there is no second command to remember.
+
+A scan takes minutes on a large library. The music keeps playing throughout and
+you can carry on browsing; shanty asks the server how it is going every couple
+of seconds rather than waiting for it.
+
+Not every server offers this, and starting a scan often needs an administrator
+account. shanty says which of the two it ran into rather than reporting a
+failure of its own.
+
 ## What shanty said earlier
 
 The last row shows one message until the next replaces it, so something that
@@ -178,6 +191,7 @@ line.
 | `:resume` | Carry on from the queue saved on your server |
 | `:messages` | Show what shanty has said this session |
 | `:reload` | Ask the server for what is on screen again |
+| `:scan` | Ask the server to look for new music |
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.

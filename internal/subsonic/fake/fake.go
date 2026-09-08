@@ -53,6 +53,15 @@ type Malice struct {
 	// RefuseScrobblesAfter takes that many play reports and then rejects the
 	// rest, which is a server that goes away part way through catching up.
 	RefuseScrobblesAfter int
+	// NoScanning answers the scan endpoints the way a server that does not
+	// have them does, which is not the same as one that refused.
+	NoScanning bool
+	// ScanSteps is how many times a scan reports itself running before it
+	// finishes. One means it is over by the first check.
+	ScanSteps int
+	// ScanAlreadyRunning answers startScan as a server does when one is
+	// already under way.
+	ScanAlreadyRunning bool
 }
 
 // oversizeBytes is what OversizeBody pads with.
@@ -88,6 +97,11 @@ type Server struct {
 	scrobbles int
 	// queue is what savePlayQueue last stored, which getPlayQueue returns.
 	queue *playQueue
+	// scanning counts down: each getScanStatus reports one step of a scan and
+	// the last one reports it finished, so a test sees progress without
+	// waiting for anything.
+	scanning int
+	scanned  int64
 }
 
 // SetPlayQueue puts a queue on the server as another client would have left
@@ -246,6 +260,25 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.ok(w, response{SearchResult: &found})
+	case "startScan", "getScanStatus":
+		if s.opt.Malice.NoScanning {
+			// The protocol has no code for an endpoint a server does not
+			// have, so this is what they say instead.
+			s.fail(w, 0, "Unknown endpoint "+endpoint)
+			return
+		}
+		s.mu.Lock()
+		if endpoint == "startScan" && !s.opt.Malice.ScanAlreadyRunning {
+			s.scanning = max(1, s.opt.Malice.ScanSteps)
+			s.scanned = 0
+		}
+		if endpoint == "getScanStatus" && s.scanning > 0 {
+			s.scanning--
+			s.scanned += 120
+		}
+		status := scanStatus{Scanning: s.scanning > 0, Count: s.scanned}
+		s.mu.Unlock()
+		s.ok(w, response{ScanStatus: &status})
 	case "savePlayQueue":
 		ids := q["id"]
 		if len(ids) == 0 {

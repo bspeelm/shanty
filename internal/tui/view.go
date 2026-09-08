@@ -21,7 +21,7 @@ func (m Model) chrome() int {
 		n++
 	}
 	if m.mode == modeCommand {
-		n++
+		n += len(m.completions(m.viewWidth()))
 	}
 	return n
 }
@@ -61,7 +61,9 @@ func (m Model) View() string {
 		b.WriteString(m.progress(w) + "\n")
 	}
 	if m.mode == modeCommand {
-		b.WriteString(faintStyle.Render(fit(m.completions(), w)) + "\n")
+		for _, row := range m.completions(w) {
+			b.WriteString(faintStyle.Render(fit(row, w)) + "\n")
+		}
 	}
 	b.WriteString(m.footer(w))
 	return b.String()
@@ -74,22 +76,29 @@ func (m Model) View() string {
 // them put the cause on one line and what to do about it on the next. The
 // footer is one row, so the breaks become separators before Sanitise removes
 // them and runs the two halves together.
-// completions is the row listing the commands the typed line matches. It is
-// what makes the command set learnable without a manual.
-func (m Model) completions() string {
+// completions lists the commands the typed line matches. It is what makes the
+// command set learnable without a manual, so it wraps rather than cutting off
+// the commands that do not fit on one row.
+func (m Model) completions(w int) []string {
 	found := matching(m.line)
 	if len(found) == 0 {
-		return "  no command starts with that"
+		return []string{"  no command starts with that"}
 	}
-	var names []string
+	if len(found) == 1 && found[0].argument != "" {
+		c := found[0]
+		return []string{"  " + c.name + " <" + c.argument + ">   " + c.summary}
+	}
+
+	var rows []string
+	row := "  "
 	for _, c := range found {
-		if len(found) == 1 && c.argument != "" {
-			names = append(names, c.name+" <"+c.argument+">   "+c.summary)
-			continue
+		if lipgloss.Width(row)+lipgloss.Width(c.name)+3 > w && row != "  " {
+			rows = append(rows, strings.TrimRight(row, " "))
+			row = "  "
 		}
-		names = append(names, c.name)
+		row += c.name + "   "
 	}
-	return "  " + strings.Join(names, "   ")
+	return append(rows, strings.TrimRight(row, " "))
 }
 
 func (m Model) footer(w int) string {

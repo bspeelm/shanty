@@ -41,6 +41,15 @@ func (e *Error) messageOr(fallback string) string {
 // that vanished between listing and opening is a refresh, not a failure.
 func (e *Error) NotFound() bool { return e.Code == 70 }
 
+// Unimplemented groups the codes a server uses for something it will not do
+// at all, as opposed to something it refused this time.
+//
+// The protocol has no code for "I do not have that endpoint", so servers use
+// the generic one or say the thing was not found. A caller can only tell the
+// user their server does not do this, which is more use than the server's own
+// silence.
+func (e *Error) Unimplemented() bool { return e.Code == 0 || e.Code == 30 || e.Code == 70 }
+
 // Unauthorized groups the credential failures: the user's next action is the
 // same for all of them.
 func (e *Error) Unauthorized() bool { return e.Code == 40 || e.Code == 41 || e.Code == 50 }

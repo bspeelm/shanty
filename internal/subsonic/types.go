@@ -28,6 +28,7 @@ type response struct {
 	SearchResult *Results    `json:"searchResult3"`
 	Starred      *Results    `json:"starred2"`
 	PlayQueue    *PlayQueue  `json:"playQueue"`
+	ScanStatus   *Scan       `json:"scanStatus"`
 }
 
 type artistList struct {
@@ -250,6 +251,37 @@ func (c *Client) PlayQueue(ctx context.Context) (PlayQueue, error) {
 		return PlayQueue{}, nil
 	}
 	return *res.PlayQueue, nil
+}
+
+// Scan is how a server's scan of its own music folder is going.
+type Scan struct {
+	Scanning bool `json:"scanning"`
+	// Count is how many things the server has looked at so far. It keeps
+	// counting between scans, so it is only meaningful while one runs.
+	Count int64 `json:"count"`
+}
+
+// StartScan asks the server to look at its music folder again.
+func (c *Client) StartScan(ctx context.Context) (Scan, error) {
+	return c.scan(ctx, "startScan")
+}
+
+// ScanStatus reports how a scan is going.
+func (c *Client) ScanStatus(ctx context.Context) (Scan, error) {
+	return c.scan(ctx, "getScanStatus")
+}
+
+func (c *Client) scan(ctx context.Context, endpoint string) (Scan, error) {
+	res, err := c.get(ctx, endpoint, nil)
+	if err != nil {
+		return Scan{}, err
+	}
+	// A server that answered without saying anything about a scan is one that
+	// is not scanning.
+	if res.ScanStatus == nil {
+		return Scan{}, nil
+	}
+	return *res.ScanStatus, nil
 }
 
 // Kind is what a starrable thing is, which decides the parameter the server

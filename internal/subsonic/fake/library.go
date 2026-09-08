@@ -27,6 +27,13 @@ type response struct {
 	SearchResult  *results    `json:"searchResult3,omitempty"`
 	Starred       *results    `json:"starred2,omitempty"`
 	PlayQueue     *playQueue  `json:"playQueue,omitempty"`
+	ScanStatus    *scanStatus `json:"scanStatus,omitempty"`
+}
+
+// scanStatus is how a scan of the server's own music folder is going.
+type scanStatus struct {
+	Scanning bool  `json:"scanning"`
+	Count    int64 `json:"count"`
 }
 
 // playQueue is what savePlayQueue stored and getPlayQueue returns.

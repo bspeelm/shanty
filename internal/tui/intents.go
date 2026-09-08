@@ -58,6 +58,8 @@ type (
 	Resume struct{}
 	// Reload asks for what is on screen to be fetched from the server again.
 	Reload struct{}
+	// Scan asks the server to look at its music folder again.
+	Scan struct{}
 	// ShowMessages asks for what shanty has said this session. It is handled
 	// by the interface itself, which is the only thing that has it.
 	ShowMessages struct{}

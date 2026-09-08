@@ -38,6 +38,11 @@ var commands = []command{
 		},
 	},
 	{
+		name:    "scan",
+		summary: "ask the server to look for new music",
+		run:     func(string) (any, error) { return Scan{}, nil },
+	},
+	{
 		name:    "reload",
 		summary: "ask the server for what is on screen again",
 		run:     func(string) (any, error) { return Reload{}, nil },

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -125,6 +126,10 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.search(string(msg))
 	case tui.Resume:
 		return a, a.resumeSaved()
+	case tui.Scan:
+		return a.forwardAnd(msg, a.startScan())
+	case scanning:
+		return a.scanSaid(msg)
 	case tui.Reload:
 		// The interface remembers what was selected; this fetches what the
 		// screen is showing.
@@ -208,6 +213,13 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.forward(tui.Failed{Message: "the session did not start: " + msg.err.Error() + "\nnothing was interrupted; the music is still playing here"})
 	}
 	return a.forward(msg)
+}
+
+// forwardAnd passes a message to the interface and runs something of its own
+// alongside whatever the interface asked for.
+func (a app) forwardAnd(msg tea.Msg, also tea.Cmd) (tea.Model, tea.Cmd) {
+	next, cmd := a.forward(msg)
+	return next, tea.Batch(cmd, also)
 }
 
 // forward passes a message to the interface and returns what it asks for.
@@ -637,4 +649,67 @@ func (a app) saveQueue() tea.Cmd {
 		_ = client.SavePlayQueue(a.ctx, ids, current.ID, at)
 		return nil
 	}
+}
+
+// scanInterval is how often a running scan is asked how it is going. A scan
+// takes minutes, so asking often would be noise.
+var scanInterval = 2 * time.Second
+
+// scanning is one report of how a server's scan is going.
+type scanning struct {
+	status subsonic.Scan
+	err    error
+}
+
+// startScan asks the server to look at its music folder again.
+//
+// The work is the server's and takes minutes, so nothing here waits for it.
+// Each answer arrives as a message and asks for the next one, the same way
+// mpv's events are read, and playback carries on throughout.
+func (a app) startScan() tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		status, err := client.StartScan(a.ctx)
+		return scanning{status: status, err: err}
+	}
+}
+
+// watchScan asks again after a pause.
+func (a app) watchScan() tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		select {
+		case <-a.ctx.Done():
+			return nil
+		case <-time.After(scanInterval):
+		}
+		status, err := client.ScanStatus(a.ctx)
+		return scanning{status: status, err: err}
+	}
+}
+
+// scanSaid reports how the scan is going, and reloads the library once it is
+// over so the new music is there without a second command.
+func (a app) scanSaid(msg scanning) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		var server *subsonic.Error
+		if errors.As(msg.err, &server) && server.Unimplemented() {
+			return a.forward(tui.Failed{Message: "your server does not offer to scan its library\n\nstart the scan from the server itself"})
+		}
+		return a.forward(tui.Failed{Message: msg.err.Error()})
+	}
+	if msg.status.Scanning {
+		next, _ := a.forward(tui.Notice(fmt.Sprintf("scanning: %s so far", tracks(msg.status.Count))))
+		return next, a.watchScan()
+	}
+	next, _ := a.forward(tui.Notice(fmt.Sprintf("the scan finished: %s", tracks(msg.status.Count))))
+	return next, tea.Batch(emit(tui.Reload{}), a.reload())
+}
+
+// tracks counts what a scan has looked at, in words.
+func tracks(n int64) string {
+	if n == 1 {
+		return "1 track"
+	}
+	return fmt.Sprintf("%d tracks", n)
 }

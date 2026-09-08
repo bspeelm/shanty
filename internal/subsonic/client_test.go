@@ -577,3 +577,79 @@ func TestSavingNothingAsksTheServerNothing(t *testing.T) {
 		t.Error("the queue another machine saved is gone")
 	}
 }
+
+// TestAScanRunsAndThenFinishes covers the two calls together: asking for one
+// and watching it until it is over.
+func TestAScanRunsAndThenFinishes(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass, Malice: fake.Malice{ScanSteps: 3}})
+
+	started, err := c.StartScan(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !started.Scanning {
+		t.Error("the server was asked to scan and says it is not")
+	}
+
+	var checks int
+	for range 10 {
+		status, err := c.ScanStatus(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		checks++
+		if !status.Scanning {
+			if status.Count == 0 {
+				t.Error("a finished scan counted nothing")
+			}
+			return
+		}
+	}
+	t.Errorf("the scan was still running after %d checks", checks)
+}
+
+// TestAServerWithNoScanningSaysSoDistinctly covers the server that does not
+// have these endpoints at all, which must not read as shanty's fault.
+func TestAServerWithNoScanningSaysSoDistinctly(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass, Malice: fake.Malice{NoScanning: true}})
+
+	_, err := c.StartScan(t.Context())
+	if err == nil {
+		t.Fatal("a server with no scanning reported success")
+	}
+	var serverErr *subsonic.Error
+	if !errors.As(err, &serverErr) {
+		t.Fatalf("got %v, want the server's own error", err)
+	}
+	if !serverErr.Unimplemented() {
+		t.Errorf("error %d is not read as something the server will not do", serverErr.Code)
+	}
+}
+
+// TestAScanAlreadyRunningIsNotAFailure covers asking twice. The server says it
+// is scanning, which is the answer wanted either way.
+func TestAScanAlreadyRunningIsNotAFailure(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass,
+		Malice: fake.Malice{ScanSteps: 5, ScanAlreadyRunning: true}})
+
+	status, err := c.StartScan(t.Context())
+	if err != nil {
+		t.Fatalf("asking for a scan while one runs failed: %v", err)
+	}
+	if status.Scanning {
+		t.Log("the server reports a scan under way, which is the honest answer")
+	}
+}
+
+// TestAnAccountNotAllowedToScanIsToldWhy covers the common refusal: scanning
+// usually needs an administrator.
+func TestAnAccountNotAllowedToScanIsToldWhy(t *testing.T) {
+	e := &subsonic.Error{Code: 50, Message: "User is not authorized"}
+
+	if e.Unimplemented() {
+		t.Error("a refusal for this account reads as a server that cannot scan at all")
+	}
+	if !strings.Contains(e.Error(), "administrator") {
+		t.Errorf("the message does not say who can change it: %q", e.Error())
+	}
+}
