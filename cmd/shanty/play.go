@@ -66,11 +66,24 @@ func play(ctx context.Context, env Env) error {
 	if err != nil {
 		return err
 	}
-	// mpv is stopped when play returns.
-	defer func() { _ = p.Close() }()
+	// mpv is stopped when play returns, unless a session has taken it over.
+	released := false
+	defer func() {
+		if released {
+			_ = p.Detach()
+			return
+		}
+		_ = p.Close()
+	}()
 
-	program := tea.NewProgram(newApp(ctx, client, p),
+	a := newApp(ctx, client, p)
+	a.detach = detacher(env)
+	program := tea.NewProgram(a,
 		tea.WithContext(ctx), tea.WithAltScreen(), tea.WithOutput(env.Stdout))
-	_, err = program.Run()
+	final, err := program.Run()
+	if m, ok := final.(app); ok && m.released {
+		released = true
+		fmt.Fprintln(env.Stdout, "the music is still playing. `shanty` returns to it, `shanty stop` ends it.")
+	}
 	return err
 }

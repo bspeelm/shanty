@@ -104,6 +104,9 @@ func (m Model) Cursor() int      { return m.cursor[m.screen] }
 func (m Model) Status() string   { return m.status }
 func (m Model) Paused() bool     { return m.paused }
 
+// Position is how far into the track playback has reached.
+func (m Model) Position() time.Duration { return m.position }
+
 // rows is the number of items the current screen shows, after filtering.
 func (m Model) rows() int { return len(m.matches()) }
 

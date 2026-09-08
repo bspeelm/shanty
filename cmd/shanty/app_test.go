@@ -55,6 +55,7 @@ func (r *recorder) Observe(_ context.Context, p string) error {
 	return r.note("observe %s", p)
 }
 func (r *recorder) Events() <-chan mpv.Event { return r.events }
+func (r *recorder) Detach() error            { return r.note("detach") }
 func (r *recorder) Close() error             { return nil }
 func (r *recorder) Err() error               { return nil }
 

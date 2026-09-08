@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // serve runs a handler on a socket in a temporary directory and returns its
@@ -212,4 +213,59 @@ func TestASessionThatIsAnsweringIsNotDisplaced(t *testing.T) {
 // after a session is killed.
 func writeStale(socket string) error {
 	return os.WriteFile(socket, []byte("left by a killed session"), 0o600)
+}
+
+// TestTheResponseIsWrittenBeforeAfterRuns covers a session stopping itself.
+// The command that asked has to be answered before the session goes, or a
+// stop that worked is reported as a session that would not answer.
+func TestTheResponseIsWrittenBeforeAfterRuns(t *testing.T) {
+	// Run it many times, because the failure is a race.
+	for i := 0; i < 200; i++ {
+		answered := make(chan bool, 1)
+		socket := serve(t, func(Request) Response {
+			return Response{OK: true, After: func() { answered <- true }}
+		})
+
+		res, err := Send(socket, Request{Verb: Stop})
+		if err != nil {
+			t.Fatalf("run %d: the session did not answer the command that stopped it: %v", i, err)
+		}
+		if !res.OK {
+			t.Fatalf("run %d: %s", i, res.Error)
+		}
+		select {
+		case <-answered:
+		case <-time.After(time.Second):
+			t.Fatalf("run %d: the session answered but never acted", i)
+		}
+	}
+}
+
+// TestAStoppingSessionAnswersFirst pins the ordering. After must not run
+// until the response has been written, so a session that stops itself there
+// has already told the command it worked. If the order were reversed, an
+// After that takes any time at all would delay or lose the answer.
+func TestAStoppingSessionAnswersFirst(t *testing.T) {
+	release := make(chan struct{})
+	socket := serve(t, func(Request) Response {
+		return Response{OK: true, After: func() { <-release }}
+	})
+	defer close(release)
+
+	done := make(chan Response, 1)
+	go func() {
+		res, err := Send(socket, Request{Verb: Stop})
+		if err == nil {
+			done <- res
+		}
+	}()
+
+	select {
+	case res := <-done:
+		if !res.OK {
+			t.Errorf("the session refused: %s", res.Error)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the answer never arrived, because the session acted before it replied")
+	}
 }

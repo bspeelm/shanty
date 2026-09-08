@@ -30,6 +30,10 @@ type Env struct {
 	// terminal to prompt at.
 	ReadSecret func(prompt string) (string, error)
 
+	// Executable is the path of the running binary, which a session is started
+	// from.
+	Executable func() (string, error)
+
 	// LookPath and Command locate mpv and ask its version.
 	LookPath func(string) (string, error)
 	Command  func(ctx context.Context, name string, args ...string) ([]byte, error)
@@ -73,6 +77,7 @@ func main() {
 		ReadSecret:    readSecret,
 		Stdout:        os.Stdout,
 		Stderr:        os.Stderr,
+		Executable:    os.Executable,
 		LookPath:      exec.LookPath,
 		ImmutableHost: immutableHost(),
 		Command: func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -92,6 +97,11 @@ func main() {
 func run(ctx context.Context, env Env, args []string) error {
 	if len(args) == 0 {
 		return play(ctx, env)
+	}
+	// A session is started by :headless, not typed, so it is not in the table
+	// and does not appear in help.
+	if args[0] == sessionArg {
+		return runSession(ctx, env)
 	}
 	for _, c := range commands() {
 		if c.name == args[0] {

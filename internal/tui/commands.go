@@ -26,6 +26,11 @@ var commands = []command{
 		run:     func(string) (any, error) { return Quit{}, nil },
 	},
 	{
+		name:    "headless",
+		summary: "leave the interface and keep playing",
+		run:     func(string) (any, error) { return Detach{}, nil },
+	},
+	{
 		name:     "volume",
 		summary:  "set the volume",
 		argument: "0-100",

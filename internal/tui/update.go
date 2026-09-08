@@ -54,6 +54,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case Failed:
 		m.loading, m.status = false, msg.Message
 		return m, nil
+	case Notice:
+		m.status = string(msg)
+		return m, nil
 	}
 	return m, nil
 }

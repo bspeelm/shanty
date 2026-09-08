@@ -21,6 +21,9 @@ type (
 	SkipNext    struct{}
 	SkipPrev    struct{}
 	SeekBy      struct{ By time.Duration }
+	// SeekTo is a position in the track, where SeekBy is the relative step the
+	// keys make.
+	SeekTo time.Duration
 	// SeekToPercent is a position in the track as a percentage of its length,
 	// where SeekBy is the relative step the keys make.
 	SeekToPercent int
@@ -30,6 +33,8 @@ type (
 	VolumeSet int
 	GoBack    struct{}
 	Quit      struct{}
+	// Detach asks for the interface to end while playback carries on.
+	Detach struct{}
 )
 
 // Inputs are what the caller sends back once it has done the work.
@@ -47,6 +52,9 @@ type (
 	// Failed carries a message to display. It is sanitised like any other text,
 	// because it may have come from the server.
 	Failed struct{ Message string }
+	// Notice carries a message about something in progress. Failed would clear
+	// the loading flag, which is wrong while a screen is still arriving.
+	Notice string
 )
 
 func emit(msg tea.Msg) tea.Cmd { return func() tea.Msg { return msg } }

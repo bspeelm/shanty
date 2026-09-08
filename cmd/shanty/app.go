@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/control"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/queue"
 	"github.com/bspeelm/shanty/internal/subsonic"
@@ -23,6 +25,7 @@ type player interface {
 	Observe(ctx context.Context, property string) error
 	Events() <-chan mpv.Event
 	Close() error
+	Detach() error
 	Err() error
 }
 
@@ -35,13 +38,29 @@ type app struct {
 	queue  queue.Queue
 	volume int
 	ctx    context.Context
+
+	// detach starts a session that plays on without an interface. It is nil in
+	// a session, which has no interface to leave.
+	detach func(handoff) error
+	// headless is set in a session. It has nobody to show a message to, so it
+	// ends when there is nothing left to play.
+	headless bool
+	// detaching is set from the moment a session is started until this process
+	// quits. The session owns the queue from then on, so this one stops
+	// advancing it.
+	detaching bool
+	// released is set once the session holds the player, and tells the caller
+	// not to stop mpv on the way out.
+	released bool
 }
 
 // Messages the app sends itself.
 type (
-	playerEvent mpv.Event
-	playerGone  struct{ err error }
-	scrobbled   struct{}
+	playerEvent  mpv.Event
+	playerGone   struct{ err error }
+	scrobbled    struct{}
+	detached     struct{}
+	detachFailed struct{ err error }
 )
 
 func newApp(ctx context.Context, client *subsonic.Client, p player) app {
@@ -52,7 +71,13 @@ func (a app) Init() tea.Cmd {
 	return tea.Batch(a.fetchArtists(), a.watchPlayer(), a.observePosition())
 }
 
-func (a app) View() string { return a.ui.View() }
+// View renders the interface. A session has no terminal to render to.
+func (a app) View() string {
+	if a.headless {
+		return ""
+	}
+	return a.ui.View()
+}
 
 // Update acts on the intents the interface emits and passes everything else
 // to it.
@@ -80,6 +105,10 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.playCurrent()
 	case tui.SeekBy:
 		return a, a.act(func(ctx context.Context) error { return a.player.Seek(ctx, msg.By) })
+	case tui.SeekTo:
+		return a, a.act(func(ctx context.Context) error {
+			return a.player.SeekTo(ctx, time.Duration(msg))
+		})
 	case tui.SeekToPercent:
 		track, playing := a.queue.Current()
 		if !playing || track.Duration == 0 {
@@ -92,12 +121,28 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.VolumeSet:
 		return a.setVolume(int(msg))
 
+	case tui.Detach:
+		return a.startSession()
+	case stateRequest:
+		msg.reply <- a.state()
+		return a, nil
+
 	case playerEvent:
 		return a.playerSaid(mpv.Event(msg))
 	case playerGone:
+		if a.headless {
+			// There is no screen to report this on and nothing left to play.
+			return a, tea.Quit
+		}
 		return a.forward(tui.Failed{Message: "mpv stopped: " + msg.err.Error() + "\nrestart shanty to play again"})
 	case scrobbled:
 		return a, nil
+	case detached:
+		a.released = true
+		return a, tea.Quit
+	case detachFailed:
+		a.detaching = false
+		return a.forward(tui.Failed{Message: "the session did not start: " + msg.err.Error() + "\nnothing was interrupted; the music is still playing here"})
 	}
 	return a.forward(msg)
 }
@@ -127,8 +172,16 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 		if e.Reason != "eof" {
 			return a, next
 		}
+		if a.detaching {
+			// The session owns the queue from the moment it was started, so
+			// advancing here would skip a track and report it twice.
+			return a, next
+		}
 		finished, _ := a.queue.Current()
 		a.queue = a.queue.Next()
+		if a.headless && a.queue.Done() {
+			return a, tea.Batch(a.scrobble(finished.ID), tea.Quit)
+		}
 		return a, tea.Batch(next, a.scrobble(finished.ID), a.playCurrent())
 	}
 	return a, next
@@ -269,3 +322,27 @@ func (a app) act(do func(context.Context) error) tea.Cmd {
 }
 
 func emit(msg tea.Msg) tea.Cmd { return func() tea.Msg { return msg } }
+
+// state describes what the session is doing, for a command in another shell.
+func (a app) state() control.State {
+	track, playing := a.queue.Current()
+	s := control.State{
+		Paused:   a.paused(),
+		Position: clock(a.ui.Position()),
+		Volume:   a.volume,
+		Track:    a.queue.At() + 1,
+		Of:       a.queue.Len(),
+	}
+	if playing {
+		s.Title, s.Artist, s.Duration = track.Title, track.Artist, clock(track.Duration)
+	}
+	return s
+}
+
+// clock formats a duration as minutes and seconds.
+func clock(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+}

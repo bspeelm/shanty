@@ -63,6 +63,11 @@ type Response struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
 	State *State `json:"state,omitempty"`
+
+	// After runs once the response has reached the other end. A session that
+	// is stopping uses it, so that it does not exit before answering the
+	// command that asked it to.
+	After func() `json:"-"`
 }
 
 // State is what the session is doing, as it should be displayed.
@@ -121,7 +126,14 @@ func answer(conn net.Conn, h Handler) {
 	case !Known(req.Verb):
 		write(conn, Response{Error: fmt.Sprintf("a session cannot %q", string(req.Verb))})
 	default:
-		write(conn, h(req))
+		res := h(req)
+		write(conn, res)
+		// The connection is closed before After runs, so a session that stops
+		// itself there has already answered.
+		_ = conn.Close()
+		if res.After != nil {
+			res.After()
+		}
 	}
 }
 

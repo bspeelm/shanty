@@ -73,6 +73,10 @@ func xdgDir(env string, fallback string) (string, error) {
 func (p Paths) ConfigFile() string { return filepath.Join(p.Config, "config.toml") }
 func (p Paths) Socket() string     { return filepath.Join(p.Runtime, "mpv.sock") }
 
+// ControlSocket is the path a detached session is commanded through. It exists
+// only while a session is detached.
+func (p Paths) ControlSocket() string { return filepath.Join(p.Runtime, "control.sock") }
+
 // CredentialsFile is the path to the file holding the credential.
 func (p Paths) CredentialsFile() string { return filepath.Join(p.Config, "credentials.toml") }
 
