@@ -278,3 +278,91 @@ func TestTransportErrorsDoNotLeakTheCredential(t *testing.T) {
 		t.Errorf("the error was not redacted at all:\n%s", err)
 	}
 }
+
+// TestSearchFindsAllThreeKinds covers the point of searching the server: a
+// track on an album nobody has opened is not on any screen, so filtering
+// cannot reach it.
+func TestSearchFindsAllThreeKinds(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+
+	// "Low Water" is an album, and "Slipway" a track on a different one.
+	found, err := c.Search(t.Context(), "low water")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Albums) != 1 || found.Albums[0].Name != "Low Water" {
+		t.Errorf("searching for an album found %+v", found.Albums)
+	}
+
+	found, err = c.Search(t.Context(), "slipway")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Songs) != 1 || found.Songs[0].Title != "Slipway" {
+		t.Fatalf("searching for a track found %+v", found.Songs)
+	}
+	// A result has to carry enough to open it.
+	if s := found.Songs[0]; s.ID == "" || s.Album == "" || s.Artist == "" {
+		t.Errorf("the track came back without enough to show or play it: %+v", s)
+	}
+
+	found, err = c.Search(t.Context(), "aoi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Artists) != 1 || found.Artists[0].ID == "" {
+		t.Errorf("searching for an artist found %+v", found.Artists)
+	}
+}
+
+// TestSearchingForNothingIsNotAFailure covers the query that matches nothing.
+// It is the common case of a typo, and it is an answer rather than an error.
+func TestSearchingForNothingIsNotAFailure(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+
+	found, err := c.Search(t.Context(), "zzzzz nothing is called this")
+	if err != nil {
+		t.Fatalf("a search that matched nothing failed: %v", err)
+	}
+	if !found.Empty() {
+		t.Errorf("a search for nonsense found %+v", found)
+	}
+	if found.Count() != 0 {
+		t.Errorf("nothing was found and the count is %d", found.Count())
+	}
+}
+
+// TestASearchQueryIsEscaped covers a query full of the characters that mean
+// something in a URL. They belong to the query, not to the request.
+func TestASearchQueryIsEscaped(t *testing.T) {
+	c, srv := dial(t, fake.Options{User: user, Password: pass})
+
+	for _, query := range []string{
+		"rock & roll",
+		"50% water",
+		"a+b",
+		"who? what",
+		"slash/es",
+		"hash#tag",
+		"quote\"s and 'apostrophes'",
+		"équinoxe 東京",
+		// Case belongs to the query. The server decides what matching means,
+		// so the client must not decide it has to be lowercase.
+		"Mixed Case Title",
+		"ALL CAPS",
+	} {
+		if _, err := c.Search(t.Context(), query); err != nil {
+			t.Errorf("searching for %q failed: %v", query, err)
+			continue
+		}
+		var last string
+		for _, r := range srv.Requests() {
+			if r.Endpoint == "search3" {
+				last = r.Query.Get("query")
+			}
+		}
+		if last != query {
+			t.Errorf("the server was asked for %q, want %q", last, query)
+		}
+	}
+}

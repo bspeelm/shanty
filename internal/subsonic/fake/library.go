@@ -24,6 +24,14 @@ type response struct {
 	Artist        *artist     `json:"artist,omitempty"`
 	Album         *album      `json:"album,omitempty"`
 	Extensions    []extension `json:"openSubsonicExtensions,omitempty"`
+	SearchResult  *results    `json:"searchResult3,omitempty"`
+}
+
+// results is what search3 returns.
+type results struct {
+	Artists []artist `json:"artist,omitempty"`
+	Albums  []album  `json:"album,omitempty"`
+	Songs   []song   `json:"song,omitempty"`
 }
 
 type wireError struct {
@@ -194,4 +202,40 @@ func indexLetter(name string) string {
 		return "#"
 	}
 	return first
+}
+
+// search matches artists, albums and songs whose names contain the query,
+// ignoring case. A real server does more than this; what matters here is that
+// the three kinds come back together, that each carries what the interface
+// needs to open it, and that a query matching nothing is answered rather than
+// refused.
+//
+// Nested children are left out, as a real server leaves them out: a search
+// result names a thing, and opening it is a second request.
+func (l Library) search(query string, limit int) results {
+	q := strings.ToLower(strings.TrimSpace(query))
+	var out results
+	if q == "" {
+		return out
+	}
+	matches := func(name string) bool { return strings.Contains(strings.ToLower(name), q) }
+
+	for _, a := range l.Artists {
+		if matches(a.Name) && len(out.Artists) < limit {
+			out.Artists = append(out.Artists, artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount})
+		}
+		for _, al := range a.Albums {
+			if matches(al.Name) && len(out.Albums) < limit {
+				bare := al
+				bare.Songs = nil
+				out.Albums = append(out.Albums, bare)
+			}
+			for _, sg := range al.Songs {
+				if matches(sg.Title) && len(out.Songs) < limit {
+					out.Songs = append(out.Songs, sg)
+				}
+			}
+		}
+	}
+	return out
 }

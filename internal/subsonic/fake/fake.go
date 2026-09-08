@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -179,6 +180,35 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "audio/flac")
 		// Not real audio. The integration test is where real audio is played.
 		_, _ = w.Write([]byte(strings.Repeat(sg.ID+" ", 64)))
+	case "search3":
+		if q.Get("query") == "" {
+			s.fail(w, 10, "Required parameter query is missing")
+			return
+		}
+		limit := 20
+		if n, err := strconv.Atoi(q.Get("songCount")); err == nil && n > 0 {
+			limit = n
+		}
+		found := s.opt.Library.search(q.Get("query"), limit)
+		if s.opt.Malice.HostileText {
+			for i := range found.Artists {
+				found.Artists[i].Name = Hostile + found.Artists[i].Name
+			}
+			for i := range found.Albums {
+				found.Albums[i].Name = Hostile + found.Albums[i].Name
+			}
+			for i := range found.Songs {
+				found.Songs[i].Title = Hostile + found.Songs[i].Title
+			}
+		}
+		if found.Artists == nil && found.Albums == nil && found.Songs == nil {
+			// A server that found nothing may leave the result out
+			// altogether, and some do. The client has to read that as an
+			// empty answer rather than a broken one.
+			s.ok(w, response{})
+			return
+		}
+		s.ok(w, response{SearchResult: &found})
 	case "scrobble":
 		s.ok(w, response{})
 	default:

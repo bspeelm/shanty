@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 )
 
 // The response format. It is declared here and again in the fake server, so
@@ -23,6 +24,7 @@ type response struct {
 	Artist       *Artist     `json:"artist"`
 	Album        *Album      `json:"album"`
 	Extensions   []Extension `json:"openSubsonicExtensions"`
+	SearchResult *Results    `json:"searchResult3"`
 }
 
 type artistList struct {
@@ -65,6 +67,22 @@ type Song struct {
 	// Path is the server’s path for the track. It is not used as a filename.
 	Path string `json:"path"`
 }
+
+// Results is what a search found, in the three kinds a Subsonic server
+// returns them.
+type Results struct {
+	Artists []Artist `json:"artist"`
+	Albums  []Album  `json:"album"`
+	Songs   []Song   `json:"song"`
+}
+
+// Empty reports whether the search found nothing at all.
+func (r Results) Empty() bool {
+	return len(r.Artists) == 0 && len(r.Albums) == 0 && len(r.Songs) == 0
+}
+
+// Count is how many things were found, of all three kinds.
+func (r Results) Count() int { return len(r.Artists) + len(r.Albums) + len(r.Songs) }
 
 // Extension is one OpenSubsonic capability the server reports supporting.
 type Extension struct {
@@ -146,6 +164,30 @@ func (c *Client) Album(ctx context.Context, id string) (Album, error) {
 	album := *res.Album
 	sort.SliceStable(album.Songs, func(i, j int) bool { return album.Songs[i].Track < album.Songs[j].Track })
 	return album, nil
+}
+
+// searchLimit is how many of each kind a search asks for. A terminal list
+// nobody will scroll to the end of is not worth fetching.
+const searchLimit = 20
+
+// Search finds artists, albums and tracks whose names match the query. The
+// server decides what matching means.
+func (c *Client) Search(ctx context.Context, query string) (Results, error) {
+	res, err := c.get(ctx, "search3", url.Values{
+		"query":       {query},
+		"artistCount": {strconv.Itoa(searchLimit)},
+		"albumCount":  {strconv.Itoa(searchLimit)},
+		"songCount":   {strconv.Itoa(searchLimit)},
+	})
+	if err != nil {
+		return Results{}, err
+	}
+	// A server that found nothing may leave the result out altogether, which
+	// is not an error.
+	if res.SearchResult == nil {
+		return Results{}, nil
+	}
+	return *res.SearchResult, nil
 }
 
 // Scrobble reports a play to the server. A submission of false is a "now
