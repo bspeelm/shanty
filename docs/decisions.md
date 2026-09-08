@@ -596,6 +596,12 @@ configure and nothing documents.
 A test holds the bound actions against the documented ones in both directions,
 in the same way the command list is already held against the README.
 
+**Amended:** that test exists. Keys dispatch through a table of named actions
+rather than a switch, and `TestEveryKeyIsDocumentedAndEveryDocumentedKeyIsBound`
+holds the table against `wiki/Keys.md` both ways. The keys the page explains in
+prose, and the things it writes in the same style that are not keys, are each
+named in the test with the reason.
+
 ## ADR-017 — The command line shows what exists, and holds only what keys cannot
 
 **Status:** accepted. Extends ADR-016, which established that `:` exists for

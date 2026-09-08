@@ -134,6 +134,9 @@ type Model struct {
 	// keep is what was selected when a reload was asked for, so the cursor can
 	// go back to it once the answer arrives.
 	keep string
+	// keys is what each key does. It is nil until something replaces the
+	// default bindings.
+	keys map[string]Action
 	// now reads the clock. It is a field so that a test can pin what a
 	// message is stamped with.
 	now func() time.Time

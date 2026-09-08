@@ -152,87 +152,22 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// Everything below consumes the count, whether or not it uses it.
-	repeat, hadCount := m.take()
+	repeat, counted := m.take()
 
-	switch key {
-	case "ctrl+c":
-		return m, emit(Quit{})
-
-	case "q":
-		// Quitting ends the session and is a command rather than a key
-		// (ADR-016). Saying so beats doing nothing for anyone who learned q
-		// somewhere else.
-		m.status = "type :q to quit"
+	action, bound := m.bound()[key]
+	if !bound {
 		return m, nil
-
-	case "/":
-		m.mode, m.filter = modeFilter, ""
-		return m.moveTo(0), nil
-
-	case ":":
-		m.mode, m.line, m.status = modeCommand, "", ""
-		return m, nil
-
-	case "g":
-		m.pending = "g"
-		return m, nil
-
-	case "%":
-		if !hadCount {
-			m.status = "type a percentage first, as in 50%"
-			return m, nil
-		}
-		return m, emit(SeekToPercent(min(100, repeat)))
-
-	case "up", "k":
-		return m.move(-repeat), nil
-	case "down", "j":
-		return m.move(repeat), nil
-	case "home":
-		return m.moveTo(0).ontoARow(), nil
-	case "end", "G":
-		return m.moveTo(m.rows() - 1), nil
-	case "pgup":
-		return m.move(-m.page() * repeat), nil
-	case "pgdown":
-		return m.move(m.page() * repeat), nil
-
-	case "*":
-		return m.starSelected()
-	case "a":
-		if m.editing.ID != "" {
-			return m.editSelected(true)
-		}
-		return m.queueSelected(false)
-	case "r":
-		if m.editing.ID != "" {
-			return m.editSelected(false)
-		}
-		return m, nil
-	case "A":
-		return m.queueSelected(true)
-
-	case "enter", "l", "right":
-		return m.open()
-	case "esc", "backspace", "h", "left":
-		return m.back()
-
-	case " ":
-		return m, emit(TogglePause{})
-	case "n":
-		return m, emit(SkipNext{})
-	case "p":
-		return m, emit(SkipPrev{})
-	case "]":
-		return m, emit(SeekBy{By: 10 * time.Second})
-	case "[":
-		return m, emit(SeekBy{By: -10 * time.Second})
-	case "+", "=":
-		return m, emit(VolumeBy{Delta: 5})
-	case "-", "_":
-		return m, emit(VolumeBy{Delta: -5})
 	}
-	return m, nil
+	return action.do(m, repeat, counted)
+}
+
+// bound is the key to action map in force, which is the default one until
+// something replaces it.
+func (m Model) bound() map[string]Action {
+	if m.keys != nil {
+		return m.keys
+	}
+	return binding(Actions())
 }
 
 // filterKey handles a keystroke while the filter is being typed. The list
