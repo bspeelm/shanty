@@ -58,6 +58,7 @@ func commands() []command {
 		{"doctor", "check the setup and say what to fix", runDoctor},
 		{"uninstall", "remove every directory shanty made, and say which", runUninstall},
 		{"version", "print the version", runVersion},
+		{"completions", "write a completion script for bash, zsh or fish", runCompletions},
 		{"help", "print this", runHelp},
 	}
 	for _, c := range commanding {

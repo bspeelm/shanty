@@ -66,6 +66,14 @@ shanty doctor -json # the same report, as JSON
 shanty uninstall    # remove the directories shanty created
 shanty version      # print the version of this build
 shanty help         # list the commands
+shanty completions bash   # a completion script for bash, zsh or fish
+```
+
+Add completion to your shell by sourcing that script. For bash, in
+`~/.bashrc`:
+
+```sh
+source <(shanty completions bash)
 ```
 
 Type `:headless` and the interface closes while the music keeps playing. These

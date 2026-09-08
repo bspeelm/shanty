@@ -1,6 +1,6 @@
 # Commands
 
-shanty has fourteen commands. Running `shanty` with no arguments browses and
+shanty has fifteen commands. Running `shanty` with no arguments browses and
 plays; the rest are named. Seven of them command a session left running by
 `:headless`, and are listed together at the end.
 
@@ -59,6 +59,34 @@ which is usually `~/.local/bin/shanty`.
 
 Prints the version of the binary you are running. A build made from a clone of
 the repository rather than from a release reports `dev`.
+
+## `shanty completions`
+
+Writes a completion script for `bash`, `zsh` or `fish`, named as the one
+argument. Source it and your shell completes shanty's commands, and offers
+nothing where a command takes no filename, rather than listing the directory
+you are standing in.
+
+For bash, add this to `~/.bashrc`:
+
+```sh
+source <(shanty completions bash)
+```
+
+For zsh, put the script somewhere on your `fpath`:
+
+```sh
+shanty completions zsh > ~/.zsh/completions/_shanty
+```
+
+For fish:
+
+```sh
+shanty completions fish > ~/.config/fish/completions/shanty.fish
+```
+
+The script is written from the list of commands shanty actually has, so it
+cannot fall behind the program.
 
 ## `shanty help`
 
