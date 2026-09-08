@@ -31,8 +31,16 @@ than a check on it.
 shanty needs [mpv](https://mpv.io) installed; it does not decode audio itself
 ([ADR-011](docs/decisions.md)).
 
+From a release:
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
+```
+
+Or from a checkout, which needs no release and no network:
+
+```sh
+make install-binary
 ```
 
 The installer verifies the checksum always, and provenance on `--verify`. The

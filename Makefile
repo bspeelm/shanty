@@ -10,7 +10,7 @@ BINARY := shanty
 # subcommand, where go does not look for it.
 export GOFLAGS := -mod=readonly
 
-.PHONY: help lint vet test race budgets standard check build crossbuild clean
+.PHONY: help lint vet test race budgets standard check build install-binary crossbuild clean
 
 help:
 	@echo "make check       lint, vet, race tests, budgets, standard - the gate"
@@ -19,6 +19,7 @@ help:
 	@echo "make budgets     the PLAN.md §0 budgets"
 	@echo "make standard    conformance against ../agent-context, if present"
 	@echo "make build       build $(BINARY) for this machine"
+	@echo "make install-binary  build it and put it on PATH"
 	@echo "make crossbuild  every platform the release ships"
 
 lint:
@@ -61,6 +62,23 @@ crossbuild:
 	    GOOS=$${t%/*} GOARCH=$${t#*/} CGO_ENABLED=0 \
 	        go build -trimpath -o /dev/null ./... || exit 1; \
 	done
+
+# Named for what it installs, matching bothy's target so one habit covers both.
+# There is no `shanty install` for it to collide with -- §3 keeps shanty out of
+# the business of installing anything but itself -- and the name still says
+# which of the two things is meant.
+install-binary: build
+	install -Dm755 $(BINARY) $(HOME)/.local/bin/$(BINARY)
+	@echo "installed to ~/.local/bin/$(BINARY)"
+	@case ":$$PATH:" in \
+	    *":$(HOME)/.local/bin:"*) ;; \
+	    *) echo; echo "~/.local/bin is not on your PATH. Add it:"; \
+	       echo '       export PATH="$$HOME/.local/bin:$$PATH"' ;; \
+	esac
+	@command -v mpv >/dev/null 2>&1 || { echo; \
+	    echo "mpv is not installed, and shanty plays through it."; \
+	    echo "       dnf install mpv · apt install mpv · brew install mpv"; }
+	@echo; echo "next: $(BINARY)"
 
 clean:
 	rm -f $(BINARY)
