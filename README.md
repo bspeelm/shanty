@@ -26,7 +26,7 @@ than a check on it.
 | plan | [`PLAN.md`](PLAN.md) — the contract; §0 is asserted by `make budgets` |
 | what it is for | [`docs/north-star.md`](docs/north-star.md) |
 | decisions | [`docs/decisions.md`](docs/decisions.md) — ADR-001 is the threat model, written first |
-| who has read what | [`docs/reviewed.md`](docs/reviewed.md) — empty, and honest about it |
+| reviews | [`docs/review/`](docs/review) — a packet per release |
 
 shanty needs [mpv](https://mpv.io) installed; it does not decode audio itself
 ([ADR-011](docs/decisions.md)).
@@ -88,9 +88,9 @@ one project in this family wrote its reasoning down.
 ## Maintenance
 
 Written and maintained by one person, for their own use, and maintained while
-that stays true. There is no team behind this and no support commitment; the
-ledger in `docs/reviewed.md` shows what has actually been reviewed rather than
-what is claimed.
+that stays true. There is no team behind this and no support commitment. Each
+release carries a packet in `docs/review/` saying what was checked and, more
+usefully, what was not.
 
 ## Licence
 

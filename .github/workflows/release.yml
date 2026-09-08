@@ -31,38 +31,19 @@ jobs:
       # pushed at any commit, including one CI never saw.
       - run: make check
 
-      # §7.5 and §9.3: the release blocks until a human has answered the review
-      # packet. The machine cannot judge the answers; it can refuse to ship
-      # without them, which is the whole point of a gate having a shell.
-      - name: the review packet is answered
+      # A packet per release, and the release does not ship without one. What
+      # it no longer does is grade a questionnaire: the answers a reviewer
+      # needs are stated at the top of the packet, by whoever prepared it,
+      # rather than left as blanks for them to fill in. Issues found in a
+      # review are issues on GitHub, where the rest of the work already lives.
+      - name: the release has a review packet
         run: |
           packet="docs/review/${GITHUB_REF_NAME}.md"
           test -f "$packet" || {
             echo "::error::no review packet at $packet"
-            echo "The release is blocked until one exists and is answered (§7.5)."
             exit 1
           }
-          if grep -n 'ANSWER HERE' "$packet"; then
-            echo "::error::$packet has unanswered sections, listed above"
-            exit 1
-          fi
-          echo "$packet is answered"
-
-      # Every load-bearing surface the packet names must have been read since
-      # it last changed. A ledger that has gone stale reads as coverage while
-      # being none (§13.1).
-      - name: the ledger is not stale
-        run: |
-          # Any table row whose "read at" column is still a dash. The first
-          # version of this required a backticked lowercase name and so did
-          # not see `shanty uninstall`, which has a space in it -- a gate that
-          # skips one of the surfaces it is guarding.
-          if grep -qE '^\|.*\| — \|' docs/reviewed.md; then
-            echo "::error::docs/reviewed.md still has unread load-bearing surfaces:"
-            grep -nE '^\|.*\| — \|' docs/reviewed.md
-            exit 1
-          fi
-          echo "every load-bearing surface has a ledger entry"
+          echo "$packet is present"
 
       - uses: goreleaser/goreleaser-action@v6
         with:

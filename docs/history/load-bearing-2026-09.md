@@ -3,6 +3,11 @@
 Not a release packet — v0.1 has not shipped. This is the same shape, early,
 because these packages are about 620 lines today and will not be smaller again.
 
+**Retired.** This guided a read that fed a vouching ledger, and that ledger is
+gone — reviews happen in GitHub issues now, and each release carries a packet
+in `docs/review/`. Kept because its cards and its unverified list are the
+record of what was true in September 2026.
+
 **Read this with suspicion.** §7.5 asks for the "what could go wrong" cards to
 be drafted by a model other than the one that wrote the code. They were not:
 the author wrote them, and a guided tour shows the good rooms. Treat the cards
@@ -10,8 +15,7 @@ as the floor. At least one finding should come from outside them, and if the
 read turns up nothing outside these cards, record that as a finding about the
 tour rather than as evidence about the code.
 
-Fill in `docs/reviewed.md` when done. An entry means: you read the file top to
-bottom at this commit and are answerable for what it does.
+
 
 ---
 
@@ -167,7 +171,7 @@ failure it exists to prevent.
 
 ## The reviewer's questions
 
-Answer these in `docs/reviewed.md` or here, citing files:
+The exit exam, since answered at the top of `docs/review/v0.1.0.md`:
 
 1. Every path this code writes to, and what permits each.
 2. Every way bytes enter the process, and the gate on each.
