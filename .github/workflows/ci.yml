@@ -96,10 +96,30 @@ jobs:
           go-version: '1.24'
       - run: go test ./internal/subsonic/ -run=FuzzDecode -fuzz=FuzzDecode -fuzztime=60s
 
-  # Placeholder for the one job §11 names that is not here yet:
+  # The only job that talks to a real server and a real player. Everything
+  # else runs against the fake, which cannot say whether mpv accepts these
+  # flags or whether Navidrome's responses decode into the shapes this client
+  # expects.
   #
-  #   integration  real deluan/navidrome in docker, build-tagged, CI only
-  #
-  # It is the only test that can answer whether mpv accepts the flags this
-  # program gives it, and whether Navidrome's responses match what the fake
-  # says they look like. Until it exists, both are unverified.
+  # It asserts each subtest ran rather than trusting a green tick: t.Skip is
+  # how this test reports a missing mpv or container runtime, and a skipped
+  # integration suite reads exactly like a passing one.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mpv
+      - run: mpv --version | head -1
+      - run: |
+          set -o pipefail
+          go test -tags=integration ./cmd/shanty/ -run Integration -v -timeout=15m | tee /tmp/integration.log
+          for name in auth browse stream scrobble; do
+            grep -q -- "--- PASS: TestIntegrationVerticalSlice/$name" /tmp/integration.log || {
+              echo "the $name subtest did not pass; it may have been skipped"
+              exit 1
+            }
+          done
