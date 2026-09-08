@@ -61,7 +61,7 @@ func commands() []command {
 		{"help", "print this", runHelp},
 	}
 	for _, c := range commanding {
-		out = append(out, command{c.name, c.summary, commandSession(c.verb)})
+		out = append(out, command{c.name, c.summary, commandSession(c.name, c.verb)})
 	}
 	return out
 }

@@ -484,7 +484,7 @@ func listenOn(t *testing.T, socket string) {
 func TestStoppingCoversEveryStateThereIsToStop(t *testing.T) {
 	t.Run("nothing at all", func(t *testing.T) {
 		env, out := scratchOut(t)
-		if err := commandSession(control.Stop)(t.Context(), env, nil); err != nil {
+		if err := commandSession("stop", control.Stop)(t.Context(), env, nil); err != nil {
 			t.Fatalf("stopping nothing failed: %v", err)
 		}
 		if !strings.Contains(out.String(), "nothing was playing") {
@@ -500,7 +500,7 @@ func TestStoppingCoversEveryStateThereIsToStop(t *testing.T) {
 		}
 		serveOn(t, env.Paths.ControlSocket())
 
-		if err := commandSession(control.Stop)(t.Context(), env, nil); err != nil {
+		if err := commandSession("stop", control.Stop)(t.Context(), env, nil); err != nil {
 			t.Fatalf("stopping a session failed: %v", err)
 		}
 		if !strings.Contains(out.String(), "stopped") {
@@ -516,7 +516,7 @@ func TestStoppingCoversEveryStateThereIsToStop(t *testing.T) {
 		}
 		listenOn(t, env.Paths.Socket())
 
-		if err := commandSession(control.Stop)(t.Context(), env, nil); err != nil {
+		if err := commandSession("stop", control.Stop)(t.Context(), env, nil); err != nil {
 			t.Fatalf("stopping an orphaned player failed: %v", err)
 		}
 		if !strings.Contains(out.String(), "no session owned") {

@@ -27,15 +27,16 @@ var commanding = []struct {
 	{"stop", control.Stop, "end the session and the music with it"},
 }
 
-// commandSession sends one verb to the session and reports what came back.
-func commandSession(verb control.Verb) func(context.Context, Env, []string) error {
+// commandSession sends one verb to the session and reports what came back. The
+// name is what the user typed, which is not always the name of the verb.
+func commandSession(name string, verb control.Verb) func(context.Context, Env, []string) error {
 	return func(_ context.Context, env Env, args []string) error {
 		arg := strings.Join(args, " ")
 		if control.TakesArgument(verb) && strings.TrimSpace(arg) == "" {
-			return fmt.Errorf("`shanty %s` needs something after it\n\nRun `shanty help` for the list", verb)
+			return fmt.Errorf("`shanty %s` needs something after it\n\nRun `shanty help` for the list", name)
 		}
 		if !control.TakesArgument(verb) && arg != "" {
-			return fmt.Errorf("`shanty %s` takes nothing after it", verb)
+			return fmt.Errorf("`shanty %s` takes nothing after it", name)
 		}
 
 		res, err := control.Send(env.Paths.ControlSocket(), control.Request{Verb: verb, Arg: arg})

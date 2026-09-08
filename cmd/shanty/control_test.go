@@ -41,7 +41,7 @@ func TestAControlCommandWithNoSessionSaysWhatToDo(t *testing.T) {
 			// three outcomes are covered by TestStoppingWithNothingToStop.
 			continue
 		}
-		err := commandSession(c.verb)(t.Context(), env, argFor(c.verb))
+		err := commandSession(c.name, c.verb)(t.Context(), env, argFor(c.verb))
 		if err == nil {
 			t.Fatalf("`shanty %s` reported success with no session running", c.name)
 		}
@@ -63,8 +63,8 @@ func TestAnArgumentIsRequiredExactlyWhereItIsUsed(t *testing.T) {
 		if c.verb == control.Stop {
 			continue
 		}
-		missing := commandSession(c.verb)(t.Context(), env, nil)
-		extra := commandSession(c.verb)(t.Context(), env, []string{"40"})
+		missing := commandSession(c.name, c.verb)(t.Context(), env, nil)
+		extra := commandSession(c.name, c.verb)(t.Context(), env, []string{"40"})
 
 		if control.TakesArgument(c.verb) {
 			if missing == nil || !strings.Contains(missing.Error(), "needs something after it") {
@@ -98,4 +98,28 @@ func argFor(v control.Verb) []string {
 		return []string{"1:23"}
 	}
 	return []string{"40"}
+}
+
+// TestAMisusedCommandNamesWhatWasTyped covers the message a mistake produces.
+// The verb a command sends is not always what it is called, and a message
+// naming the verb tells the reader to run something that does not exist.
+func TestAMisusedCommandNamesWhatWasTyped(t *testing.T) {
+	env, _ := scratch(t)
+
+	for _, c := range commanding {
+		var err error
+		if control.TakesArgument(c.verb) {
+			err = commandSession(c.name, c.verb)(t.Context(), env, nil)
+		} else {
+			err = commandSession(c.name, c.verb)(t.Context(), env, []string{"40"})
+		}
+		if err == nil {
+			continue
+		}
+		// The backticks matter: "shanty volume" contains "shanty vol", so a
+		// looser check passes whichever name is printed.
+		if !strings.Contains(err.Error(), "`shanty "+c.name+"`") {
+			t.Errorf("`shanty %s` reported itself as %q", c.name, err)
+		}
+	}
 }
