@@ -142,6 +142,12 @@ auto-updater. A telemetry source. A visualiser. A Lidarr front end. A manager
 of anyone's mpv configuration: shanty starts mpv with `--no-config` and
 explicit flags, and leaves the user's own setup exactly as it found it.
 
+"A daemon" means a process that outlives what the user asked for: started at
+login, run by a service manager, or restarted after it dies. shanty does none
+of those. A session left by `:headless` is not one, and ADR-018 says why: it is
+created only by a keystroke in a running interface, and it ends by itself when
+its queue runs out.
+
 Some of these may become worth doing. Cover art and lyrics are already in §12,
 and MPRIS is an open decision. They enter through this document rather than
 through a pull request that quietly grows the scope.
@@ -244,7 +250,7 @@ a loop.
 ~/.config/shanty/          settings and credentials, both user-editable
 ~/.local/state/shanty/     resume position, scrobble backlog
 ~/.cache/shanty/           cover art; deleting it costs bandwidth only
-$XDG_RUNTIME_DIR/shanty/   the mpv socket, gone at logout
+$XDG_RUNTIME_DIR/shanty/   the mpv socket and the control socket, gone at logout
 ```
 
 Those are the Linux paths. macOS resolves elsewhere: `os.UserConfigDir` is

@@ -1,7 +1,8 @@
 # Commands
 
-shanty has six commands. Running `shanty` with no arguments browses and plays;
-the rest are named.
+shanty has thirteen commands. Running `shanty` with no arguments browses and
+plays; the rest are named. Seven of them command a session left running by
+`:headless`, and are listed together at the end.
 
 ## `shanty`
 
@@ -22,7 +23,7 @@ unless your server accepts the credential you gave it.
 
 ## `shanty doctor`
 
-Examines your setup and reports on eight things, from whether mpv is installed
+Examines your setup and reports on nine things, from whether mpv is installed
 to whether your server accepts your credential. Anything that is wrong is
 listed together with the command or configuration change that fixes it. The
 [The doctor](The-doctor) page explains each check.
@@ -47,6 +48,10 @@ lists them.
 If one of those paths is a symbolic link, shanty refuses to delete it and tells
 you, rather than following the link and deleting something elsewhere.
 
+It refuses while a session left by `:headless` is playing, because one of those
+directories holds the connection that session is reached through. Run
+`shanty stop` first.
+
 It does not delete the shanty binary itself. That is wherever you installed it,
 which is usually `~/.local/bin/shanty`.
 
@@ -58,3 +63,49 @@ the repository rather than from a release reports `dev`.
 ## `shanty help`
 
 Lists the commands with a one-line description of each.
+
+## Commanding a session
+
+Typing `:headless` in the interface closes it and leaves the music playing.
+These seven command what it leaves behind, and each works from any shell.
+
+## `shanty status`
+
+Says what is playing: the track, the artist, how far into it you are, the
+volume, and which track of how many.
+
+## `shanty pause`
+
+Pauses the session, or resumes it if it is already paused.
+
+## `shanty next`
+
+Skips to the next track in the session's queue.
+
+## `shanty prev`
+
+Goes back to the previous track.
+
+## `shanty vol 40`
+
+Sets the volume to a number from 0 to 100. A number outside that range is
+reported rather than rounded to the nearest end.
+
+## `shanty seek 1:23`
+
+Moves to a position in the current track, written as minutes and seconds or as
+a number of seconds.
+
+## `shanty stop`
+
+Ends the session and the music with it. It also stops a player left behind by a
+session that was killed, because what you want when you type it is silence.
+
+Stopping when nothing is playing is not an error; it says so and exits without
+complaint.
+
+---
+
+With no session running, the first six say so and name what to run instead.
+Running `shanty` on its own returns the interface to a session that is playing.
+

@@ -83,9 +83,39 @@ line.
 |---|---|
 | `:q` | Quit |
 | `:volume 40` | Set the volume to a number, where `+` and `-` change it by steps |
+| `:headless` | Close the interface and keep playing |
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.
+
+## Leaving the interface running
+
+Type `:headless` and the interface closes, the shell prompt comes back, and the
+music keeps playing. The album carries on to its end, and your server is told
+what you listened to exactly as it would have been with the interface open.
+
+These command what is left, from any shell:
+
+| Command | What it does |
+|---|---|
+| `shanty status` | Say what is playing |
+| `shanty pause` | Pause, or resume if already paused |
+| `shanty next` | Skip to the next track |
+| `shanty prev` | Go back to the previous track |
+| `shanty vol 40` | Set the volume, from 0 to 100 |
+| `shanty seek 1:23` | Move to a position in the track |
+| `shanty stop` | End it, and the music with it |
+
+Run `shanty` again and the interface comes back on the track that is playing,
+without a gap in the sound. You start on the artist list rather than the screen
+you left, because a filter and a cursor belong to a screen rather than to the
+music.
+
+It ends by itself when the album finishes. Nothing is left running afterwards,
+and nothing starts it except typing `:headless`.
+
+`:headless` with nothing playing is refused, because such a session would end
+the moment it started.
 
 ## Quitting
 
@@ -98,8 +128,9 @@ Quitting is a command rather than a key. It ends the session and cannot be
 undone by pressing something else, so it is not one keystroke away from every
 screen. Pressing `q` tells you this rather than doing nothing.
 
-Quitting also stops mpv. shanty does not leave a player running in the
-background.
+Quitting stops mpv with it. Nothing is left running unless you asked for it
+with `:headless`, which is the one way to keep the music going without the
+interface.
 
 ## Changing the keys
 

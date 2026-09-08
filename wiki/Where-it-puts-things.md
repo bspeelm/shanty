@@ -7,7 +7,7 @@ shanty writes to four directories and nowhere else.
 | `~/.config/shanty/` | Your server address, username and credential | Run `shanty setup` to recreate it |
 | `~/.local/state/shanty/` | Your position in a track and any plays not yet reported | You lose a small amount of listening history. *Not used yet.* |
 | `~/.cache/shanty/` | Downloaded cover art | It is downloaded again when needed. *Not used yet.* |
-| `$XDG_RUNTIME_DIR/shanty/` | The connection to mpv, while music is playing | Nothing. It is removed when you log out. |
+| `$XDG_RUNTIME_DIR/shanty/` | The connection to mpv, and the one a session left by `:headless` is commanded through | Nothing. It is removed when you log out. |
 
 All four honour the standard `XDG_` environment variables if you have set them.
 The paths above are the defaults on Linux when you have not.

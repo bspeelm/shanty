@@ -16,10 +16,10 @@ import (
 // ever. It runs the real commands against a scratch $HOME and diffs the tree.
 //
 // What it does not cover, stated so nobody reads it as covering more than it
-// does: the mpv socket. Creating one needs mpv, and the program that opens it
-// is a full-screen TUI that cannot run headless here. That the socket lands in
-// a 0700 directory under Runtime is internal/mpv's TestTheSocketDirectoryIs0700
-// and TestChildProcessHygiene; the integration job is where the two meet.
+// does: the two sockets. Creating them needs mpv, which is not on every machine
+// this is built on. That they land in a 0700 directory under Runtime is
+// internal/mpv's TestTheSocketDirectoryIs0700 and TestChildProcessHygiene, and
+// internal/control's tests; the integration job is where they meet.
 
 // decoys are the things §8 promises shanty never touches. They are put in the
 // scratch home before anything runs, and read back afterwards -- an assertion

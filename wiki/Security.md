@@ -38,6 +38,23 @@ process and sends each track to it through a socket file, which lives in a
 directory that only your user account can open. The URL exists in mpv's memory
 and is not visible to anyone else on the system.
 
+A session left running by `:headless` is another shanty process, started the
+same way and holding nothing in its arguments either. The queue reaches it as a
+list of track identifiers; it looks up your credential itself. It is commanded
+through a second socket in the same directory, which accepts a fixed list of
+seven things and cannot be asked to open a file or run a program.
+
+## Revoking a credential does not stop a session
+
+If you revoke an API key or change your password while a session is playing,
+that session carries on with the credential it started with. It will play what
+is already queued and its reports to your server will start failing, where
+nobody is watching to see them fail.
+
+It cannot last longer than the queue it was given, because a session ends when
+its music does. To be certain, run `shanty stop`. `shanty doctor` says whether
+one is running.
+
 ## What shanty assumes about your server
 
 shanty treats every response from your server as untrusted, on the basis that a

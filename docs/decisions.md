@@ -676,3 +676,96 @@ including when it is settled the way the plan expects.
 | ADR-006 | Whether to support MPRIS, and whether D-Bus fits the module budget. Belongs to v0.3. |
 | ADR-010 | The measured module cost of the interface libraries chosen in ADR-003. |
 | ADR-012 | The macOS form of the filesystem and process decisions, described above. To be answered before a release claims macOS support. |
+
+## ADR-018 — A session that outlives its terminal is not a daemon
+
+**Status:** accepted. Amends PLAN.md §3, which lists a daemon among the things
+shanty is not.
+
+`:headless` closes the interface and leaves the music playing. Seven commands
+drive what is left from any shell, and running `shanty` again returns the
+interface to it.
+
+### What §3 refuses, and why this is not it
+
+§3's not-list is binding, and "A daemon." is on it. The distinction this record
+rests on is that a session is created only by a keystroke in a running
+interface. It is never started at login, never by a service manager, never
+respawned after it dies, and it ends by itself when its queue runs out. It
+exists because somebody asked for their terminal back, and it lasts as long as
+the music they were already playing.
+
+A process that outlives the user's intent is what §3 refuses. This one cannot
+outlive it by more than an album.
+
+### Why a session, rather than leaving mpv to it
+
+mpv plays a playlist to the end on its own, and a second process can drive its
+socket. So the cheaper design was to hand mpv the album and exit shanty
+completely. It was rejected twice over.
+
+**It breaks the fifth verb.** `docs/north-star.md` states the invariant as
+connect, browse, queue, play, tell the server you played it. The report is sent
+by the running shanty process when mpv says a track ended. With no shanty
+process, an album plays and the server never hears about it: no play counts,
+nothing in recently-played. The cheap design deletes a fifth of what the
+program is for, in the mode where the user is least likely to notice.
+
+**It would make mpv's socket the user-facing control plane.** mpv's IPC accepts
+`run`, `subprocess` and `load-script`. Anything that can write to that socket
+can start a process. `shanty pause` must not be a wrapper around a channel like
+that, so shanty keeps mpv's socket to itself and answers on one of its own,
+where the verbs are a closed set and none of them names a file or a program.
+
+### The control plane
+
+Newline-delimited JSON, one request and one response per connection, on a
+socket in the same 0700 directory as mpv's and narrowed to 0600. The verbs are
+the same named actions the keys and the command line use, so a command typed in
+another shell does exactly what the key would have done.
+
+Every request carries the version of the wire format. A session refuses a
+version it does not speak and names `shanty stop`. **`stop` and that refusal
+cannot change meaning in any later version**, because they are the only two
+things a mismatched pair still has to be able to do. That is a commitment this
+record makes, not an implementation detail.
+
+### Who owns the player
+
+Exactly one process drives mpv at a time, and the control socket says which.
+Two would both see mpv's events and both advance the queue, reporting one track
+twice and skipping the next.
+
+So every handover is the same shape in both directions: the newcomer attaches
+to the player, and the incumbent lets go without stopping it. The process
+handing over stops advancing the queue the moment the handover starts rather
+than when it succeeds. If it fails, one report is lost; if it were the other
+way round, one would be made twice on the path that works.
+
+### What a session cannot know
+
+A session holds the credential it was started with. Revoking an API key does
+not stop one that is already playing; it plays out its queue with a credential
+the server will refuse, and the failed reports are not shown to anybody.
+
+This is not detectable without polling the server, which §9 refuses. It is
+instead **bounded by the session ending when its queue runs out**, which is the
+security argument for the framing rather than merely an aesthetic one. A daemon
+would hold a revoked credential indefinitely. `shanty doctor` says when a
+session is running, so the question has an answer somebody can type.
+
+### The costs, accepted
+
+A process that plays where nobody is looking cannot report its own failures,
+and `docs/north-star.md` claims shanty is honest when broken. `doctor` gains a
+check naming all four states a session and a player can be in between them.
+`uninstall` refuses while a session is playing, because it removes the
+directory holding the socket the session is reached through.
+
+The interface cannot detach in place: a program started from a shell leads its
+process group, so it cannot leave its session. It starts a copy of itself
+instead, which is the first time shanty has run anything but mpv, and brings
+that copy under the same rule — no credential in a child's arguments or
+environment. The queue reaches it by id over a pipe, and the copy builds its
+own stream URLs from the credential it reads itself.
+
