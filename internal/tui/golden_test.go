@@ -181,6 +181,21 @@ func TestGoldenScreens(t *testing.T) {
 		{"tracks-starred", send(t, tracks, starredChanged())},
 		{"starred", onStarred(t, send(t, tracks, starredChanged()))},
 		{"starred-nothing", onStarred(t, tracks)},
+		{"playlists", send(t, artists, ShowPlaylists{}, PlaylistsLoaded([]subsonic.Playlist{
+			{ID: "pl-1", Name: "Evening", SongCount: 12},
+			{ID: "pl-2", Name: "Long Watch", SongCount: 41},
+		}))},
+		{"playlists-none", send(t, artists, ShowPlaylists{}, PlaylistsLoaded(nil))},
+		{"playlist", send(t, artists, PlaylistLoaded(subsonic.Playlist{
+			ID: "pl-1", Name: "Evening", Songs: []subsonic.Song{
+				{ID: "tr-1", Title: "Slipway", Artist: "Aoi", Duration: 180},
+				{ID: "tr-9", Title: "Low Water", Artist: "The Bilge Pumps", Duration: 220},
+			}}))},
+		{"editing", send(t, tracks, EditingPlaylist(subsonic.Playlist{
+			ID: "pl-1", Name: "Evening", Songs: []subsonic.Song{
+				{ID: library()[0].Albums[0].Songs[1].ID},
+			}}), AlbumLoaded(library()[0].Albums[0]))},
+		{"confirming", send(t, artists, Confirm{Question: `delete "Evening" and its 12 tracks?`})},
 		{"messages", onMessages(t, spoken(t, artists))},
 		{"messages-nothing", onMessages(t, artists)},
 		{"search", send(t, base, SearchLoaded{Query: "water", Results: results()})},

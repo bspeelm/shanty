@@ -227,8 +227,8 @@ func TestEveryScreenHasAHeadingAndRenders(t *testing.T) {
 			t.Errorf("screen %s rendered nothing", s)
 		}
 	}
-	if len(Screens) != 7 {
-		t.Errorf("Screens lists %d screens; there are seven, so this is a change to the interface", len(Screens))
+	if len(Screens) != 9 {
+		t.Errorf("Screens lists %d screens; there are nine, so this is a change to the interface", len(Screens))
 	}
 }
 
@@ -507,19 +507,15 @@ func TestTheGPrefix(t *testing.T) {
 		t.Errorf("gg left the cursor at %d, want 0", m.Cursor())
 	}
 
-	// gq and gs open screens that exist; playlists says it does not yet.
-	for key, want := range map[string]Screen{"q": ScreenQueue, "s": ScreenStarred} {
+	// Every screen the prefix names now exists.
+	for key, want := range map[string]Screen{
+		"q": ScreenQueue, "s": ScreenStarred, "p": ScreenPlaylists, "a": ScreenArtists,
+	} {
 		n, _ := press(t, m, "g")
 		n, _ = press(t, n, key)
 		if n.Screen() != want {
 			t.Errorf("g%s went to %s, want %s", key, n.Screen(), want)
 		}
-	}
-
-	n, _ := press(t, m, "g")
-	n, _ = press(t, n, "p")
-	if !strings.Contains(n.Status(), "playlists") {
-		t.Errorf("gp said %q, want it to mention playlists", n.Status())
 	}
 }
 

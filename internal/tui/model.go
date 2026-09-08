@@ -20,6 +20,8 @@ const (
 	modeFilter
 	// modeCommand takes a line naming a command to run.
 	modeCommand
+	// modeConfirm waits for yes or no to something that cannot be undone.
+	modeConfirm
 )
 
 // Screen identifies one of the views.
@@ -33,10 +35,13 @@ const (
 	ScreenSearch
 	ScreenStarred
 	ScreenMessages
+	ScreenPlaylists
+	ScreenPlaylist
 )
 
 // Screens lists every screen.
-var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue, ScreenSearch, ScreenStarred, ScreenMessages}
+var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue,
+	ScreenSearch, ScreenStarred, ScreenMessages, ScreenPlaylists, ScreenPlaylist}
 
 func (s Screen) String() string {
 	switch s {
@@ -54,6 +59,10 @@ func (s Screen) String() string {
 		return "starred"
 	case ScreenMessages:
 		return "messages"
+	case ScreenPlaylists:
+		return "playlists"
+	case ScreenPlaylist:
+		return "playlist"
 	}
 	return "unknown"
 }
@@ -110,6 +119,18 @@ type Model struct {
 	// said is every message shown this session, oldest first, so that one
 	// which scrolled past can be read again. It is kept in memory only.
 	said []message
+	// playlists is every playlist the server will show, and playlist is the
+	// one being looked at.
+	playlists []subsonic.Playlist
+	playlist  subsonic.Playlist
+	// editing is the playlist the library lists are adding to, and inPlaylist
+	// says which tracks are already in it so they can be marked.
+	editing    subsonic.Playlist
+	inPlaylist map[string]bool
+	// asking is what modeConfirm is waiting to hear about, and agreed is what
+	// to do if the answer is yes.
+	asking string
+	agreed tea.Msg
 	// keep is what was selected when a reload was asked for, so the cursor can
 	// go back to it once the answer arrives.
 	keep string
@@ -146,12 +167,16 @@ func (m Model) Screen() Screen   { return m.screen }
 func (m Model) Filter() string   { return m.filter }
 func (m Model) Filtering() bool  { return m.mode == modeFilter }
 func (m Model) Commanding() bool { return m.mode == modeCommand }
+func (m Model) Confirming() bool { return m.mode == modeConfirm }
 func (m Model) Line() string     { return m.line }
 func (m Model) Pending() string  { return m.pending }
 func (m Model) Count() string    { return m.count }
 func (m Model) Cursor() int      { return m.cursor[m.screen] }
 func (m Model) Status() string   { return m.status }
 func (m Model) Paused() bool     { return m.paused }
+
+// Editing is the playlist the library lists are adding to, if any.
+func (m Model) Editing() subsonic.Playlist { return m.editing }
 
 // Artist and Album are what the screens below the artist list are showing.
 func (m Model) Artist() subsonic.Artist { return m.artist }
@@ -202,6 +227,10 @@ func (m Model) allRows() int {
 		return len(m.grouped())
 	case ScreenMessages:
 		return len(m.said)
+	case ScreenPlaylists:
+		return len(m.playlists)
+	case ScreenPlaylist:
+		return len(m.playlist.Songs)
 	}
 	return 0
 }
@@ -222,6 +251,10 @@ func (m Model) rowName(i int) string {
 		return m.grouped()[i].name
 	case ScreenMessages:
 		return m.said[m.saidAt(i)].text
+	case ScreenPlaylists:
+		return m.playlists[i].Name
+	case ScreenPlaylist:
+		return m.playlist.Songs[i].Title
 	}
 	return ""
 }

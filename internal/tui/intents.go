@@ -60,6 +60,24 @@ type (
 	Reload struct{}
 	// Scan asks the server to look at its music folder again.
 	Scan struct{}
+	// ShowPlaylists asks for the list of playlists.
+	ShowPlaylists struct{}
+	// Playlist is one thing to do to a playlist, named by what it is called.
+	Playlist struct {
+		Verb string
+		Name string
+	}
+	// Shuffle asks for everything on the server to play in a random order.
+	Shuffle struct{}
+	// OpenPlaylist asks for one playlist's tracks.
+	OpenPlaylist struct{ ID string }
+	// EditPlaylist adds or removes the selected track from the playlist being
+	// edited.
+	EditPlaylist struct {
+		ID     string
+		SongID string
+		Add    bool
+	}
 	// ShowMessages asks for what shanty has said this session. It is handled
 	// by the interface itself, which is the only thing that has it.
 	ShowMessages struct{}
@@ -82,6 +100,20 @@ type (
 		Results subsonic.Results
 		IDs     map[string]bool
 	}
+	// Confirm asks a question that must be answered before something that
+	// cannot be undone is done. Do is emitted if the answer is yes.
+	Confirm struct {
+		Question string
+		Do       tea.Msg
+	}
+	// PlaylistsLoaded is every playlist the server will show.
+	PlaylistsLoaded []subsonic.Playlist
+	// PlaylistLoaded is one playlist with its tracks. Editing reports the same
+	// message, so the marks follow what the server has.
+	PlaylistLoaded subsonic.Playlist
+	// EditingPlaylist puts the library lists into the mode where a track can
+	// be added to or removed from the named playlist.
+	EditingPlaylist subsonic.Playlist
 	// SearchLoaded is what a search found.
 	SearchLoaded struct {
 		Query   string

@@ -26,6 +26,7 @@ var commanding = []struct {
 	{"vol", control.Volume, "set the volume of the session, from 0 to 100"},
 	{"seek", control.Seek, "move to a position in the track, written as 1:23"},
 	{"status", control.Status, "say what the session is playing"},
+	{"shuffle", control.Shuffle, "play everything on the server in a random order"},
 	{"stop", control.Stop, "end the session and the music with it"},
 }
 

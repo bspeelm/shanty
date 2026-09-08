@@ -21,6 +21,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.filterKey(msg)
 		case modeCommand:
 			return m.commandKey(msg)
+		case modeConfirm:
+			return m.confirmKey(msg.String())
 		}
 		return m.key(msg)
 
@@ -86,6 +88,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.keep = " " // nothing selected, but a reload is still under way
 		}
 		return m, nil
+	case PlaylistsLoaded:
+		m.playlists, m.loading, m.status = msg, false, ""
+		if m.screen != ScreenPlaylists {
+			return m, nil
+		}
+		return m.reloaded(ScreenPlaylists, plural(len(msg), "playlist")), nil
+	case PlaylistLoaded:
+		loaded := subsonic.Playlist(msg)
+		// The same message reports an edit, so the marks follow the server
+		// rather than what was pressed.
+		if m.editing.ID == loaded.ID && m.editing.ID != "" {
+			m.editing = loaded
+			m.inPlaylist = holding(loaded)
+			if m.screen != ScreenPlaylist {
+				return m, nil
+			}
+		}
+		m.playlist, m.loading, m.status = loaded, false, ""
+		if m.screen == ScreenPlaylist {
+			return m.reloaded(ScreenPlaylist, plural(len(loaded.Songs), "track")), nil
+		}
+		m.screen, m.filter = ScreenPlaylist, ""
+		return m.selecting(ScreenPlaylist, 0), nil
+	case EditingPlaylist:
+		// Editing shows the library, because that is where the music is.
+		m.editing, m.inPlaylist = subsonic.Playlist(msg), holding(subsonic.Playlist(msg))
+		m.screen, m.filter, m.loading = ScreenArtists, "", false
+		m.status = "adding to " + Sanitise(m.editing.Name) + " — a adds, r removes, esc leaves"
+		return m.remember(m.status), nil
+	case Confirm:
+		m.mode, m.asking, m.agreed = modeConfirm, msg.Question, msg.Do
+		return m, nil
+	case ShowPlaylists:
+		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
+		return m.selecting(ScreenPlaylists, 0), nil
 	case ShowMessages:
 		m.screen, m.status, m.filter = ScreenMessages, "", ""
 		return m.selecting(ScreenMessages, 0), nil
@@ -163,7 +200,15 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "*":
 		return m.starSelected()
 	case "a":
+		if m.editing.ID != "" {
+			return m.editSelected(true)
+		}
 		return m.queueSelected(false)
+	case "r":
+		if m.editing.ID != "" {
+			return m.editSelected(false)
+		}
+		return m, nil
 	case "A":
 		return m.queueSelected(true)
 
@@ -300,12 +345,12 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 	case "a":
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
 		return m, nil
+	case "p":
+		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
+		return m.selecting(ScreenPlaylists, 0), nil
 	case "q":
 		m.screen, m.status, m.filter = ScreenQueue, "", ""
 		return m.selecting(ScreenQueue, max(0, min(len(m.queued)-1, m.queuedAt))), nil
-	case "p":
-		m.status = "the playlists screen is not built yet"
-		return m, nil
 	case "s":
 		m.screen, m.status, m.filter = ScreenStarred, "", ""
 		return m.selecting(ScreenStarred, firstSelectable(m.starredRows)), nil
@@ -331,6 +376,11 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		return m, emit(PlayFrom{Album: m.album, Index: at})
 	case ScreenQueue:
 		return m, emit(JumpTo(at))
+	case ScreenPlaylists:
+		m.loading, m.status = true, "opening "+Sanitise(m.playlists[at].Name)
+		return m, emit(OpenPlaylist{ID: m.playlists[at].ID})
+	case ScreenPlaylist:
+		return m, emit(PlayFrom{Album: asAlbum(m.playlist), Index: at})
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[at]
 		switch r.kind {
@@ -405,14 +455,75 @@ func (m Model) starSelected() (tea.Model, tea.Cmd) {
 	return m, emit(ToggleStar{Kind: kind, ID: id, Starred: !m.starred[id]})
 }
 
+// editSelected adds the selected track to the playlist being edited, or takes
+// it out. The library lists are what is on screen, so the row is a track.
+func (m Model) editSelected(add bool) (tea.Model, tea.Cmd) {
+	if m.rows() == 0 {
+		return m, nil
+	}
+	at := m.matches()[m.cursor[m.screen]]
+	id := ""
+	switch m.screen {
+	case ScreenTracks:
+		id = m.album.Songs[at].ID
+	case ScreenQueue:
+		id = m.queued[at].ID
+	case ScreenSearch, ScreenStarred:
+		if r := m.grouped()[at]; r.kind == kindSong {
+			id = r.id
+		}
+	}
+	if id == "" {
+		m.status = "there is no track here to add; open an album"
+		return m, nil
+	}
+	if add == m.inPlaylist[id] {
+		// Already as asked. Saying so is better than a request that changes
+		// nothing and looks like it worked.
+		what := "already in"
+		if !add {
+			what = "not in"
+		}
+		m.status = "that track is " + what + " " + Sanitise(m.editing.Name)
+		return m, nil
+	}
+	return m, emit(EditPlaylist{ID: m.editing.ID, SongID: id, Add: add})
+}
+
+// holding is the identifiers of the tracks in a playlist.
+func holding(p subsonic.Playlist) map[string]bool {
+	out := make(map[string]bool, len(p.Songs))
+	for _, s := range p.Songs {
+		out[s.ID] = true
+	}
+	return out
+}
+
+// asAlbum gathers a playlist into something that can be played from. Its
+// tracks come from several albums, so it is a list rather than one of them.
+func asAlbum(p subsonic.Playlist) subsonic.Album {
+	return subsonic.Album{ID: p.ID, Name: p.Name, Songs: p.Songs}
+}
+
 // back moves up one screen. At the top it does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
+	if m.editing.ID != "" {
+		// Leaving the playlist being edited comes before leaving the screen:
+		// the library lists are where the editing happens, so going up one
+		// would look like nothing had changed.
+		name := m.editing.Name
+		m.editing, m.inPlaylist = subsonic.Playlist{}, nil
+		m.status = "finished with " + Sanitise(name)
+		return m.remember(m.status), nil
+	}
 	switch m.screen {
 	case ScreenTracks:
 		m.screen, m.status, m.filter = ScreenAlbums, "", ""
 	case ScreenAlbums:
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
-	case ScreenQueue, ScreenSearch, ScreenStarred, ScreenMessages:
+	case ScreenPlaylist:
+		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
+	case ScreenQueue, ScreenSearch, ScreenStarred, ScreenMessages, ScreenPlaylists:
 		// Both are reached from anywhere, so back leaves for the one screen
 		// that is always there rather than wherever it was opened from.
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
@@ -542,4 +653,20 @@ func (m Model) idAt(i int) string {
 		return m.album.Songs[i].ID
 	}
 	return ""
+}
+
+// confirmKey answers a question about something that cannot be undone.
+//
+// Only yes does it. Every other key says no, because a question nobody meant
+// to answer should end with nothing having happened.
+func (m Model) confirmKey(key string) (tea.Model, tea.Cmd) {
+	agreed := m.agreed
+	m.mode, m.asking, m.agreed = modeNormal, "", nil
+
+	if key != "y" && key != "Y" {
+		m.status = "nothing was changed"
+		return m, nil
+	}
+	m.status = ""
+	return m, emit(agreed)
 }

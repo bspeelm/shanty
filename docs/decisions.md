@@ -769,3 +769,52 @@ that copy under the same rule — no credential in a child's arguments or
 environment. The queue reaches it by id over a pipe, and the copy builds its
 own stream URLs from the credential it reads itself.
 
+## ADR-019 — What a key means can follow the mode, and `a` does
+
+**Status:** accepted. Amends ADR-016, which gave `a` to playlists.
+
+ADR-016's table reads `a` — add to a playlist. It was built as `a` — add to the
+end of the queue, with `A` for play next, and the difference was not noticed
+until playlists were built.
+
+Both are right in their place, and the place is what decides.
+
+Outside `:playlist edit`, the queue is what a track is added to: it is the
+thing playing, and adding to it is the commonest action in the program. Inside
+`:playlist edit` the library lists exist for one purpose, which is to say what
+belongs in the playlist. `a` adds and `r` removes, and there is nothing else
+those keys could sensibly do while that screen is up.
+
+### Why a key may mean two things
+
+The rule this rests on is that a mode is visible. `:playlist edit` says what it
+is doing on the last row, every list carries `(A)` beside the tracks already in
+the playlist, and `esc` leaves. Somebody pressing `a` can see which of the two
+it will do before they press it.
+
+That is the same test the filter and the command line already pass: `/` and `:`
+change what typing does, and both show it. A mode that could not be seen would
+not be allowed to change a key.
+
+### What was refused
+
+**Giving `a` back to playlists and moving the queue keys.** The queue keys are
+already in use and already documented; rebinding them to honour a table written
+before either feature existed would be paying for consistency with a plan
+rather than with the program.
+
+**Two more letters, so nothing is modal.** The alphabet is the scarce thing
+here. ADR-016 spends it on the actions used most, and adding to a playlist,
+which happens in one screen and is otherwise rare, is not one of them.
+
+### The confirmation
+
+`:playlist delete <name>` asks before it acts and names the playlist and how
+many tracks are in it. Typing the name is most of a confirmation, but a name
+that matches something other than what was meant is exactly the mistake that
+cannot be undone from inside shanty. Every key but `y` answers no.
+
+A server allows two playlists to share a name; only their identifiers are
+unique. Two matches is reported rather than resolved, because picking one would
+be a guess about the thing that cannot be undone.
+

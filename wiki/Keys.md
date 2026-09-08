@@ -129,6 +129,36 @@ If nothing matches, the screen says so rather than going blank.
 
 The playlists screen is not built yet. Pressing its key says so.
 
+## Playlists
+
+`gp` lists your playlists, and `enter` opens one to see its tracks. `enter` on
+a track plays the playlist from there.
+
+`:playlist create Evening` makes an empty one. `:playlist edit Evening` fills
+it: the library appears as usual, `(A)` marks the tracks already in the
+playlist, `a` adds the selected track and `r` takes it out. Each change reaches
+the server as you make it, so what the marks show is what is there. `esc`
+finishes.
+
+While you are editing, `a` and `r` are about the playlist. Everywhere else `a`
+adds to the queue and `A` plays next, as they always do. The last row says
+which you are in.
+
+`:playlist delete Evening` asks first, naming the playlist and how many tracks
+it holds. Anything but `y` answers no.
+
+If two of your playlists share a name, shanty says so rather than guessing
+which you meant. Rename one on your server.
+
+## Shuffling
+
+`:playlist shuffle Evening` plays a playlist in a random order, and `:shuffle`
+does the same with everything on the server. `shanty shuffle` does it to a
+detached session from another shell.
+
+It shuffles once, into a queue you can see with `gq`. It is not a mode that
+keeps reshuffling.
+
 ## Starred
 
 `*` stars whatever is selected, and unstars it if it is starred already. It
@@ -192,6 +222,12 @@ line.
 | `:messages` | Show what shanty has said this session |
 | `:reload` | Ask the server for what is on screen again |
 | `:scan` | Ask the server to look for new music |
+| `:playlist` | List your playlists |
+| `:playlist create <name>` | Make an empty playlist |
+| `:playlist edit <name>` | Add tracks to it, and take them out |
+| `:playlist delete <name>` | Delete it, after asking |
+| `:playlist shuffle <name>` | Play it in a random order |
+| `:shuffle` | Play everything on the server in a random order |
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.

@@ -28,14 +28,15 @@ const timeout = 3 * time.Second
 type Verb string
 
 const (
-	Pause  Verb = "pause"
-	Play   Verb = "play"
-	Next   Verb = "next"
-	Prev   Verb = "prev"
-	Volume Verb = "volume"
-	Seek   Verb = "seek"
-	Status Verb = "status"
-	Stop   Verb = "stop"
+	Pause   Verb = "pause"
+	Play    Verb = "play"
+	Next    Verb = "next"
+	Prev    Verb = "prev"
+	Volume  Verb = "volume"
+	Seek    Verb = "seek"
+	Status  Verb = "status"
+	Stop    Verb = "stop"
+	Shuffle Verb = "shuffle"
 	// Attach asks the session for what it is playing and to let go of it. It
 	// is sent by an interface starting up, not typed.
 	Attach Verb = "attach"
@@ -53,15 +54,16 @@ type shape struct {
 // verbs is every verb a session accepts. The set is closed: a verb that is not
 // here is refused before it reaches the session.
 var verbs = map[Verb]shape{
-	Pause:  {typed: true},
-	Play:   {typed: true},
-	Next:   {typed: true},
-	Prev:   {typed: true},
-	Volume: {argument: true, typed: true},
-	Seek:   {argument: true, typed: true},
-	Status: {typed: true},
-	Stop:   {typed: true},
-	Attach: {},
+	Pause:   {typed: true},
+	Play:    {typed: true},
+	Next:    {typed: true},
+	Prev:    {typed: true},
+	Volume:  {argument: true, typed: true},
+	Seek:    {argument: true, typed: true},
+	Status:  {typed: true},
+	Stop:    {typed: true},
+	Shuffle: {typed: true},
+	Attach:  {},
 }
 
 // Known reports whether the verb is one a session accepts.

@@ -315,3 +315,73 @@ func ids(q Queue) []string {
 	}
 	return out
 }
+
+// TestShufflingKeepsEveryTrack covers the property that matters: a shuffle
+// that loses or repeats a track is a shuffle that has eaten somebody's
+// playlist.
+func TestShufflingKeepsEveryTrack(t *testing.T) {
+	start := New(tracks(20)...)
+
+	for seed := range uint64(50) {
+		got := start.Shuffle(rand.New(rand.NewPCG(seed, 0)))
+
+		if got.Len() != start.Len() {
+			t.Fatalf("seed %d: shuffled %d tracks into %d", seed, start.Len(), got.Len())
+		}
+		seen := map[string]int{}
+		for _, track := range got.Tracks() {
+			seen[track.ID]++
+		}
+		for _, track := range start.Tracks() {
+			if seen[track.ID] != 1 {
+				t.Fatalf("seed %d: %s appears %d times", seed, track.ID, seen[track.ID])
+			}
+		}
+		if got.At() != 0 {
+			t.Errorf("seed %d: a shuffled queue starts at %d", seed, got.At())
+		}
+	}
+}
+
+// TestShufflingActuallyChangesTheOrder covers the other half. Keeping every
+// track is easy to do by returning the queue unchanged.
+func TestShufflingActuallyChangesTheOrder(t *testing.T) {
+	start := New(tracks(20)...)
+
+	var moved int
+	for seed := range uint64(20) {
+		got := start.Shuffle(rand.New(rand.NewPCG(seed, 0)))
+		if !reflect.DeepEqual(ids(got), ids(start)) {
+			moved++
+		}
+	}
+	if moved == 0 {
+		t.Error("twenty shuffles of twenty tracks all came back in the same order")
+	}
+}
+
+// TestShufflingDoesNotDisturbTheQueueItCameFrom covers the immutability the
+// rest of this package keeps.
+func TestShufflingDoesNotDisturbTheQueueItCameFrom(t *testing.T) {
+	start := New(tracks(10)...).Jump(3)
+	was := ids(start)
+
+	_ = start.Shuffle(rand.New(rand.NewPCG(1, 2)))
+
+	if got := ids(start); !reflect.DeepEqual(got, was) {
+		t.Errorf("shuffling reordered the queue it came from")
+	}
+	if start.At() != 3 {
+		t.Errorf("shuffling moved the original to %d", start.At())
+	}
+}
+
+// TestShufflingNothingIsNothing covers the empty queue, which `:shuffle` with
+// nothing loaded would reach.
+func TestShufflingNothingIsNothing(t *testing.T) {
+	got := New().Shuffle(rand.New(rand.NewPCG(1, 2)))
+
+	if !got.Empty() || !got.Done() {
+		t.Errorf("shuffling an empty queue gave %+v", got)
+	}
+}

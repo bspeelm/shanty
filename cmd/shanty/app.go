@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -51,6 +53,8 @@ type app struct {
 	// it. Taking it up without being asked would surprise anyone who quit
 	// deliberately.
 	saved subsonic.PlayQueue
+	// random is where a shuffle gets its order. It is nil outside tests.
+	random *rand.Rand
 	// backlog is the file holding plays the server would not accept. It is
 	// empty when there is nowhere to keep them, which is how the tests that
 	// have no state directory run.
@@ -74,6 +78,13 @@ type (
 	scrobbled    struct{}
 	detached     struct{}
 	detachFailed struct{ err error }
+	// deletePlaylist is agreed to after the question has been answered.
+	deletePlaylist struct{ id, name string }
+	// shuffled is a set of tracks to play in a random order.
+	shuffled struct {
+		tracks []subsonic.Song
+		what   string
+	}
 	// savedQueue is what the server was holding when this started.
 	savedQueue subsonic.PlayQueue
 	// starredLoaded is what the server has starred, with the identifiers
@@ -126,6 +137,25 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.search(string(msg))
 	case tui.Resume:
 		return a, a.resumeSaved()
+	case tui.ShowPlaylists:
+		return a.forwardAnd(msg, a.fetchPlaylists())
+	case tui.OpenPlaylist:
+		return a, a.fetchPlaylist(msg.ID)
+	case tui.Playlist:
+		return a, a.playlistCommand(msg)
+	case tui.EditPlaylist:
+		return a, a.editPlaylist(msg)
+	case tui.Shuffle:
+		return a, a.shuffleEverything()
+	case deletePlaylist:
+		return a, a.removePlaylist(msg)
+	case shuffled:
+		if len(msg.tracks) == 0 {
+			return a.forward(tui.Failed{Message: "there is nothing to shuffle"})
+		}
+		a.queue = queueFrom(subsonic.Album{Songs: msg.tracks}).Shuffle(a.shuffler())
+		next, cmd := a.forward(tui.Notice("shuffling " + msg.what))
+		return next, tea.Batch(cmd, a.playCurrent(), a.queueChanged())
 	case tui.Scan:
 		return a.forwardAnd(msg, a.startScan())
 	case scanning:
@@ -712,4 +742,188 @@ func tracks(n int64) string {
 		return "1 track"
 	}
 	return fmt.Sprintf("%d tracks", n)
+}
+
+// fetchPlaylists reads every playlist the server will show.
+func (a app) fetchPlaylists() tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		found, err := client.Playlists(a.ctx)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return tui.PlaylistsLoaded(found)
+	}
+}
+
+// fetchPlaylist reads one playlist with its tracks.
+func (a app) fetchPlaylist(id string) tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		found, err := client.Playlist(a.ctx, id)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return tui.PlaylistLoaded(found)
+	}
+}
+
+// playlistCommand does one thing to a playlist named by what it is called.
+func (a app) playlistCommand(msg tui.Playlist) tea.Cmd {
+	if msg.Verb == "create" {
+		client := a.client
+		return func() tea.Msg {
+			if _, err := client.CreatePlaylist(a.ctx, msg.Name); err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			return tui.Notice("made " + msg.Name)
+		}
+	}
+
+	client := a.client
+	return func() tea.Msg {
+		found, err := byName(a.ctx, client, msg.Name)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		switch msg.Verb {
+		case "edit":
+			// Read it with its tracks, so the marks are right from the first
+			// screen rather than after the first change.
+			full, err := client.Playlist(a.ctx, found.ID)
+			if err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			return tui.EditingPlaylist(full)
+		case "delete":
+			// The one thing here that cannot be undone from inside shanty.
+			return tui.Confirm{
+				Question: fmt.Sprintf("delete %q and its %s?", found.Name, tracksIn(found)),
+				Do:       deletePlaylist{id: found.ID, name: found.Name},
+			}
+		case "shuffle":
+			full, err := client.Playlist(a.ctx, found.ID)
+			if err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			return shuffled{tracks: full.Songs, what: full.Name}
+		}
+		return nil
+	}
+}
+
+// byName finds the one playlist called that.
+//
+// A server's playlist names are not unique, only their identifiers are, so two
+// with the same name is a question rather than a guess.
+func byName(ctx context.Context, client *subsonic.Client, name string) (subsonic.Playlist, error) {
+	found, err := client.Playlists(ctx)
+	if err != nil {
+		return subsonic.Playlist{}, err
+	}
+	var matched []subsonic.Playlist
+	for _, p := range found {
+		if strings.EqualFold(p.Name, name) {
+			matched = append(matched, p)
+		}
+	}
+	switch len(matched) {
+	case 0:
+		return subsonic.Playlist{}, fmt.Errorf("there is no playlist called %q on your server", name)
+	case 1:
+		return matched[0], nil
+	}
+	return subsonic.Playlist{}, fmt.Errorf("%d playlists are called %q, so shanty cannot tell which you mean\n\nrename one from your server", len(matched), name)
+}
+
+// editPlaylist adds a track to the playlist being edited or takes it out, and
+// reads the playlist back so the marks follow the server.
+func (a app) editPlaylist(msg tui.EditPlaylist) tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		if msg.Add {
+			if err := client.AddToPlaylist(a.ctx, msg.ID, msg.SongID); err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+		} else {
+			full, err := client.Playlist(a.ctx, msg.ID)
+			if err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			// The server removes by position, and the same track can be in a
+			// playlist more than once. The last one is what a second press
+			// after an add takes back out.
+			at := -1
+			for i, s := range full.Songs {
+				if s.ID == msg.SongID {
+					at = i
+				}
+			}
+			if at < 0 {
+				return tui.Failed{Message: "that track is not in the playlist any more"}
+			}
+			if err := client.RemoveFromPlaylist(a.ctx, msg.ID, at); err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+		}
+		full, err := client.Playlist(a.ctx, msg.ID)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return tui.PlaylistLoaded(full)
+	}
+}
+
+// shuffleEverything plays the whole library in a random order.
+func (a app) shuffleEverything() tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		artists, err := client.Artists(a.ctx)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		var songs []subsonic.Song
+		for _, artist := range artists {
+			full, err := client.Artist(a.ctx, artist.ID)
+			if err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			for _, al := range full.Albums {
+				album, err := client.Album(a.ctx, al.ID)
+				if err != nil {
+					return tui.Failed{Message: err.Error()}
+				}
+				songs = append(songs, album.Songs...)
+			}
+		}
+		return shuffled{tracks: songs, what: "everything"}
+	}
+}
+
+// tracksIn counts a playlist, in words.
+func tracksIn(p subsonic.Playlist) string {
+	if p.SongCount == 1 {
+		return "1 track"
+	}
+	return fmt.Sprintf("%d tracks", p.SongCount)
+}
+
+// removePlaylist deletes one, after the question has been answered.
+func (a app) removePlaylist(msg deletePlaylist) tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		if err := client.DeletePlaylist(a.ctx, msg.id); err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return tui.Notice("deleted " + msg.name)
+	}
+}
+
+// shuffler is where a shuffle gets its randomness. It is a field so a test can
+// pin the order.
+func (a app) shuffler() *rand.Rand {
+	if a.random != nil {
+		return a.random
+	}
+	return rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 }

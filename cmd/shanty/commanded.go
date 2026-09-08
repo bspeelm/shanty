@@ -62,6 +62,15 @@ func commanded(program *tea.Program) control.Handler {
 		case control.Play:
 			return settled(program, tui.SetPaused(false), func(s control.State) bool { return !s.Paused })
 
+		case control.Shuffle:
+			// Reading the library takes a moment, so the answer is what the
+			// session is doing once something is playing.
+			before, _ := askState(program)
+			program.Send(tui.Shuffle{})
+			return settled(program, nil, func(s control.State) bool {
+				return s.Title != "" && s.Title != before.Title
+			})
+
 		case control.Next, control.Prev:
 			before, ok := askState(program)
 			if !ok {
@@ -100,7 +109,9 @@ func commanded(program *tea.Program) control.Handler {
 // A change that never arrives is reported as it stands rather than as a
 // failure. The session answered, and what it says about itself is true.
 func settled(program *tea.Program, intent tea.Msg, done func(control.State) bool) control.Response {
-	program.Send(intent)
+	if intent != nil {
+		program.Send(intent)
+	}
 
 	deadline := time.Now().Add(answerTimeout)
 	for {

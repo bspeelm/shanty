@@ -3,7 +3,10 @@
 // Every operation returns a new Queue rather than modifying the receiver.
 package queue
 
-import "time"
+import (
+	"math/rand/v2"
+	"time"
+)
 
 // Track is one track in the queue.
 type Track struct {
@@ -78,6 +81,18 @@ func (q Queue) insert(i int, t Track) Queue {
 	tracks = append(tracks, q.tracks[i:]...)
 	q.tracks = tracks
 	return q
+}
+
+// Shuffle returns a queue holding the same tracks in a random order, starting
+// at the first.
+//
+// The randomness is the caller's, so that a test gets the same order twice and
+// the shuffling itself stays a pure function over data like everything else
+// here.
+func (q Queue) Shuffle(rng *rand.Rand) Queue {
+	tracks := append([]Track(nil), q.tracks...)
+	rng.Shuffle(len(tracks), func(i, j int) { tracks[i], tracks[j] = tracks[j], tracks[i] })
+	return Queue{tracks: tracks}
 }
 
 func (q Queue) Next() Queue    { return q.jump(q.at + 1) }

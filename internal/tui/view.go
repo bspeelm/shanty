@@ -108,6 +108,9 @@ func (m Model) footer(w int) string {
 	if m.mode == modeFilter {
 		return statusStyle.Render(fit("/"+m.filter+"\u2588", w))
 	}
+	if m.mode == modeConfirm {
+		return statusStyle.Render(fit(Sanitise(m.asking)+"  [y/N]", w))
+	}
 	if m.status == "" {
 		return faintStyle.Render(fit(help, w))
 	}
@@ -125,6 +128,13 @@ func (m Model) heading() string {
 		return searchHeading(m.query, m.found)
 	case ScreenStarred:
 		return starredHeading(m.starredRows)
+	case ScreenPlaylists:
+		if len(m.playlists) == 0 {
+			return "playlists · none yet"
+		}
+		return fmt.Sprintf("playlists · %s", plural(len(m.playlists), "playlist"))
+	case ScreenPlaylist:
+		return Sanitise(m.playlist.Name) + " · " + plural(len(m.playlist.Songs), "track")
 	case ScreenMessages:
 		if len(m.said) == 0 {
 			return "messages · nothing said yet"
@@ -183,13 +193,21 @@ func (m Model) row(i int) (string, string) {
 		return m.star(a.ID) + Sanitise(a.Name), plural(a.SongCount, "track")
 	case ScreenTracks:
 		s := m.album.Songs[i]
-		return fmt.Sprintf("%s%2d. %s", m.star(s.ID), s.Track, Sanitise(s.Title)), clock(time.Duration(s.Duration) * time.Second)
+		return fmt.Sprintf("%s%s%2d. %s", m.added(s.ID), m.star(s.ID), s.Track, Sanitise(s.Title)),
+			clock(time.Duration(s.Duration) * time.Second)
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[i]
 		if r.kind == kindHeading {
 			return faintStyle.Render(r.name), ""
 		}
 		return m.star(r.id) + Sanitise(r.name), Sanitise(r.detail)
+	case ScreenPlaylists:
+		p := m.playlists[i]
+		return Sanitise(p.Name), plural(p.SongCount, "track")
+	case ScreenPlaylist:
+		s := m.playlist.Songs[i]
+		return fmt.Sprintf("%s%2d. %s", m.star(s.ID), i+1, Sanitise(s.Title)),
+			Sanitise(s.Artist) + " · " + clock(time.Duration(s.Duration)*time.Second)
 	case ScreenMessages:
 		said := m.said[m.saidAt(i)]
 		// The message is one row, and some carry the cause on one line and
@@ -234,6 +252,18 @@ func (m Model) progress(w int) string {
 	done = max(0, min(w, done))
 	return statusStyle.Render(strings.Repeat("━", done)) +
 		faintStyle.Render(strings.Repeat("─", w-done))
+}
+
+// added marks a track already in the playlist being edited. Nothing is marked
+// when nothing is being edited, so the column is not there at all.
+func (m Model) added(id string) string {
+	if m.editing.ID == "" {
+		return ""
+	}
+	if m.inPlaylist[id] {
+		return "(A) "
+	}
+	return "    "
 }
 
 // star is the mark shown before something the server has starred. Everything

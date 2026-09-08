@@ -38,6 +38,17 @@ var commands = []command{
 		},
 	},
 	{
+		name:     "playlist",
+		summary:  playlistSummary(),
+		argument: "verb name",
+		run:      playlistCommand,
+	},
+	{
+		name:    "shuffle",
+		summary: "play everything on the server in a random order",
+		run:     func(string) (any, error) { return Shuffle{}, nil },
+	},
+	{
 		name:    "scan",
 		summary: "ask the server to look for new music",
 		run:     func(string) (any, error) { return Scan{}, nil },

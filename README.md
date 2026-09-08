@@ -84,6 +84,7 @@ shanty next         # skip to the next track
 shanty prev         # go back to the previous track
 shanty vol 40       # set the volume, from 0 to 100
 shanty seek 1:23    # move to a position in the track
+shanty shuffle      # play everything on the server in a random order
 shanty stop         # end the session and the music with it
 ```
 
