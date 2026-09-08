@@ -1,47 +1,48 @@
 # Keys
 
-Everything shanty responds to. There is no keybinding configuration yet; it is
-on the v0.2 list.
+## Moving around
 
-## Moving
-
-| key | what it does |
+| key | |
 |---|---|
-| `↑` `k` | up one |
-| `↓` `j` | down one |
-| `g` `home` | first |
-| `G` `end` | last |
+| `↑` `k` | up |
+| `↓` `j` | down |
+| `g` `home` | first item |
+| `G` `end` | last item |
 | `pgup` `pgdown` | a screenful |
-| `enter` `l` `→` | open — or play, on the track list |
-| `esc` `h` `←` `backspace` | back one level |
+| `enter` `l` `→` | open — or play, when you are looking at tracks |
+| `esc` `h` `←` `backspace` | back |
 
-Back at the top level does nothing. Leaving a music player by pressing left one
-time too many is a surprise nobody wants mid-album.
+There are three levels: artists, then that artist's albums, then that album's
+tracks. Back at the top does nothing, so you cannot leave the player by
+pressing back one time too many.
 
-The cursor is remembered per screen, so going back lands where you left.
+Each level remembers where you were, so going back puts you on the same row.
 
 ## Playing
 
-| key | what it does |
+| key | |
 |---|---|
 | `space` | pause or resume |
 | `n` | next track |
 | `p` | previous track |
 | `]` | forward ten seconds |
 | `[` | back ten seconds |
-| `+` `=` | volume up five |
-| `-` `_` | volume down five |
+| `+` `=` | volume up |
+| `-` `_` | volume down |
 
-Volume clamps to 0–100, because the key can be held down.
+Volume moves in steps of five and stops at 0 and 100.
 
-Playing a track queues the one after it, which is what makes the gap between
-tracks disappear — mpv opens the next file early rather than shanty decoding
-anything.
+Playing a track also queues the one after it, so albums play through without a
+gap between tracks.
 
 ## Leaving
 
-| key | what it does |
+| key | |
 |---|---|
 | `q` `ctrl+c` | quit |
 
-Quitting stops mpv. Nothing is left running.
+Quitting stops mpv too. Nothing is left running in the background.
+
+## Changing them
+
+Not yet. Configurable keys are planned.

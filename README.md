@@ -10,121 +10,85 @@
 
 <p align="center"><em>a music player for your own server</em></p>
 
-> **shanty** *(n.)* — a rough hut, and a song sung by people working.
+shanty plays the music on your own Subsonic or Navidrome server, from a
+terminal. It shows your artists, then their albums, then the tracks. You pick
+one and it plays, and when it finishes shanty tells the server, so your
+listening history stays on the machine you run.
 
-A terminal client for Navidrome and other Subsonic servers. One binary, mpv for
-playback, the Subsonic API for everything else.
-
-Connect to a server you run, browse what is on it, queue it, play it, and tell
-the server you played it. The whole program is in service of those five verbs,
-and things that are not one of them are argued for in
-[`docs/decisions.md`](docs/decisions.md) before they are built.
+It does not keep a local library, download anything, or manage files. The music
+stays where it is. Playback is handed to [mpv](https://mpv.io), so shanty plays
+whatever mpv plays.
 
 ## Installing
 
-shanty needs [mpv](https://mpv.io) installed. It does not decode audio itself —
-mpv does that, in its own process, for reasons in
-[ADR-011](docs/decisions.md).
-
-From a release:
+shanty needs mpv installed — that is the part that makes the sound.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
 ```
 
-Or from a checkout, which needs no release and no network:
+Or, from a clone:
 
 ```sh
 make install-binary
 ```
 
-The installer verifies the checksum always, and provenance on `--verify`. The
-checksum proves the bytes match what the release published; the attestation
-proves who published them, which a checksum cannot.
+Full instructions, including containers and image-based systems, are in
+[Installing](https://github.com/bspeelm/shanty/wiki/Installing).
 
 ## Using it
 
-On a machine with nothing configured, `shanty` asks for a server and a
-credential and writes both files itself. It takes a password once, stores the
-hash the Subsonic protocol sends, and never writes the password down.
+Run `shanty`. The first time, it asks for your server, your username and a
+password or API key, checks them, and writes its configuration itself. Your
+password is not stored — shanty keeps the scrambled form Subsonic servers
+accept, which is no use anywhere else.
 
 ```sh
-shanty              # browse and play, asking for a server on a first run
-shanty setup        # ask again, to change server or credential
-shanty doctor       # check the setup; every failure names what to type
+shanty              # browse and play
+shanty setup        # change server or credential
+shanty doctor       # check the setup and say what to fix
 shanty doctor -json # the same, for a script
-shanty uninstall    # remove the four directories, and say which
-shanty version      # what this binary is
+shanty uninstall    # remove everything shanty made
+shanty version      # what this build is
 shanty help         # the list
 ```
 
-Move with `↑↓` or `j` `k`, open with `enter`, go back with `esc`. `space`
-pauses, `n` and `p` skip, `[` and `]` seek, `+` and `-` change the volume, `q`
-quits.
+Arrow keys or `j` `k` to move, `enter` to open, `esc` to go back. `space`
+pauses, `n` and `p` skip, `[` and `]` seek, `+` and `-` change volume, `q`
+quits. The rest are in [Keys](https://github.com/bspeelm/shanty/wiki/Keys).
 
-## What it holds itself to
+## What it will and will not do
 
-A music client sits between a server you trust and a terminal you use, and
-holds a credential the whole time it is running. Most of what shanty promises
-is about that position, and each promise names the test that proves it rather
-than asking to be believed.
+It connects to your server and nothing else. No update checks, no telemetry, no
+third-party services. Scrobbles go to your server's own endpoint — forwarding
+them to Last.fm or ListenBrainz is a setting on the server you already run,
+rather than another password on every machine.
 
-| | |
-|---|---|
-| Your credential never appears in a command line, where every account on the machine can read it | `TestChildProcessHygiene`, which reads `/proc` |
-| The credentials file is 0600, or shanty refuses to start and prints the `chmod` | `TestCredentialsPermissions` |
-| shanty never writes a plaintext password — the type it saves has no such field | `TestNoPlaintextPasswordPersisted` |
-| Nothing the server sends reaches your terminal as an instruction | `TestNoFrameEverCarriesAnEscape` |
-| It writes to four directories, and `uninstall` removes them | the `TestIsolation*` suite, with a ran-count check in CI |
-| It talks to your server and nothing else — no update checks, no telemetry | one package imports `net/http`, asserted by `make budgets` |
-| TLS verification has no off switch, in any form | a grep in `make budgets`, and [ADR-004](docs/decisions.md) |
-| It works against a real server and a real player | the `integration` job: Navidrome in a container, mpv, a track played to the end |
+It keeps your credential out of reach of other accounts on the same computer,
+and refuses to start if the file holding it can be read by anyone else.
 
-None of that is a novel idea, and the clients that already exist are where the
-ideas came from. What shanty does differently is write each one down as a rule
-with a command attached, so a stranger can check the claims in an afternoon
-instead of taking them on trust.
+It cannot be told to skip certificate checking. If you use a self-signed
+certificate, add it to your system's trust store.
+
+It writes to four directories, leaves your mpv configuration alone, and removes
+all four when you run `shanty uninstall`.
+
+[Security](https://github.com/bspeelm/shanty/wiki/Security) covers this in
+full.
 
 ## Status
 
-| | |
-|---|---|
-| code | [`cmd/shanty`](cmd/shanty), [`internal/config`](internal/config), [`internal/mpv`](internal/mpv), [`internal/queue`](internal/queue), [`internal/subsonic`](internal/subsonic) and its [`fake`](internal/subsonic/fake), [`internal/tui`](internal/tui) |
-| plan | [`PLAN.md`](PLAN.md) — the contract; §0 is asserted by `make budgets` |
-| what it is for | [`docs/north-star.md`](docs/north-star.md) |
-| decisions | [`docs/decisions.md`](docs/decisions.md) — ADR-001 is the threat model, written first |
-| reviews | [`docs/review/`](docs/review) — a packet per release, saying what was checked and what was not |
+Browsing and playback work. Search, playlists, starring, offline scrobbling and
+resuming across devices are next; cover art and lyrics after that.
 
-Browsing and playback work. Search, playlists, star, an offline scrobble
-backlog and cross-device resume are next; cover art and lyrics after that. The
-milestones are in [`PLAN.md`](PLAN.md) §12 and the refusals in §3.
-
-## Working on it
-
-```sh
-make check      # lint, vet, race, budgets, standard - the gate
-make budgets    # the §0 numbers, on their own
-make standard   # conformance against the development standard
-```
-
-`make budgets` fails the moment a rule is broken — verified by planting a
-`panic` and an `InsecureSkipVerify` and watching it refuse both. That the line
-above still lists what `make check` actually runs is verified too, by
-`TestTheDocumentedGateMatchesTheMakefile`: this table drifted from the Makefile
-within a single commit, which is what a prose compiler is for.
-
-Nothing in `make check` touches the network. The fake server in
-[`internal/subsonic/fake`](internal/subsonic/fake) stands in for a real one and
-refuses requests that break shanty's own promises, so a mistake fails the test
-that made it rather than shipping.
+The **[wiki](https://github.com/bspeelm/shanty/wiki)** is the documentation.
+[CONTRIBUTING.md](CONTRIBUTING.md) is for working on it.
 
 ## Maintenance
 
 Written and maintained by one person, for their own use, and maintained while
-that stays true. There is no team behind this and no support commitment. Each
-release carries a packet in [`docs/review/`](docs/review) saying what was
-checked and, more usefully, what was not.
+that stays true. There is no team behind this and no support commitment.
 
 ## Licence
 
-MIT — [`LICENSE`](LICENSE), ADR-008.
+MIT — [`LICENSE`](LICENSE).

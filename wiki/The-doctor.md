@@ -1,43 +1,53 @@
 # The doctor
 
-`shanty doctor` asks eight questions, in the order that makes the answers
-useful: the local setup first, because there is no point asking a server
-anything until mpv and the configuration are in order.
+`shanty doctor` runs eight checks and reports on each. Anything that is not
+passing comes with the command or the change that fixes it.
 
-Every failure and every warning carries a fix. A test asserts that, so a check
-added later cannot arrive without one.
+```
+✓ mpv            mpv is at /usr/bin/mpv
+✓ mpv-version    mpv 0.38.0
+✓ runtime-dir    /run/user/1000/shanty will be made at 0700 when a track first plays
+✓ config         https://music.example.org
+! credentials    the credential is a plaintext password
+  a stolen config yields whatever else that password opens
+  fix: replace it with an api_key, or with password_file pointing at a secret you manage
+✓ server         https://music.example.org answered
+✓ auth           the credential works
+! auth-mode      this server offers API keys and shanty is not using one
+  an API key is revoked server-side in one click; a token is not
+  fix: create one in the server's web interface and put it in credentials.toml as api_key
+```
 
-| check | what it means when it fails |
+## The checks
+
+| | what it is looking at |
 |---|---|
-| `mpv` | mpv is not on PATH. The fix names the right command for your system — including `rpm-ostree` on an image-based one, where `dnf install` cannot write. |
-| `mpv-version` | mpv would not report a version. Informational: shanty does not yet declare a minimum, and inventing one would be a gate no record supports. |
-| `runtime-dir` | The directory the mpv socket lives in is unusable, or not 0700. It is reported, not created — `doctor` leaves nothing behind. |
-| `config` | `config.toml` will not parse, or names no server. Warns instead of failing if the server is plain HTTP. |
-| `credentials` | No credential, or one anybody on the machine can read. Warns if it is a plaintext password, and names the better options. |
-| `server` | The server did not answer. Points at reachability, not at your password. |
-| `auth` | The server answered and refused the credential. Points at `credentials.toml`, not at your firewall. |
-| `auth-mode` | The server offers API keys and shanty is using something weaker. |
+| `mpv` | whether mpv is installed and reachable |
+| `mpv-version` | which mpv, reported for your information |
+| `runtime-dir` | the directory the connection to mpv will live in |
+| `config` | that `config.toml` reads and names a server |
+| `credentials` | that a credential exists and only you can read it |
+| `server` | whether the server answers |
+| `auth` | whether it accepts your credential |
+| `auth-mode` | whether a better kind of credential is available |
 
-## Why `server` and `auth` are separate
+## Reading the results
 
-A server that answers and then refuses the credential is not unreachable. If
-those were one check, a wrong password would send you to look at your network.
+**✓** fine. **!** works, but you would probably want to change it. **✗**
+broken, and the fix is on the next line. **–** not checked, because something
+earlier made the answer meaningless.
 
-## `-json`
+Only ✗ makes `doctor` exit with an error.
+
+`server` and `auth` are separate. A server that answers and then refuses your
+credential is not unreachable — `server` passes and `auth` fails, so the
+problem is your password rather than your network.
+
+## As data
 
 ```sh
 shanty doctor -json
 ```
 
-The same report as a machine-readable object: an `id`, a `severity` of
-`fail`, `warn`, `pass` or `skip`, a `summary`, and a `fix` on anything that is
-not passing.
-
-Warnings do not make it exit non-zero. Only failures do.
-
-## Skips
-
-A check that could not be answered says so rather than guessing. If the
-configuration is unusable there is nothing to ask a server, so `server`, `auth`
-and `auth-mode` skip with a reason instead of failing three times for one
-cause.
+Each check comes back with an `id`, a `severity` of `fail`, `warn`, `pass` or
+`skip`, a `summary`, and a `fix` where there is one.

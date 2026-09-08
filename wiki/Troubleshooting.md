@@ -1,29 +1,28 @@
 # Troubleshooting
 
-Start with `shanty doctor`. Most of what follows is a longer version of
+Run `shanty doctor` first. Most of what follows is a longer version of
 something it already told you.
 
 ## "mpv is not on PATH"
 
-shanty does not decode audio; mpv does. See [Installing](Installing) for the
-command on your system.
+mpv is what plays the audio. [Installing](Installing) has the command for your
+system.
 
-On an image-based Fedora — Silverblue, Kinoite, Bazzite — `dnf install` cannot
-write `/usr`. Use `rpm-ostree install mpv` and reboot. If that fails to resolve
-because of layered kernel modules, `rpm-ostree update --install mpv` does the
-kernel and the package in one transaction and one reboot.
+On Fedora Silverblue, Kinoite or Bazzite, `dnf install` cannot change the
+system. Use `rpm-ostree install mpv` and reboot. If that fails while resolving
+kernel modules, `rpm-ostree update --install mpv` does the system update and
+the install together, in one reboot.
 
 ## mpv is installed and shanty still cannot find it
 
-You are probably running them in different containers.
+They are probably not in the same place.
 
-shanty starts mpv and talks to it over a unix socket, so both have to see the
-same filesystem. If shanty runs inside a Toolbx and mpv is on the host, or the
-other way round, they cannot meet. Put both on the same side.
+shanty talks to mpv through a socket file, so both have to see the same
+filesystem. If shanty is running inside a container and mpv is on the host — or
+the other way round — they cannot reach each other. Put both on the same side.
 
-A **flatpak** mpv cannot work at all: the sandbox gives it a different
-`XDG_RUNTIME_DIR`, so the socket shanty creates is not there under the name mpv
-was told to open.
+A **flatpak** mpv cannot work at all. Flatpak gives it a private view of the
+system, so the socket shanty makes is not there as far as mpv is concerned.
 
 ## "the credentials file is readable by other accounts"
 
@@ -31,46 +30,39 @@ was told to open.
 chmod 600 ~/.config/shanty/credentials.toml
 ```
 
-shanty refuses to start rather than warning, because a warning is a thing
-people scroll past.
+shanty stops rather than warning, so this cannot be scrolled past.
 
 ## "the server answered with an HTML page rather than JSON"
 
-Something is in front of your server — a reverse proxy, a login page, a captive
-portal. Open the URL in a browser and see what answers. A Subsonic server
-speaking to shanty answers JSON.
+Something is answering instead of your music server — a reverse proxy, a login
+page, a captive portal. Open the address in a browser and see what comes back.
 
 ## "the server refused the credential"
 
-The server is reachable; the credential is wrong. Check `username` in
-`config.toml` against what is in `credentials.toml`, or run `shanty setup`
-again.
+The server is reachable and your credential is wrong. Check that `username` in
+`config.toml` matches the account the credential belongs to, or run
+`shanty setup` again.
 
-If your account authenticates through LDAP, token authentication may be
-disabled for it — the server says so with error 41, and an API key is the way
-round it.
+If your account signs in through LDAP, the scrambled-password method may be
+turned off for it. Use an API key instead.
 
-## Playback stops between tracks
+## The music stops between tracks
 
-mpv is told to open the next track early. If it stops instead, mpv may have
-exited: shanty says so on the status line rather than silently restarting it,
-because a restart loop turns "mpv is broken" into "the machine is slow".
+If mpv has stopped, shanty says so on the status line rather than quietly
+restarting it. Restart shanty.
 
-Restart shanty. If it happens repeatedly, run `mpv <stream-url>` by hand and
-see what mpv says.
+If it keeps happening, try the same track in mpv directly and see what mpv
+says.
 
-## Nothing happens when I press a key
+## A key does nothing
 
-Check you are on the screen you think you are. `esc` at the top level does
-nothing on purpose — leaving a music player by pressing back one time too many
-is a bad surprise.
+Check which screen you are on. Back at the top level does nothing, so you
+cannot leave the player by pressing back one time too many.
 
-## It looks wrong in my terminal
+## A track name looks odd
 
-shanty draws with bold, faint and reverse only, which every emulator supports.
-If a track title looks strange, note that anything a terminal would obey is
-stripped out of what the server sends before it is drawn — a title that looked
-like an escape sequence will render as its printable characters.
+Anything a terminal would act on as an instruction is removed from names before
+they are drawn, so a name containing those characters appears without them.
 
 ## Removing it
 
@@ -78,4 +70,4 @@ like an escape sequence will render as its printable characters.
 shanty uninstall
 ```
 
-Then delete the binary, wherever you put it.
+Then delete the binary from wherever you installed it.

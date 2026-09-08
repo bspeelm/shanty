@@ -1,25 +1,23 @@
 # Installing
 
-shanty is one static binary. It needs **mpv**, because it does not decode audio
-itself — mpv does that in its own process, and ADR-011 says why.
+shanty is a single binary. It needs **mpv**, which is what actually plays the
+audio — shanty finds the music and mpv makes the sound.
 
 ## The binary
-
-From a release:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
 ```
 
-It downloads the archive for your platform, checks it against the release's
-`checksums.txt`, and installs to `~/.local/bin`. Add `--verify` to check
-provenance as well; that needs the `gh` CLI.
+This downloads the build for your system, checks it against the checksums the
+release publishes, and puts it in `~/.local/bin`.
 
-The checksum proves the bytes match what the release published. The attestation
-proves who published them, which a checksum cannot — whoever could swap the
-archive could swap the checksums file beside it.
+Add `--verify` to also check who built it. That needs the `gh` command line
+tool installed. The checksum tells you the file was not corrupted in transit;
+the verification tells you it came from this project's build, which a checksum
+cannot.
 
-From a checkout, needing no release and no network:
+From a clone of the repository, with no release and no network:
 
 ```sh
 make install-binary
@@ -35,20 +33,21 @@ make install-binary
 | macOS | `brew install mpv` |
 | Fedora Silverblue, Kinoite, Bazzite | `rpm-ostree install mpv`, then reboot |
 
-**A flatpak mpv will not work.** shanty starts mpv and talks to it over a unix
-socket, so both have to see the same filesystem at the same path. The flatpak
-sandbox gives mpv a different `XDG_RUNTIME_DIR`, so the socket shanty creates
-is not there under the name mpv was told to open. It fails looking like a
-permissions problem. ADR-014 has the detail.
+### mpv has to be reachable from where shanty runs
 
-The same rule applies to containers: if you run shanty inside a Toolbx or
-distrobox, mpv has to be inside it too. If you run shanty on the host, mpv goes
-on the host.
+shanty starts mpv and talks to it through a socket file, so both programs have
+to see the same filesystem.
 
-## Checking it worked
+- **A flatpak mpv will not work.** Flatpak gives it a private view of the
+  system, and it cannot see the socket shanty makes. The failure looks like a
+  permissions error.
+- **Inside a container**, install mpv in the same container you run shanty in.
+  If shanty runs on the host, mpv goes on the host.
+
+## Checking it
 
 ```sh
 shanty doctor
 ```
 
-Every line either passes or names the command that fixes it.
+Every line either passes or tells you the command to run.

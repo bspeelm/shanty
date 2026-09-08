@@ -1,19 +1,27 @@
 # Where it puts things
 
-Four directories. Nothing else, ever — not `~/.config/mpv`, not your shell
-files, nothing.
+Four directories, and nothing outside them.
 
-| directory | what is in it | losing it costs |
+| directory | contents | if you delete it |
 |---|---|---|
-| `~/.config/shanty/` | `config.toml` and `credentials.toml` | your setup; `shanty setup` rebuilds it |
-| `~/.local/state/shanty/` | resume position, scrobble backlog | a little history *(unused so far — v0.2)* |
-| `~/.cache/shanty/` | cover art | bandwidth *(unused so far — v0.3)* |
-| `$XDG_RUNTIME_DIR/shanty/` | the mpv socket | nothing; it is gone at logout |
+| `~/.config/shanty/` | your server address and credential | run `shanty setup` again |
+| `~/.local/state/shanty/` | resume position and pending scrobbles | you lose a little history *(not used yet)* |
+| `~/.cache/shanty/` | cover art | it downloads again *(not used yet)* |
+| `$XDG_RUNTIME_DIR/shanty/` | the connection to mpv while it is playing | nothing; it goes at logout |
 
-All four honour the XDG variables if you set them. On a system without
-`XDG_RUNTIME_DIR`, the socket falls back to a directory under the cache — never
-a shared `/tmp`, where a predictable socket name is one writable directory away
-from somebody else's socket answering under ours.
+All four follow the `XDG_` environment variables if you set them. On a system
+without `XDG_RUNTIME_DIR`, the connection to mpv lives under the cache
+directory instead — never in a shared temporary directory, where another user
+could get there first.
+
+## What it does not touch
+
+Your mpv configuration. shanty starts mpv with its own settings and ignores
+whatever is in `~/.config/mpv`, so nothing you have set up there changes and
+nothing shanty does can break it.
+
+Your shell files, your other programs' configuration, and anything else on the
+machine.
 
 ## Removing it
 
@@ -21,16 +29,9 @@ from somebody else's socket answering under ours.
 shanty uninstall
 ```
 
-It reads the same list, so it cannot fall behind. It leaves `~/.cache` and
-`$XDG_RUNTIME_DIR` themselves — shanty had to create them on the way to its own
-directories and they are not shanty's to delete, since something else may be
-about to use them.
+It prints what it removed and what was not there. `~/.cache` and the runtime
+directory themselves stay — shanty made them on the way to its own folders but
+they belong to the system, and other programs use them.
 
-The binary is not removed. It is wherever you put it.
-
-## Your mpv is not touched
-
-shanty starts mpv with `--no-config` and explicit flags. Whatever you have in
-`~/.config/mpv` is neither read nor written, and there is no way to pass extra
-flags through — which is deliberate, because that is how the promise would get
-broken one bug report at a time.
+The binary is not removed. Delete it from wherever you installed it, usually
+`~/.local/bin/shanty`.

@@ -44,11 +44,11 @@ func TestEveryDocumentedMakeTargetExists(t *testing.T) {
 	targets := makefileTargets(t)
 
 	var checked int
-	for _, m := range documentedTarget.FindAllStringSubmatch(read(t, "README.md"), -1) {
+	for _, m := range documentedTarget.FindAllStringSubmatch(read(t, "CONTRIBUTING.md"), -1) {
 		name := m[1]
 		checked++
 		if _, found := targets[name]; !found {
-			t.Errorf("README.md documents `make %s`, which the Makefile does not define", name)
+			t.Errorf("CONTRIBUTING.md documents `make %s`, which the Makefile does not define", name)
 		}
 	}
 
@@ -56,7 +56,7 @@ func TestEveryDocumentedMakeTargetExists(t *testing.T) {
 	// reports a clean run over nothing at all, which is the failure mode a
 	// prose compiler is most likely to have.
 	if checked < 3 {
-		t.Fatalf("the README parser found %d make targets; it has stopped matching", checked)
+		t.Fatalf("the CONTRIBUTING parser found %d make targets; it has stopped matching", checked)
 	}
 }
 
@@ -70,7 +70,7 @@ func TestTheDocumentedGateMatchesTheMakefile(t *testing.T) {
 		t.Fatal("the Makefile's check target has no prerequisites; the gate is empty")
 	}
 
-	readme := read(t, "README.md")
+	readme := read(t, "CONTRIBUTING.md")
 	line := lineContaining(t, readme, "make check")
 
 	for _, p := range prereqs {
@@ -78,7 +78,7 @@ func TestTheDocumentedGateMatchesTheMakefile(t *testing.T) {
 		// is the one place the prose is allowed to read better than the
 		// Makefile.
 		if !strings.Contains(line, p) {
-			t.Errorf("the Makefile runs %q as part of `make check`, which the README's description does not mention:\n  %s", p, line)
+			t.Errorf("the Makefile runs %q as part of `make check`, which CONTRIBUTING.md does not mention:\n  %s", p, line)
 		}
 	}
 }
@@ -135,15 +135,15 @@ func TestTheStatusTableNamesEveryPackage(t *testing.T) {
 		t.Fatal("the walk found no packages under internal/; it has stopped matching")
 	}
 
-	readme := read(t, "README.md")
+	readme := read(t, "CONTRIBUTING.md")
 	for _, pkg := range built {
 		if !strings.Contains(readme, pkg) {
-			t.Errorf("package %s exists and the README's status table does not name it", pkg)
+			t.Errorf("package %s exists and CONTRIBUTING.md does not name it", pkg)
 		}
 	}
 	for _, m := range regexp.MustCompile(`internal/[a-z/]+`).FindAllString(readme, -1) {
 		if _, err := os.Stat(m); err != nil {
-			t.Errorf("README.md names %s, which is not a package in the tree", m)
+			t.Errorf("CONTRIBUTING.md names %s, which is not a package in the tree", m)
 		}
 	}
 }
