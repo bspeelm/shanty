@@ -27,6 +27,10 @@ lint:
 
 vet:
 	go vet ./...
+	# The integration test is behind a build tag, so the line above never
+	# compiles it. Vetting it needs no server and catches a change to a
+	# signature it uses, which is how it has been broken before.
+	go vet -tags=integration ./...
 
 test:
 	go test ./...

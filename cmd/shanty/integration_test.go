@@ -257,7 +257,7 @@ func TestIntegrationVerticalSlice(t *testing.T) {
 	})
 
 	t.Run("scrobble", func(t *testing.T) {
-		if err := client.Scrobble(ctx, album.Songs[0].ID, true); err != nil {
+		if err := client.Scrobble(ctx, album.Songs[0].ID, true, time.Now()); err != nil {
 			t.Fatalf("the server refused a scrobble: %v", err)
 		}
 	})
