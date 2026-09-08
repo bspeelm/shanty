@@ -68,6 +68,21 @@ shanty version      # print the version of this build
 shanty help         # list the commands
 ```
 
+Type `:headless` and the interface closes while the music keeps playing. These
+command the session it leaves behind, from any shell:
+
+```sh
+shanty status       # say what is playing
+shanty pause        # pause or resume
+shanty next         # skip to the next track
+shanty prev         # go back to the previous track
+shanty vol 40       # set the volume, from 0 to 100
+shanty seek 1:23    # move to a position in the track
+shanty stop         # end the session and the music with it
+```
+
+Running `shanty` again returns the interface to what is playing.
+
 Use the arrow keys or `j` and `k` to move through a list, `enter` to open an
 artist or album, and `enter` on a track to play it. Press `esc` to go back a
 level, and `/` to filter the list you are looking at.

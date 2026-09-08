@@ -48,6 +48,15 @@ var verbs = map[Verb]bool{
 // Known reports whether the verb is one a session accepts.
 func Known(v Verb) bool { _, ok := verbs[v]; return ok }
 
+// Verbs is every verb a session accepts.
+func Verbs() []Verb {
+	out := make([]Verb, 0, len(verbs))
+	for v := range verbs {
+		out = append(out, v)
+	}
+	return out
+}
+
 // TakesArgument reports whether the verb needs something after it.
 func TakesArgument(v Verb) bool { return verbs[v] }
 

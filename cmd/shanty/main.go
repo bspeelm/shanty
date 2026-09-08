@@ -53,13 +53,17 @@ type command struct {
 
 // A function rather than a variable, so that help can list the commands.
 func commands() []command {
-	return []command{
+	out := []command{
 		{"setup", "ask for a server and a credential, and write both files", runSetup},
 		{"doctor", "check the setup and say what to fix", runDoctor},
 		{"uninstall", "remove every directory shanty made, and say which", runUninstall},
 		{"version", "print the version", runVersion},
 		{"help", "print this", runHelp},
 	}
+	for _, c := range commanding {
+		out = append(out, command{c.name, c.summary, commandSession(c.verb)})
+	}
+	return out
 }
 
 func main() {
