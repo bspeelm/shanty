@@ -325,6 +325,7 @@ func TestHandingOverReleasesThePlayerAndTheQueue(t *testing.T) {
 // could stop.
 func TestUninstallRefusesWhileASessionIsPlaying(t *testing.T) {
 	env, _ := scratch(t)
+	env = shortRuntime(t, env)
 	if err := env.Paths.EnsureRuntime(); err != nil {
 		t.Fatal(err)
 	}
@@ -390,6 +391,7 @@ func TestTheDoctorReportsEveryStateASessionCanBeIn(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env, _ := scratch(t)
+			env = shortRuntime(t, env)
 			if err := env.Paths.EnsureRuntime(); err != nil {
 				t.Fatal(err)
 			}
@@ -412,6 +414,33 @@ func TestTheDoctorReportsEveryStateASessionCanBeIn(t *testing.T) {
 			}
 		})
 	}
+}
+
+// shortDir is a directory whose path is short enough to hold a socket.
+//
+// A unix socket path is limited to around a hundred bytes. A directory from
+// t.TempDir is named after the test, sits under whatever TMPDIR holds, and
+// exceeds that on its own. Where shanty really puts its sockets is short,
+// which is why nothing outside these tests has to think about it.
+func shortDir(t *testing.T) string {
+	t.Helper()
+	base := "/tmp"
+	if _, err := os.Stat(base); err != nil {
+		t.Skip("no short path to put a socket in")
+	}
+	dir, err := os.MkdirTemp(base, "sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+// shortRuntime points the environment at a runtime directory a socket fits in.
+func shortRuntime(t *testing.T, env Env) Env {
+	t.Helper()
+	env.Paths.Runtime = shortDir(t)
+	return env
 }
 
 // serveOn answers on the control socket the way a session does.
@@ -465,6 +494,7 @@ func TestStoppingCoversEveryStateThereIsToStop(t *testing.T) {
 
 	t.Run("a session playing", func(t *testing.T) {
 		env, out := scratchOut(t)
+		env = shortRuntime(t, env)
 		if err := env.Paths.EnsureRuntime(); err != nil {
 			t.Fatal(err)
 		}
@@ -480,6 +510,7 @@ func TestStoppingCoversEveryStateThereIsToStop(t *testing.T) {
 
 	t.Run("a player no session owns", func(t *testing.T) {
 		env, out := scratchOut(t)
+		env = shortRuntime(t, env)
 		if err := env.Paths.EnsureRuntime(); err != nil {
 			t.Fatal(err)
 		}

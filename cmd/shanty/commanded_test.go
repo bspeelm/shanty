@@ -25,7 +25,7 @@ func session(t *testing.T) (string, *recorder) {
 	program := tea.NewProgram(a, tea.WithContext(t.Context()),
 		tea.WithoutRenderer(), tea.WithInput(nil))
 
-	socket := filepath.Join(t.TempDir(), "control.sock")
+	socket := filepath.Join(shortDir(t), "control.sock")
 	l, err := control.Listen(socket)
 	if err != nil {
 		t.Fatal(err)
