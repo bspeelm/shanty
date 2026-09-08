@@ -299,3 +299,42 @@ func TestTheMpvFixNamesACommandThatWorksOnThisKindOfMachine(t *testing.T) {
 		})
 	}
 }
+
+// TestTheDoctorHoldsMpvToAMinimumVersion covers the number and the reason for
+// it: shanty always passes --prefetch-playlist, which arrived in 0.24.0.
+func TestTheDoctorHoldsMpvToAMinimumVersion(t *testing.T) {
+	for _, tc := range []struct {
+		banner   string
+		severity Severity
+		says     string
+	}{
+		{"mpv v0.41.0 Copyright", Pass, "0.41.0"},
+		{"mpv v0.24.0 Copyright", Pass, "0.24.0"},
+		{"mpv v0.23.0 Copyright", Fail, "too old"},
+		{"mpv v0.17.0 Copyright", Fail, "too old"},
+		{"mpv, but it will not say which", Warn, "did not say which version"},
+	} {
+		t.Run(tc.banner, func(t *testing.T) {
+			env, _ := scratch(t)
+			env.Command = func(context.Context, string, ...string) ([]byte, error) {
+				return []byte(tc.banner + "\n"), nil
+			}
+
+			got := checkMpvVersion(t.Context(), env, Result{ID: "mpv", Severity: Pass})
+
+			if got.Severity != tc.severity {
+				t.Errorf("severity %v, want %v (%s)", got.Severity, tc.severity, got.Summary)
+			}
+			if !strings.Contains(got.Summary+got.Detail+got.Fix, tc.says) {
+				t.Errorf("the report reads %q / %q / %q, want it to mention %q",
+					got.Summary, got.Detail, got.Fix, tc.says)
+			}
+			if tc.severity != Pass && got.Fix == "" {
+				t.Error("a problem with nothing to do about it")
+			}
+			if tc.severity == Fail && !strings.Contains(got.Detail+got.Fix, "0.24.0") {
+				t.Errorf("a version too old does not name the minimum: %q / %q", got.Detail, got.Fix)
+			}
+		})
+	}
+}

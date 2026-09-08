@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/bspeelm/shanty/internal/config"
+	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
@@ -161,9 +162,10 @@ func checkMpv(env Env) Result {
 	return Result{ID: "mpv", Severity: Pass, Summary: "mpv is at " + path}
 }
 
-// checkMpvVersion reports mpv’s version. There is no minimum version.
-func checkMpvVersion(ctx context.Context, env Env, mpv Result) Result {
-	if mpv.Severity == Fail {
+// checkMpvVersion reports mpv’s version and whether it is old enough to be
+// missing a flag shanty always passes.
+func checkMpvVersion(ctx context.Context, env Env, found Result) Result {
+	if found.Severity == Fail {
 		return skipped("mpv-version", "not checked; mpv was not found")
 	}
 	out, err := env.Command(ctx, "mpv", "--version")
@@ -174,6 +176,19 @@ func checkMpvVersion(ctx context.Context, env Env, mpv Result) Result {
 			Fix:     "run `mpv --version` by hand and see what it says"}
 	}
 	line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	version, known := mpv.Version(string(out))
+	if !known {
+		return Result{ID: "mpv-version", Severity: Warn,
+			Summary: "mpv did not say which version it is",
+			Detail:  line,
+			Fix:     "shanty needs " + mpv.Minimum + " or newer; check with `mpv --version`"}
+	}
+	if mpv.OlderThan(version, mpv.Minimum) {
+		return Result{ID: "mpv-version", Severity: Fail,
+			Summary: "mpv " + version + " is too old",
+			Detail:  "shanty starts mpv with --prefetch-playlist, which arrived in " + mpv.Minimum,
+			Fix:     "upgrade mpv to " + mpv.Minimum + " or newer"}
+	}
 	return Result{ID: "mpv-version", Severity: Pass, Summary: line}
 }
 

@@ -393,10 +393,11 @@ belongs to v0.3.
 ADR-012, the macOS form of §7 and §8, answered before a release claims to
 support macOS.
 
-And one number with no record yet: the **minimum mpv version**, which §8 has
-`doctor` checking against something nobody has chosen. `--input-ipc-server` and
-`--prefetch-playlist=yes` each have a first release; the floor is whichever is
-later, found by reading mpv's changelog rather than by guessing.
+The minimum mpv version is settled: **0.24.0**. `--input-ipc-server` arrived in
+0.17.0 and `--prefetch-playlist` in 0.24.0, so the floor is the later of the
+two. Both were read out of mpv's own history rather than guessed: v0.23.0 does
+not contain the commit that added prefetching and v0.24.0 does, and there is no
+release between them. `doctor` fails an older mpv and names the number.
 
 ## §14 On writing things down
 

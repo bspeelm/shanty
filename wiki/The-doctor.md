@@ -26,8 +26,11 @@ it.
 the right install command for your system, including image-based systems where
 the usual package manager cannot modify the operating system.
 
-**`mpv-version`** — which version of mpv you have. This is reported for your
-information. shanty does not currently require a minimum version.
+**`mpv-version`** — which version of mpv you have, and whether it is new
+enough. shanty needs **0.24.0** or newer: it always starts mpv with
+`--prefetch-playlist`, so that albums play without a gap, and that option
+arrived in 0.24.0. An older mpv is reported as a failure naming the number. A
+version shanty cannot read is a warning rather than a refusal.
 
 **`runtime-dir`** — the directory that will hold shanty's connection to mpv
 while music is playing. The check confirms the directory is usable and readable

@@ -445,3 +445,97 @@ func TestClosingAPlayerThatWillNotQuitDoesNotHang(t *testing.T) {
 		t.Fatal("closing a player that will not quit never returned")
 	}
 }
+
+// TestReadingMpvsVersion covers what mpv prints, including the builds that put
+// more after the number.
+func TestReadingMpvsVersion(t *testing.T) {
+	for _, tc := range []struct {
+		banner string
+		want   string
+	}{
+		{"mpv v0.41.0 Copyright © 2000-2025 mpv/MPlayer/mplayer2 projects", "0.41.0"},
+		{"mpv 0.24.0", "0.24.0"},
+		{"mpv v0.35.1-dirty Copyright", "0.35.1-dirty"},
+		{"mpv v0.38.0\n built on Jan  1 2024", "0.38.0"},
+	} {
+		got, ok := Version(tc.banner)
+		if !ok {
+			t.Errorf("no version read out of %q", tc.banner)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("read %q out of %q, want %q", got, tc.banner, tc.want)
+		}
+	}
+
+	for _, banner := range []string{"", "mpv", "not mpv at all", "mpv version unknown"} {
+		if got, ok := Version(banner); ok {
+			t.Errorf("read %q out of %q, want nothing", got, banner)
+		}
+	}
+}
+
+// TestComparingVersionsAgainstTheMinimum covers below, equal and above, and a
+// version that cannot be read.
+func TestComparingVersionsAgainstTheMinimum(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		older   bool
+	}{
+		{"0.23.0", true},
+		{"0.17.0", true},
+		{"0.9.0", true},
+		{"0.24.0", false},
+		{"0.24.1", false},
+		{"0.41.0", false},
+		{"1.0.0", false},
+		{"0.24", false},
+		{"0.23", true},
+		// A build from a checkout is newer than the release it names.
+		{"0.24.0-dirty", false},
+		// Unreadable is not old: refusing to run against something
+		// unrecognised would be worse than trying.
+		{"", false},
+		{"unknown", false},
+	} {
+		if got := OlderThan(tc.version, Minimum); got != tc.older {
+			t.Errorf("OlderThan(%q, %q) = %v, want %v", tc.version, Minimum, got, tc.older)
+		}
+	}
+}
+
+// TestTheMinimumIsTheFlagsShantyPasses ties the number to the reason for it.
+// Both flags are always passed, so the floor is whichever arrived later.
+func TestTheMinimumIsTheFlagsShantyPasses(t *testing.T) {
+	if Minimum != "0.24.0" {
+		t.Errorf("the minimum is %q; --prefetch-playlist arrived in 0.24.0 and --input-ipc-server in 0.17.0", Minimum)
+	}
+	_, dir := stub(t)
+	argv := report(t, dir, argvFile)
+	for _, flag := range []string{"--input-ipc-server=", "--prefetch-playlist"} {
+		if !strings.Contains(argv, flag) {
+			t.Errorf("the minimum is set by %s and mpv is not started with it", flag)
+		}
+	}
+}
+
+// TestComparingVersionsOfDifferentLengths covers a version with fewer parts
+// than the one it is held against. The missing parts are zero, so 0.24 is
+// 0.24.0 and older than 0.24.1.
+func TestComparingVersionsOfDifferentLengths(t *testing.T) {
+	for _, tc := range []struct {
+		version, than string
+		older         bool
+	}{
+		{"0.24", "0.24.1", true},
+		{"0.24", "0.24.0", false},
+		{"0.24.0", "0.24", false},
+		{"1", "0.24.0", false},
+		{"0.24.0.1", "0.24.0", false},
+		{"0.24.0", "0.24.0.1", true},
+	} {
+		if got := OlderThan(tc.version, tc.than); got != tc.older {
+			t.Errorf("OlderThan(%q, %q) = %v, want %v", tc.version, tc.than, got, tc.older)
+		}
+	}
+}

@@ -15,6 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -22,6 +24,12 @@ import (
 
 // startTimeout is how long mpv is given to create its socket.
 const startTimeout = 10 * time.Second
+
+// Minimum is the oldest mpv shanty runs against.
+//
+// It is the later of the two releases the fixed flags need:
+// --input-ipc-server arrived in 0.17.0, and --prefetch-playlist in 0.24.0.
+const Minimum = "0.24.0"
 
 // stopGrace is how long mpv is given to quit on its own before it is killed.
 const stopGrace = 500 * time.Millisecond
@@ -272,4 +280,69 @@ func (p *Player) Detach() error {
 	_ = p.conn.Close()
 	<-p.done
 	return nil
+}
+
+// Version reads the version out of what `mpv --version` prints. The second
+// result is false for anything it cannot read a version out of.
+//
+// mpv prints "mpv v0.41.0 Copyright ...", and builds from a git checkout add
+// more after the number.
+func Version(banner string) (string, bool) {
+	line, _, _ := strings.Cut(strings.TrimSpace(banner), "\n")
+	for _, word := range strings.Fields(line) {
+		word = strings.TrimPrefix(word, "v")
+		if _, ok := numbers(word); ok {
+			return word, true
+		}
+	}
+	return "", false
+}
+
+// OlderThan reports whether a version is below the given one. It is false for
+// a version it cannot read, because refusing to run against something
+// unrecognised would be worse than trying.
+func OlderThan(version, than string) bool {
+	got, ok := numbers(version)
+	if !ok {
+		return false
+	}
+	want, ok := numbers(than)
+	if !ok {
+		return false
+	}
+	for i := range want {
+		// A version with fewer parts than the one it is compared against has
+		// zero for the rest: 0.24 is 0.24.0.
+		part := 0
+		if i < len(got) {
+			part = got[i]
+		}
+		switch {
+		case part < want[i]:
+			return true
+		case part > want[i]:
+			return false
+		}
+	}
+	return false
+}
+
+// numbers reads a dotted version into its parts. Anything after the numbers,
+// as a git build adds, is dropped.
+func numbers(version string) ([]int, bool) {
+	version, _, _ = strings.Cut(version, "-")
+	version, _, _ = strings.Cut(version, "+")
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return nil, false
+	}
+	out := make([]int, 0, len(parts))
+	for _, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return nil, false
+		}
+		out = append(out, n)
+	}
+	return out, true
 }
