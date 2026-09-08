@@ -129,7 +129,7 @@ func TestNoFrameEverCarriesAnEscape(t *testing.T) {
 		frame := m.View()
 		// The styles themselves emit SGR codes, so the assertion is on the
 		// sequences a hostile string would introduce, not on ESC outright.
-		for _, forbidden := range []string{"\x1b[2J", "\x1b[H", "\x1b[6n", "\x1b[1;1r", "\a", "\r", "\n\x9b"} {
+		for _, forbidden := range []string{"\x1b[2J", "\x1b[H", "\x1b[6n", "\x1b[1;1r", "\a", "\r", "\n\x9b", "\u202e"} {
 			if strings.Contains(frame, forbidden) {
 				t.Errorf("the %s frame carries %q", name, forbidden)
 			}

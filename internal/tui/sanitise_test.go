@@ -11,7 +11,7 @@ import (
 // answer some emulators inject back as if it had been typed. Kept as a literal
 // here rather than imported from the fake, so this package's tests need
 // nothing that can open a socket.
-const hostile = "\x1b[2J\x1b[H\x1b[1;1r\x1b[6n\x07\r\n\x9b31m"
+const hostile = "\x1b[2J\x1b[H\x1b[1;1r\x1b[6n\x07\r\n\x9b31m\u202e"
 
 func TestSanitiseRemovesEverythingATerminalWouldObey(t *testing.T) {
 	got := Sanitise(hostile + "Slipway")
@@ -44,13 +44,57 @@ func TestSanitiseLeavesOrdinaryNamesAlone(t *testing.T) {
 	}
 }
 
-// ADR-013 declines to strip these. An artist name in Arabic or Hebrew is an
-// ordinary thing to display, and mangling one to prevent a display trick would
-// be a bug for real users.
-func TestSanitiseKeepsBidirectionalMarks(t *testing.T) {
-	in := "‫العندليب‬"
-	if got := Sanitise(in); got != in {
-		t.Errorf("Sanitise stripped a bidi mark: %q", got)
+// The characters that force the display order of letters. A server can use one
+// to make a title read in an order the characters do not have, and an
+// unterminated one changes the layout of the rest of the row it is drawn on.
+func TestSanitiseRemovesBidirectionalFormatting(t *testing.T) {
+	for _, r := range []rune{
+		0x202a, 0x202b, 0x202c, 0x202d, 0x202e, // embeddings, pop, overrides
+		0x2066, 0x2067, 0x2068, 0x2069, // isolates
+	} {
+		in := "Slipway" + string(r) + "Ballast"
+		if got := Sanitise(in); got != "SlipwayBallast" {
+			t.Errorf("Sanitise(%U) = %q, want the character removed", r, got)
+		}
+	}
+}
+
+// The reversal itself. A right-to-left override makes what follows display
+// backwards, so a title can be made to read as something it is not.
+func TestSanitiseRemovesTheReversal(t *testing.T) {
+	got := Sanitise("cover\u202egnp.exe")
+	if strings.ContainsRune(got, 0x202e) {
+		t.Fatalf("the override survived: %q", got)
+	}
+	if got != "covergnp.exe" {
+		t.Errorf("Sanitise = %q, want covergnp.exe", got)
+	}
+}
+
+// Right-to-left scripts render from the directional properties of the letters
+// themselves and need no control characters, so removing the control
+// characters does not affect them.
+func TestSanitiseLeavesRightToLeftLettersAlone(t *testing.T) {
+	for _, want := range []string{
+		"\u0623\u0645 \u0643\u0644\u062b\u0648\u0645",
+		"\u05e9\u05dc\u05de\u05d4 \u05d0\u05e8\u05e6\u05d9",
+		"\u0623\u0645 \u0643\u0644\u062b\u0648\u0645 (Umm Kulthum)",
+	} {
+		if got := Sanitise(want); got != want {
+			t.Errorf("Sanitise(%q) = %q", want, got)
+		}
+	}
+}
+
+// The marks order neutral characters and cannot reverse letters, so they are
+// kept. This pins the narrower rule rather than leaving it to widen without a
+// decision.
+func TestSanitiseKeepsTheDirectionalMarks(t *testing.T) {
+	for _, r := range []rune{0x200e, 0x200f} {
+		in := "Aoi" + string(r) + " (1998)"
+		if got := Sanitise(in); got != in {
+			t.Errorf("Sanitise removed %U: %q", r, got)
+		}
 	}
 }
 

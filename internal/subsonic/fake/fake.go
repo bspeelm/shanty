@@ -53,7 +53,7 @@ const oversizeBytes = 24 << 20
 
 // Hostile is the escape sequence HostileText prefixes: a screen clear, a
 // cursor move, a scroll-region change and a device-status query.
-const Hostile = "\x1b[2J\x1b[H\x1b[1;1r\x1b[6n\x07\r\n\x9b31m"
+const Hostile = "\x1b[2J\x1b[H\x1b[1;1r\x1b[6n\x07\r\n\x9b31m\u202e"
 
 // Options configures a fake. With no credential set it accepts nothing.
 type Options struct {

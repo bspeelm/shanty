@@ -419,6 +419,47 @@ The alternative was to let mpv run anywhere and pass the stream URL some other
 way, which means command-line arguments, which ADR-001 refuses. The constraint
 is the price of that property.
 
+## ADR-015 — Bidirectional formatting characters are removed from server text
+
+**Status:** accepted. Amends ADR-013, which stands.
+
+ADR-013 decided that terminal control sequences are removed from text the
+server supplies, and decided not to remove the Unicode bidirectional
+characters. The reason it gave was that an artist name in Arabic or Hebrew is
+an ordinary thing to display, and that removing those characters would break
+real names to prevent a display trick affecting nobody.
+
+That reasoning rests on a false premise. Arabic and Hebrew render correctly
+from the directional properties of the letters themselves, through the Unicode
+Bidirectional Algorithm. They need no control characters. Removing the control
+characters breaks no name written in a right-to-left script.
+
+The test written to defend the earlier position shows the confusion. Its input
+was Arabic letters wrapped in `U+202B RIGHT-TO-LEFT EMBEDDING` and `U+202C POP
+DIRECTIONAL FORMATTING`. The letters survive stripping either way. What the
+test actually asserted was that the two control characters survive.
+
+**What these characters do.** An override or an isolate forces the direction of
+strong characters, so a server can make a title display in an order the
+characters do not have. A track named to end in one thing can be made to read
+as ending in another. The screens are also built by joining a title and a
+duration into one line, so an unterminated directional control inside a title
+changes the layout of the rest of that row.
+
+**Therefore the bidirectional formatting characters are removed alongside the
+terminal controls:** `U+202A` to `U+202E`, the embedding and override block
+that Unicode itself deprecates, and `U+2066` to `U+2069`, the isolates.
+
+**The marks `U+200E` and `U+200F` are kept.** They act as invisible strong
+characters that resolve the direction of neutral characters between them. They
+cannot reverse a run of letters, so they cannot produce the effect above, and
+they are what a person uses to place punctuation correctly in a title that
+mixes directions.
+
+The fake server's hostile-text mode carries a direction override, so this is
+checked by every screen's rendering test rather than by one function's unit
+test.
+
 ---
 
 ## Open, and assigned
