@@ -824,3 +824,44 @@ A server allows two playlists to share a name; only their identifiers are
 unique. Two matches is reported rather than resolved, because picking one would
 be a guess about the thing that cannot be undone.
 
+## ADR-020 — Keys are bound to named actions, and the names are the interface
+
+**Status:** accepted. Completes ADR-016, which planned configurable bindings
+without saying what a binding names.
+
+A key does not do a thing; it names one. `next` is the action, and `n` is one
+way to ask for it. The table of actions is what the configuration binds
+against, what the wiki is held to, and what `doctor` lists.
+
+This is why the dispatch is a table rather than a switch. A switch is not a
+list of anything: it cannot be counted, compared with a page, or rebound. The
+table is a few lines larger and it is the only shape in which ADR-016's
+promised test could be written at all.
+
+### What the configuration may change, and what it may not
+
+An action named in `[keys]` takes the keys it is given instead of the ones it
+came with. An action left out keeps them, so a configuration says only what is
+different.
+
+The keys that open a mode -- `/`, `:` and `g` -- are ordinary actions and can
+be rebound. The keys inside a mode cannot: `esc` leaves a filter, `tab`
+completes a command, `y` answers a question. They belong to the mode rather
+than to the list, and a mode with a rebindable escape is a mode somebody can
+lock themselves inside.
+
+### Everything wrong is reported, and nothing refuses to start
+
+A binding onto a key another action still holds leaves one of them silently
+unreachable, which is the commonest way to get this wrong and the hardest to
+notice. It is reported, along with an action that does not exist and one bound
+to no keys at all.
+
+All of them at once, rather than the first: somebody fixing a configuration
+wants the list. `doctor` gives it, and shanty says it on the last row when it
+starts.
+
+It starts anyway. A typo in `config.toml` is not a reason to withhold somebody's
+music, and the alternative -- refusing to run until the file is right -- makes
+the mistake worse than it is.
+

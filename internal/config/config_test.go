@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestConfigRoundTripsAt0644(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("round-tripped %+v, want %+v", got, want)
 	}
 }
@@ -119,7 +120,7 @@ func TestAFailedSaveLeavesThePreviousFileIntact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != first {
+	if !reflect.DeepEqual(got, first) {
 		t.Errorf("the untouched file changed to %+v", got)
 	}
 }

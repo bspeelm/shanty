@@ -18,6 +18,9 @@ type Config struct {
 	Server string `toml:"server"`
 	// Username is the account name on that server.
 	Username string `toml:"username"`
+	// Keys binds an action to the keys that do it, replacing the ones shanty
+	// comes with. An action not named here keeps its own.
+	Keys map[string][]string `toml:"keys"`
 }
 
 // LoadConfig reads config.toml. A missing file returns the zero Config and no

@@ -79,6 +79,7 @@ func TestEveryKeyIsDocumentedAndEveryDocumentedKeyIsBound(t *testing.T) {
 		"★":      "the mark on something starred",
 		"(A)":    "the mark on a track already in a playlist",
 		"shanty": "the program",
+		"[keys]": "the section of config.toml that binds them",
 	}
 
 	for _, found := range backticked.FindAllStringSubmatch(page, -1) {
@@ -148,5 +149,116 @@ func TestEveryActionIsReachableFromAKeyPress(t *testing.T) {
 				t.Errorf("%q reaches %s, want %s", key, got.Name, a.Name)
 			}
 		}
+	}
+}
+
+// TestBindingReplacesTheKeysAnActionCameWith covers the point of the
+// configuration: a named action takes the keys it is given instead of its own.
+func TestBindingReplacesTheKeysAnActionCameWith(t *testing.T) {
+	keys, wrong := Bind(map[string][]string{"next": {"z"}})
+	if len(wrong) != 0 {
+		t.Fatalf("a good binding was refused: %v", wrong)
+	}
+
+	if got, ok := keys["z"]; !ok || got.Name != "next" {
+		t.Errorf("z reaches %v, want next", got.Name)
+	}
+	if _, ok := keys["n"]; ok {
+		t.Error("n still skips a track after being rebound")
+	}
+	// An action not named keeps what it came with.
+	if got, ok := keys["p"]; !ok || got.Name != "previous" {
+		t.Errorf("p reaches %v, want previous", got.Name)
+	}
+}
+
+// TestBindingReportsEverythingWrongAtOnce covers somebody fixing a
+// configuration, who wants the whole list rather than the first problem.
+func TestBindingReportsEverythingWrongAtOnce(t *testing.T) {
+	_, wrong := Bind(map[string][]string{
+		"skip-forward": {"z"}, // not an action
+		"pause":        {},    // bound to nothing
+		"louder":       {"x"}, // not an action either
+	})
+
+	if len(wrong) != 3 {
+		t.Fatalf("got %d complaints, want one for each mistake: %v", len(wrong), wrong)
+	}
+	all := strings.Join(wrong, "\n")
+	for _, want := range []string{"skip-forward", "pause", "louder"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("nothing said about %q: %v", want, wrong)
+		}
+	}
+}
+
+// TestARebindingThatCollidesIsReported covers two actions given the same key,
+// which would otherwise leave one of them unreachable and silent.
+func TestARebindingThatCollidesIsReported(t *testing.T) {
+	_, wrong := Bind(map[string][]string{"next": {"x"}, "previous": {"x"}})
+
+	if len(wrong) == 0 {
+		t.Fatal("two actions were bound to one key without complaint")
+	}
+	if !strings.Contains(wrong[0], "both") {
+		t.Errorf("the complaint reads %q", wrong[0])
+	}
+}
+
+// TestARebindingOntoAKeyStillHeldIsReported covers taking a key an action
+// still has, which is the commonest way to get this wrong.
+func TestARebindingOntoAKeyStillHeldIsReported(t *testing.T) {
+	// p still belongs to previous, so binding next to it is a collision.
+	_, wrong := Bind(map[string][]string{"next": {"p"}})
+
+	if len(wrong) == 0 {
+		t.Fatal("an action took a key another still holds without complaint")
+	}
+	if !strings.Contains(strings.Join(wrong, " "), "previous") {
+		t.Errorf("the complaint does not name what it collided with: %v", wrong)
+	}
+}
+
+// TestAnUnknownActionIsAnsweredWithTheNearest covers a typo, which is answered
+// with the word that was meant rather than a list to read.
+func TestAnUnknownActionIsAnsweredWithTheNearest(t *testing.T) {
+	_, wrong := Bind(map[string][]string{"volume": {"z"}})
+
+	if len(wrong) != 1 {
+		t.Fatalf("got %v", wrong)
+	}
+	if !strings.Contains(wrong[0], "volume-up") && !strings.Contains(wrong[0], "volume-down") {
+		t.Errorf("the complaint does not suggest what was meant: %q", wrong[0])
+	}
+}
+
+// TestABoundKeyActuallyDoesTheThing covers the whole way through: a key from
+// the configuration reaching the action it names.
+func TestABoundKeyActuallyDoesTheThing(t *testing.T) {
+	keys, wrong := Bind(map[string][]string{"next": {"z"}})
+	if len(wrong) != 0 {
+		t.Fatal(wrong)
+	}
+	m := loaded(t).WithKeys(keys)
+
+	if _, got := press(t, m, "z"); got == nil {
+		t.Fatal("the rebound key did nothing")
+	} else if _, ok := got.(SkipNext); !ok {
+		t.Errorf("z emitted %#v, want SkipNext", got)
+	}
+	if _, got := press(t, m, "n"); got != nil {
+		t.Errorf("n still emitted %#v after being rebound", got)
+	}
+}
+
+// TestBindingNothingKeepsEveryKey covers the ordinary configuration, which
+// says nothing about keys at all.
+func TestBindingNothingKeepsEveryKey(t *testing.T) {
+	keys, wrong := Bind(nil)
+	if len(wrong) != 0 {
+		t.Fatalf("binding nothing complained: %v", wrong)
+	}
+	if len(keys) != len(binding(Actions())) {
+		t.Errorf("binding nothing gave %d keys, want the usual %d", len(keys), len(binding(Actions())))
 	}
 }

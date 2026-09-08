@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/subsonic/fake"
 	"github.com/bspeelm/shanty/internal/tui"
@@ -21,7 +22,7 @@ func withPlaylists(t *testing.T, lists map[string][]string) (app, *fake.Server) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newApp(t.Context(), client, newRecorder())
+	a := newApp(t.Context(), client, newRecorder(), config.Config{})
 	a.random = rand.New(rand.NewPCG(1, 2))
 	return a, srv
 }

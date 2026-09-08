@@ -345,7 +345,7 @@ func TestIsolationTheBacklogIsTheOnlyThingInTheStateDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newApp(t.Context(), client, newRecorder())
+	a := newApp(t.Context(), client, newRecorder(), config.Config{})
 	a.backlog = env.Paths.Backlog()
 
 	before := snapshot(t, home)

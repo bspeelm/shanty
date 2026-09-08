@@ -117,7 +117,7 @@ func runSession(ctx context.Context, env Env) error {
 		_ = p.Close()
 	}()
 
-	a := newApp(ctx, client, p)
+	a := newApp(ctx, client, p, cfg)
 	a.headless = true
 	a.backlog = env.Paths.Backlog()
 	a.queue = h.resume()

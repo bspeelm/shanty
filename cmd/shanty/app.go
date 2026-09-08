@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/backlog"
+	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/control"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/queue"
@@ -95,8 +96,22 @@ type (
 	}
 )
 
-func newApp(ctx context.Context, client *subsonic.Client, p player) app {
-	return app{ui: tui.New(), client: client, player: p, volume: 100, ctx: ctx}
+// newApp builds the model, with the key bindings the configuration asks for.
+//
+// A binding that will not work is said on the last row rather than refusing to
+// start: somebody with a typo in config.toml still wants their music.
+func newApp(ctx context.Context, client *subsonic.Client, p player, cfg config.Config) app {
+	ui := tui.New()
+	if len(cfg.Keys) > 0 {
+		keys, wrong := tui.Bind(cfg.Keys)
+		ui = ui.WithKeys(keys)
+		if len(wrong) > 0 {
+			next, _ := ui.Update(tui.Failed{Message: "the key bindings in config.toml: " +
+				strings.Join(wrong, "; ") + "\n\nrun `shanty doctor` for what can be bound"})
+			ui = next.(tui.Model)
+		}
+	}
+	return app{ui: ui, client: client, player: p, volume: 100, ctx: ctx}
 }
 
 func (a app) Init() tea.Cmd {

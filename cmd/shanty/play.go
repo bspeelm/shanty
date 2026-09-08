@@ -87,7 +87,7 @@ func play(ctx context.Context, env Env) error {
 		_ = p.Close()
 	}()
 
-	a := newApp(ctx, client, p)
+	a := newApp(ctx, client, p, cfg)
 	a.detach = detacher(env)
 	a.backlog = env.Paths.Backlog()
 	if running {

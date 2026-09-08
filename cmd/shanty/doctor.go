@@ -12,6 +12,7 @@ import (
 	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/subsonic"
+	"github.com/bspeelm/shanty/internal/tui"
 )
 
 // Severity is how serious a check result is.
@@ -52,8 +53,8 @@ func (r Report) OK() bool {
 // checkIDs is every check the report contains. A test holds this list and the
 // report to each other.
 var checkIDs = []string{
-	"mpv", "mpv-version", "runtime-dir", "session", "config", "credentials",
-	"server", "auth", "auth-mode",
+	"mpv", "mpv-version", "runtime-dir", "session", "config", "keys",
+	"credentials", "server", "auth", "auth-mode",
 }
 
 func runDoctor(ctx context.Context, env Env, args []string) error {
@@ -106,6 +107,7 @@ func diagnose(ctx context.Context, env Env) Report {
 
 	cfg, cfgResult := checkConfig(env)
 	add(cfgResult)
+	add(checkKeys(cfg))
 	creds, credResult := checkCredentials(env)
 	add(credResult)
 
@@ -193,6 +195,23 @@ func checkMpvVersion(ctx context.Context, env Env, found Result) Result {
 }
 
 // checkRuntimeDir reports on the runtime directory without creating it.
+// checkKeys reports on the key bindings in the configuration. Everything wrong
+// is named, because somebody fixing them wants the whole list.
+func checkKeys(cfg config.Config) Result {
+	if len(cfg.Keys) == 0 {
+		return Result{ID: "keys", Severity: Pass, Summary: "the usual keys"}
+	}
+	_, wrong := tui.Bind(cfg.Keys)
+	if len(wrong) > 0 {
+		return Result{ID: "keys", Severity: Fail,
+			Summary: fmt.Sprintf("%d of the key bindings will not work", len(wrong)),
+			Detail:  strings.Join(wrong, "\n"),
+			Fix:     "edit [keys] in config.toml; what can be bound: " + strings.Join(tui.Names(), ", ")}
+	}
+	return Result{ID: "keys", Severity: Pass,
+		Summary: fmt.Sprintf("%d actions bound in config.toml", len(cfg.Keys))}
+}
+
 func checkRuntimeDir(env Env) Result {
 	info, err := os.Stat(env.Paths.Runtime)
 	if errors.Is(err, os.ErrNotExist) {

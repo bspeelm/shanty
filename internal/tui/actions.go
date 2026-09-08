@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -139,4 +142,88 @@ func binding(actions []Action) map[string]Action {
 		}
 	}
 	return out
+}
+
+// Bind returns the key to action map, with the given actions bound to the
+// given keys instead of the ones they come with.
+//
+// Everything wrong with what was asked for is reported rather than the first
+// thing: somebody fixing a configuration wants the whole list.
+func Bind(want map[string][]string) (map[string]Action, []string) {
+	actions := Actions()
+	known := make(map[string]Action, len(actions))
+	for _, a := range actions {
+		known[a.Name] = a
+	}
+
+	var wrong []string
+	for _, name := range sorted(want) {
+		if _, ok := known[name]; !ok {
+			wrong = append(wrong, fmt.Sprintf("%q is not something shanty does; %s", name, nearest(name, actions)))
+			continue
+		}
+		if len(want[name]) == 0 {
+			wrong = append(wrong, fmt.Sprintf("%q is bound to no keys; remove the line to keep the usual ones", name))
+			continue
+		}
+		bound := known[name]
+		bound.Keys = want[name]
+		known[name] = bound
+	}
+
+	out := make(map[string]Action, len(known)*2)
+	for _, name := range sortedActions(known) {
+		for _, key := range known[name].Keys {
+			if taken, already := out[key]; already {
+				wrong = append(wrong, fmt.Sprintf("%q is bound to both %s and %s", key, taken.Name, name))
+				continue
+			}
+			out[key] = known[name]
+		}
+	}
+	return out, wrong
+}
+
+// nearest names an action close to what was asked for, so a typo is answered
+// with the word that was meant.
+func nearest(name string, actions []Action) string {
+	for _, a := range actions {
+		if strings.HasPrefix(a.Name, name) || strings.HasPrefix(name, a.Name) {
+			return "did you mean " + a.Name + "?"
+		}
+	}
+	return "run `shanty doctor` for the list"
+}
+
+// Names is every action, for reporting what may be bound.
+func Names() []string {
+	out := make([]string, 0, len(Actions()))
+	for _, a := range Actions() {
+		out = append(out, a.Name)
+	}
+	return out
+}
+
+func sorted(m map[string][]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedActions(m map[string]Action) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// WithKeys returns a model using the given bindings.
+func (m Model) WithKeys(keys map[string]Action) Model {
+	m.keys = keys
+	return m
 }

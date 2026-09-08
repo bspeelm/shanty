@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bspeelm/shanty/internal/backlog"
+	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/subsonic/fake"
@@ -23,7 +24,7 @@ func keeping(t *testing.T, malice fake.Malice) (app, *fake.Server, string) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "state", "plays.jsonl")
-	a := newApp(t.Context(), client, newRecorder())
+	a := newApp(t.Context(), client, newRecorder(), config.Config{})
 	a.backlog = path
 	return a, srv, path
 }

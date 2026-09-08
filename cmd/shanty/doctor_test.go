@@ -11,9 +11,12 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/subsonic/fake"
+	"github.com/bspeelm/shanty/internal/tui"
 )
 
 const (
@@ -336,5 +339,67 @@ func TestTheDoctorHoldsMpvToAMinimumVersion(t *testing.T) {
 				t.Errorf("a version too old does not name the minimum: %q / %q", got.Detail, got.Fix)
 			}
 		})
+	}
+}
+
+// TestTheDoctorReportsBadKeyBindings covers the check somebody runs after
+// editing config.toml and finding a key does nothing.
+func TestTheDoctorReportsBadKeyBindings(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		keys     map[string][]string
+		severity Severity
+		says     string
+	}{
+		{"none", nil, Pass, "the usual keys"},
+		{"good", map[string][]string{"next": {"z"}}, Pass, "1 actions bound"},
+		{"an action that does not exist", map[string][]string{"skip": {"z"}}, Fail, "not something shanty does"},
+		{"bound to nothing", map[string][]string{"next": {}}, Fail, "bound to no keys"},
+		{"two actions on one key", map[string][]string{"next": {"x"}, "previous": {"x"}}, Fail, "both"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := checkKeys(config.Config{Keys: tc.keys})
+
+			if got.Severity != tc.severity {
+				t.Errorf("severity %v, want %v (%s / %s)", got.Severity, tc.severity, got.Summary, got.Detail)
+			}
+			if !strings.Contains(got.Summary+got.Detail, tc.says) {
+				t.Errorf("the report reads %q / %q, want it to mention %q", got.Summary, got.Detail, tc.says)
+			}
+			if tc.severity == Fail {
+				if got.Fix == "" {
+					t.Error("a failure with nothing to do about it")
+				}
+				if !strings.Contains(got.Fix, "next") {
+					t.Errorf("the fix does not say what can be bound: %q", got.Fix)
+				}
+			}
+		})
+	}
+}
+
+// TestBadBindingsAreSaidOnTheScreenRatherThanRefusingToStart covers what
+// happens when shanty is run with them, which is not to stop.
+func TestBadBindingsAreSaidOnTheScreenRatherThanRefusingToStart(t *testing.T) {
+	a := newApp(t.Context(), nil, newRecorder(),
+		config.Config{Keys: map[string][]string{"nonsense": {"z"}}})
+
+	if !strings.Contains(a.ui.Status(), "nonsense") {
+		t.Errorf("the screen says %q", a.ui.Status())
+	}
+	if !strings.Contains(a.ui.Status(), "doctor") {
+		t.Errorf("the message does not say where to look: %q", a.ui.Status())
+	}
+
+	// And a binding that works reaches the keys.
+	good := newApp(t.Context(), nil, newRecorder(),
+		config.Config{Keys: map[string][]string{"next": {"z"}}})
+	next, cmd := good.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")})
+	_ = next
+	if cmd == nil {
+		t.Fatal("a key from the configuration did nothing")
+	}
+	if _, ok := cmd().(tui.SkipNext); !ok {
+		t.Errorf("the configured key emitted %#v, want SkipNext", cmd())
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/subsonic/fake"
@@ -76,7 +77,7 @@ func wired(t *testing.T) (app, *recorder, *fake.Server) {
 		t.Fatal(err)
 	}
 	rec := newRecorder()
-	return newApp(t.Context(), client, rec), rec, srv
+	return newApp(t.Context(), client, rec, config.Config{}), rec, srv
 }
 
 // step applies a message and runs everything the command produced, returning

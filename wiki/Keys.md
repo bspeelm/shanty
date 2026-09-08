@@ -279,4 +279,26 @@ interface.
 
 ## Changing the keys
 
-The keys are currently fixed. Configurable key bindings are planned.
+Add a `[keys]` section to `config.toml`, naming the action and the keys that
+should do it:
+
+```toml
+[keys]
+next = ["l"]
+previous = ["h"]
+volume-up = ["+", "=", "]"]
+```
+
+An action you name takes those keys instead of the ones it came with. An action
+you leave out keeps them. `shanty doctor` lists every action that can be bound.
+
+Two mistakes are worth knowing about. Binding an action to a key another action
+still holds leaves one of them unreachable, and naming an action that does not
+exist does nothing at all. Both are reported: `shanty doctor` lists everything
+wrong at once, and shanty says so on the last row when it starts rather than
+refusing to run.
+
+The keys that open a mode -- `/`, `:` and `g` -- can be rebound like any other.
+The keys inside those modes cannot: `esc` leaves a filter, `tab` completes a
+command and `y` answers a question, and those belong to the mode rather than to
+the list of actions.

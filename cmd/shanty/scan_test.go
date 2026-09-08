@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/subsonic/fake"
 	"github.com/bspeelm/shanty/internal/tui"
@@ -20,7 +21,7 @@ func scanned(t *testing.T, malice fake.Malice) (app, *fake.Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newApp(t.Context(), client, newRecorder()), srv
+	return newApp(t.Context(), client, newRecorder(), config.Config{}), srv
 }
 
 // TestAScanReportsProgressWithoutStoppingAnything is the design question the
