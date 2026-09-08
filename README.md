@@ -38,8 +38,9 @@ Download and install the latest release:
 curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
 ```
 
-This puts the `shanty` binary in `~/.local/bin`. Or build it from a clone of
-this repository:
+This puts the `shanty` binary in `~/.local/bin`. 
+
+You can also build it from a clone of this repository:
 
 ```sh
 make install-binary
