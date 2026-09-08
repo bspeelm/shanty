@@ -1,0 +1,51 @@
+name: wiki
+
+# The wiki is a separate git repository, so pages cannot live there and be
+# reviewed here at the same time. They live in wiki/, go through a pull request
+# like anything else, and this pushes them across on merge. An edit made in the
+# wiki interface is overwritten by the next sync, which Home.md says.
+on:
+  push:
+    branches: [main]
+    paths: ['wiki/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: push wiki/ to the wiki
+        env:
+          TOKEN: ${{ secrets.WIKI_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          # An empty wiki/ would otherwise mirror an empty directory over the
+          # published pages, which is a deletion nobody asked for.
+          test -n "$(ls wiki/*.md 2>/dev/null)" || {
+            echo "::error::wiki/ has no pages; refusing to empty the wiki"
+            exit 1
+          }
+
+          git clone -q \
+            "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo
+
+          # Mirrored rather than merged: a page deleted from wiki/ should leave
+          # the wiki, or the two drift and the repository stops being the
+          # source.
+          find wiki-repo -maxdepth 1 -name '*.md' -delete
+          cp wiki/*.md wiki-repo/
+
+          cd wiki-repo
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "wiki already matches wiki/"; exit 0; }
+          git commit -m "sync from ${GITHUB_SHA:0:7}"
+          git push -q
