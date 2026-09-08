@@ -93,6 +93,10 @@ func TestGoldenScreens(t *testing.T) {
 			Progress(83*time.Second),
 			PausedChanged(true))},
 		{"failed", send(t, base, Failed{Message: "the server refused; check credentials.toml"})},
+		// The case that had no coverage: a failure while a list is on screen,
+		// which is when most failures happen.
+		{"failed-with-a-list", send(t, artists,
+			Failed{Message: "mpv stopped: exit status 1\nrestart shanty to play again"})},
 	} {
 		t.Run(tc.name, func(t *testing.T) { golden(t, tc.name, tc.m.View()) })
 	}
@@ -161,4 +165,20 @@ func stripSGR(s string) string {
 		i++
 	}
 	return b.String()
+}
+
+// A message with a line break in it becomes one row rather than two halves run
+// together. The errors that produce these put the cause on one line and what
+// to do about it on the next.
+func TestAMultiLineMessageIsJoinedRatherThanConcatenated(t *testing.T) {
+	m := send(t, sized(New()), ArtistsLoaded(library()),
+		Failed{Message: "the server refused\ncheck credentials.toml"})
+
+	frame := m.View()
+	if strings.Contains(frame, "refusedcheck") {
+		t.Errorf("the two lines ran together:\n%s", frame)
+	}
+	if !strings.Contains(frame, "the server refused · check credentials.toml") {
+		t.Errorf("the message is not on one row:\n%s", frame)
+	}
 }

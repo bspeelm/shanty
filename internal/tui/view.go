@@ -22,6 +22,7 @@ var (
 	titleStyle    = lipgloss.NewStyle().Bold(true)
 	selectedStyle = lipgloss.NewStyle().Reverse(true)
 	faintStyle    = lipgloss.NewStyle().Faint(true)
+	statusStyle   = lipgloss.NewStyle().Bold(true)
 )
 
 // View renders the frame. Every string from the server passes through
@@ -42,8 +43,23 @@ func (m Model) View() string {
 	b.WriteString(m.list(w, visible))
 	b.WriteString(rule(w) + "\n")
 	b.WriteString(fit(m.player(), w) + "\n")
-	b.WriteString(faintStyle.Render(fit(help, w)))
+	b.WriteString(m.footer(w))
 	return b.String()
+}
+
+// footer is the last row of the frame. It carries the current message when
+// there is one, and the key help otherwise.
+//
+// Messages arrive with line breaks in them, because the errors that produce
+// them put the cause on one line and what to do about it on the next. The
+// footer is one row, so the breaks become separators before Sanitise removes
+// them and runs the two halves together.
+func (m Model) footer(w int) string {
+	if m.status == "" {
+		return faintStyle.Render(fit(help, w))
+	}
+	oneLine := strings.ReplaceAll(m.status, "\n", " · ")
+	return statusStyle.Render(fit(Sanitise(oneLine), w))
 }
 
 func (m Model) heading() string {
@@ -59,11 +75,11 @@ func (m Model) heading() string {
 func (m Model) list(w, visible int) string {
 	rows := m.rows()
 	if rows == 0 {
-		body := m.status
-		if body == "" {
-			body = "nothing here"
+		body := "nothing here"
+		if m.loading {
+			body = "loading…"
 		}
-		return pad(faintStyle.Render(fit("  "+Sanitise(body), w)), visible)
+		return pad(faintStyle.Render(fit("  "+body, w)), visible)
 	}
 
 	start := window(m.cursor[m.screen], rows, visible)

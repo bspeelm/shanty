@@ -277,13 +277,21 @@ func TestADeadPlayerBecomesAMessageAndNotARestart(t *testing.T) {
 	a, rec, _ := wired(t)
 	close(rec.events)
 
+	// With a list on screen, which is when the player is most likely to die.
+	a, _ = step(t, a, tui.ArtistsLoaded([]subsonic.Artist{{ID: "ar-1", Name: "Aoi"}}))
+
 	next, _ := a.Update(playerGone{err: context.Canceled})
 	a = next.(app)
-	if !strings.Contains(a.ui.Status(), "mpv stopped") {
-		t.Errorf("the screen does not say the player died: %q", a.ui.Status())
+
+	// Asserted on the rendered frame rather than on the model field. A test
+	// that reads the field passes whether or not the message reaches the
+	// screen, which is how this went unnoticed.
+	frame := a.View()
+	if !strings.Contains(frame, "mpv stopped") {
+		t.Errorf("the frame does not say the player died:\n%s", frame)
 	}
-	if !strings.Contains(a.ui.Status(), "restart shanty") {
-		t.Errorf("the message does not say what to do: %q", a.ui.Status())
+	if !strings.Contains(frame, "restart shanty") {
+		t.Errorf("the frame does not say what to do:\n%s", frame)
 	}
 }
 
