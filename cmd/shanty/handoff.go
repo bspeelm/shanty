@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -97,6 +98,22 @@ func (h handoff) resume() queue.Queue { return queue.New(h.Tracks...).Jump(h.At)
 func (h handoff) nowPlaying() (tui.NowPlaying, time.Duration) {
 	t := h.Tracks[min(h.At, len(h.Tracks)-1)]
 	return tui.NowPlaying{Title: t.Title, Artist: t.Artist, Duration: t.Duration}, t.Duration
+}
+
+// playing reports whether a session is answering on the control socket.
+func playing(env Env) bool {
+	_, err := control.Send(env.Paths.ControlSocket(), control.Request{Verb: control.Status})
+	return err == nil
+}
+
+// listening reports whether anything is answering on the socket.
+func listening(socket string) bool {
+	conn, err := net.DialTimeout("unix", socket, time.Second)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // takeOver asks a running session for what it is playing. The second result

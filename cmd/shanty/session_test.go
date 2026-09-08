@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -315,4 +317,188 @@ func TestHandingOverReleasesThePlayerAndTheQueue(t *testing.T) {
 	if current, _ := a.queue.Current(); current.ID != "tr-1" {
 		t.Errorf("the session advanced to %q after handing over", current.ID)
 	}
+}
+
+// TestUninstallRefusesWhileASessionIsPlaying covers a command this feature
+// made dangerous. The runtime directory holds the socket a session is reached
+// through, so removing it while one is playing would leave a player nothing
+// could stop.
+func TestUninstallRefusesWhileASessionIsPlaying(t *testing.T) {
+	env, _ := scratch(t)
+	if err := env.Paths.EnsureRuntime(); err != nil {
+		t.Fatal(err)
+	}
+	// Something for uninstall to delete, so "it deleted nothing" is a claim
+	// with content.
+	if err := os.MkdirAll(env.Paths.Config, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	l, err := control.Listen(env.Paths.ControlSocket())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close() }()
+	go func() {
+		_ = control.Serve(l, func(control.Request) control.Response {
+			return control.Response{OK: true, State: &control.State{}}
+		})
+	}()
+
+	err = runUninstall(t.Context(), env, nil)
+	if err == nil {
+		t.Fatal("uninstall removed the directories under a session that was playing")
+	}
+	if !strings.Contains(err.Error(), "shanty stop") {
+		t.Errorf("the refusal does not say what to do: %q", err)
+	}
+	if _, err := os.Stat(env.Paths.Config); err != nil {
+		t.Errorf("uninstall deleted something before refusing: %v", err)
+	}
+}
+
+// TestUninstallProceedsWithNoSession covers the ordinary case, so the refusal
+// cannot quietly become permanent.
+func TestUninstallProceedsWithNoSession(t *testing.T) {
+	env, _ := scratch(t)
+	if err := env.Paths.EnsureRuntime(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runUninstall(t.Context(), env, nil); err != nil {
+		t.Fatalf("uninstall refused with no session running: %v", err)
+	}
+	if _, err := os.Stat(env.Paths.Runtime); !os.IsNotExist(err) {
+		t.Error("uninstall left the runtime directory behind")
+	}
+}
+
+// TestTheDoctorReportsEveryStateASessionCanBeIn covers what a background
+// process cannot report about itself. Each of the four combinations of a
+// session and a player says something different, and the two that are wrong
+// carry the command that fixes them.
+func TestTheDoctorReportsEveryStateASessionCanBeIn(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		session, player bool
+		severity        Severity
+		want            string
+	}{
+		{"nothing running", false, false, Pass, "nothing is playing"},
+		{"a session playing", true, true, Pass, "a session is playing"},
+		{"a session whose player died", true, false, Warn, "player has stopped"},
+		{"an mpv nobody owns", false, true, Warn, "no session owns"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, _ := scratch(t)
+			if err := env.Paths.EnsureRuntime(); err != nil {
+				t.Fatal(err)
+			}
+			if tc.session {
+				serveOn(t, env.Paths.ControlSocket())
+			}
+			if tc.player {
+				listenOn(t, env.Paths.Socket())
+			}
+
+			got := checkSession(env)
+			if got.Severity != tc.severity {
+				t.Errorf("severity %v, want %v (%s)", got.Severity, tc.severity, got.Summary)
+			}
+			if !strings.Contains(got.Summary, tc.want) {
+				t.Errorf("the report reads %q, want it to mention %q", got.Summary, tc.want)
+			}
+			if tc.severity != Pass && got.Fix == "" {
+				t.Error("a warning with nothing to do about it")
+			}
+		})
+	}
+}
+
+// serveOn answers on the control socket the way a session does.
+func serveOn(t *testing.T, socket string) {
+	t.Helper()
+	l, err := control.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		_ = control.Serve(l, func(control.Request) control.Response {
+			return control.Response{OK: true, State: &control.State{}}
+		})
+	}()
+}
+
+// listenOn accepts connections the way mpv's socket does, without answering.
+func listenOn(t *testing.T, socket string) {
+	t.Helper()
+	l, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+}
+
+// TestStoppingCoversEveryStateThereIsToStop covers the one command that has
+// work to do when there is no session. A player left by a session that was
+// killed is exactly what somebody typing `shanty stop` wants gone, and telling
+// them there is no session would be true and useless.
+func TestStoppingCoversEveryStateThereIsToStop(t *testing.T) {
+	t.Run("nothing at all", func(t *testing.T) {
+		env, out := scratchOut(t)
+		if err := commandSession(control.Stop)(t.Context(), env, nil); err != nil {
+			t.Fatalf("stopping nothing failed: %v", err)
+		}
+		if !strings.Contains(out.String(), "nothing was playing") {
+			t.Errorf("it said %q", out)
+		}
+	})
+
+	t.Run("a session playing", func(t *testing.T) {
+		env, out := scratchOut(t)
+		if err := env.Paths.EnsureRuntime(); err != nil {
+			t.Fatal(err)
+		}
+		serveOn(t, env.Paths.ControlSocket())
+
+		if err := commandSession(control.Stop)(t.Context(), env, nil); err != nil {
+			t.Fatalf("stopping a session failed: %v", err)
+		}
+		if !strings.Contains(out.String(), "stopped") {
+			t.Errorf("it said %q", out)
+		}
+	})
+
+	t.Run("a player no session owns", func(t *testing.T) {
+		env, out := scratchOut(t)
+		if err := env.Paths.EnsureRuntime(); err != nil {
+			t.Fatal(err)
+		}
+		listenOn(t, env.Paths.Socket())
+
+		if err := commandSession(control.Stop)(t.Context(), env, nil); err != nil {
+			t.Fatalf("stopping an orphaned player failed: %v", err)
+		}
+		if !strings.Contains(out.String(), "no session owned") {
+			t.Errorf("it said %q", out)
+		}
+	})
+}
+
+// scratchOut is scratch with somewhere to read the output back from.
+func scratchOut(t *testing.T) (Env, *bytes.Buffer) {
+	t.Helper()
+	env, _ := scratch(t)
+	out := &bytes.Buffer{}
+	env.Stdout = out
+	return env, out
 }

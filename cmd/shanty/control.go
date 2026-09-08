@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bspeelm/shanty/internal/control"
+	"github.com/bspeelm/shanty/internal/mpv"
 )
 
 // commanding is every subcommand that drives a session, with the verb it
@@ -41,7 +42,7 @@ func commandSession(verb control.Verb) func(context.Context, Env, []string) erro
 		if err != nil {
 			var none control.ErrNoSession
 			if errors.As(err, &none) {
-				return errors.New("no session is playing\n\nRun `shanty` to start one, and `:headless` to leave it running")
+				return noSession(env, verb)
 			}
 			return err
 		}
@@ -51,6 +52,28 @@ func commandSession(verb control.Verb) func(context.Context, Env, []string) erro
 		fmt.Fprintln(env.Stdout, describe(verb, res.State))
 		return nil
 	}
+}
+
+// noSession answers a command with nothing to command. Stopping is the one
+// that still has work to do: a player left by a session that was killed is
+// exactly what somebody typing `shanty stop` wants gone.
+func noSession(env Env, verb control.Verb) error {
+	if verb != control.Stop {
+		return errors.New("no session is playing\n\nRun `shanty` to start one, and `:headless` to leave it running")
+	}
+	if !listening(env.Paths.Socket()) {
+		fmt.Fprintln(env.Stdout, "nothing was playing")
+		return nil
+	}
+	p, err := mpv.Attach(context.Background(), env.Paths.Socket())
+	if err != nil {
+		return err
+	}
+	if err := p.Close(); err != nil {
+		return err
+	}
+	fmt.Fprintln(env.Stdout, "stopped a player that no session owned")
+	return nil
 }
 
 // describe is the line a control command prints.

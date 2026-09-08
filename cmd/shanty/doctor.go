@@ -51,7 +51,7 @@ func (r Report) OK() bool {
 // checkIDs is every check the report contains. A test holds this list and the
 // report to each other.
 var checkIDs = []string{
-	"mpv", "mpv-version", "runtime-dir", "config", "credentials",
+	"mpv", "mpv-version", "runtime-dir", "session", "config", "credentials",
 	"server", "auth", "auth-mode",
 }
 
@@ -101,6 +101,7 @@ func diagnose(ctx context.Context, env Env) Report {
 	mpv := add(checkMpv(env))
 	add(checkMpvVersion(ctx, env, mpv))
 	add(checkRuntimeDir(env))
+	add(checkSession(env))
 
 	cfg, cfgResult := checkConfig(env)
 	add(cfgResult)
@@ -199,6 +200,34 @@ func checkRuntimeDir(env Env) Result {
 			Fix:     "chmod 700 " + env.Paths.Runtime}
 	}
 	return Result{ID: "runtime-dir", Severity: Pass, Summary: env.Paths.Runtime + " is 0700"}
+}
+
+// checkSession reports on a session playing in the background. A process
+// nobody can see is the one thing here that cannot report itself, so this is
+// where it is named.
+func checkSession(env Env) Result {
+	session := playing(env)
+	player := listening(env.Paths.Socket())
+
+	switch {
+	case session && player:
+		return Result{ID: "session", Severity: Pass,
+			Summary: "a session is playing in the background",
+			Detail:  "`shanty` returns the interface to it, `shanty stop` ends it"}
+
+	case session && !player:
+		return Result{ID: "session", Severity: Warn,
+			Summary: "a session is running and its player has stopped",
+			Detail:  "it has nothing left to play and nothing to say so",
+			Fix:     "shanty stop"}
+
+	case !session && player:
+		return Result{ID: "session", Severity: Warn,
+			Summary: "an mpv is running that no session owns",
+			Detail:  "it was left by a session that was killed, and it holds a stream URL",
+			Fix:     "shanty stop"}
+	}
+	return Result{ID: "session", Severity: Pass, Summary: "nothing is playing in the background"}
 }
 
 func checkConfig(env Env) (config.Config, Result) {

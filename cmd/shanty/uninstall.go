@@ -11,6 +11,13 @@ import (
 // runUninstall deletes the directories in Paths.All and prints which were
 // removed and which were absent.
 func runUninstall(_ context.Context, env Env, _ []string) error {
+	// The runtime directory holds the socket a session is reached through.
+	// Deleting it under a session that is playing would leave a player nothing
+	// could stop.
+	if playing(env) {
+		return errors.New("a session is playing\n\nRun `shanty stop` first, then `shanty uninstall`")
+	}
+
 	var removed, absent []string
 	for _, dir := range env.Paths.All() {
 		switch _, err := os.Stat(dir); {

@@ -36,6 +36,11 @@ func TestAControlCommandWithNoSessionSaysWhatToDo(t *testing.T) {
 	env, _ := scratch(t)
 
 	for _, c := range commanding {
+		if c.verb == control.Stop {
+			// Stopping what is already stopped is not a failure. Its own
+			// three outcomes are covered by TestStoppingWithNothingToStop.
+			continue
+		}
 		err := commandSession(c.verb)(t.Context(), env, argFor(c.verb))
 		if err == nil {
 			t.Fatalf("`shanty %s` reported success with no session running", c.name)
@@ -55,6 +60,9 @@ func TestAnArgumentIsRequiredExactlyWhereItIsUsed(t *testing.T) {
 	env, _ := scratch(t)
 
 	for _, c := range commanding {
+		if c.verb == control.Stop {
+			continue
+		}
 		missing := commandSession(c.verb)(t.Context(), env, nil)
 		extra := commandSession(c.verb)(t.Context(), env, []string{"40"})
 
