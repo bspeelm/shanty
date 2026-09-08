@@ -35,8 +35,9 @@ type Options struct {
 
 // Player is a running mpv process.
 type Player struct {
-	cmd  *exec.Cmd
-	conn net.Conn
+	cmd    *exec.Cmd
+	conn   net.Conn
+	socket string
 
 	mu       sync.Mutex
 	nextID   int
@@ -70,8 +71,7 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 	if err := os.MkdirAll(filepath.Dir(opt.Socket), 0o700); err != nil {
 		return nil, err
 	}
-	// A socket left by a previous run would refuse the bind.
-	if err := os.Remove(opt.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := clearSocket(opt.Socket); err != nil {
 		return nil, err
 	}
 
@@ -100,15 +100,60 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 		return nil, err
 	}
 
-	p := &Player{
+	p := newPlayer(cmd, conn, opt.Socket)
+	go p.read()
+	go p.reap()
+	return p, nil
+}
+
+// newPlayer builds a Player around an open connection. cmd is nil for a player
+// this process did not start.
+func newPlayer(cmd *exec.Cmd, conn net.Conn, socket string) *Player {
+	return &Player{
 		cmd:     cmd,
 		conn:    conn,
+		socket:  socket,
 		pending: map[int]chan reply{},
 		events:  make(chan Event, 64),
 		done:    make(chan struct{}),
 	}
+}
+
+// ErrPlayerRunning reports that a player is already listening on the socket.
+// The path is carried so the caller can name it.
+type ErrPlayerRunning struct{ Socket string }
+
+func (e ErrPlayerRunning) Error() string {
+	return "a player is already running on " + e.Socket
+}
+
+// clearSocket removes a socket left behind by a player that is gone. A socket
+// something is still listening on is reported as ErrPlayerRunning and left
+// alone.
+func clearSocket(socket string) error {
+	if conn, err := net.Dial("unix", socket); err == nil {
+		_ = conn.Close()
+		return ErrPlayerRunning{Socket: socket}
+	}
+	if err := os.Remove(socket); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// Attach connects to a player that is already running on the socket. The
+// returned Player controls it in every way Start's does, except that it did
+// not launch the process and so has none to wait for.
+func Attach(ctx context.Context, socket string) (*Player, error) {
+	if socket == "" {
+		return nil, errors.New("no IPC socket path was given")
+	}
+	conn, err := net.Dial("unix", socket)
+	if err != nil {
+		return nil, fmt.Errorf("no player is listening on %s: %w", socket, err)
+	}
+	p := newPlayer(nil, conn, socket)
 	go p.read()
-	go p.reap()
 	return p, nil
 }
 
@@ -181,6 +226,9 @@ func (p *Player) stop(cause error) {
 	})
 }
 
+// Socket is the path of the socket this player is controlled through.
+func (p *Player) Socket() string { return p.socket }
+
 // Done closes when the player stops.
 func (p *Player) Done() <-chan struct{} { return p.done }
 
@@ -205,9 +253,17 @@ func (p *Player) Close() error {
 	// next covers it.
 	_, _ = p.command(context.Background(), "quit")
 	_ = p.conn.Close()
-	if p.cmd.Process != nil {
+	if p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Process.Kill()
 	}
+	<-p.done
+	return nil
+}
+
+// Detach closes the connection and leaves mpv running. The Player is finished
+// afterwards and the process it was controlling carries on playing.
+func (p *Player) Detach() error {
+	_ = p.conn.Close()
 	<-p.done
 	return nil
 }

@@ -2,6 +2,7 @@ package mpv
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -301,5 +302,85 @@ func TestThePlayerRunsInItsOwnSession(t *testing.T) {
 	}
 	if group == ours {
 		t.Errorf("the player shares process group %d with the process that started it, so a signal to the terminal would reach both", ours)
+	}
+}
+
+// TestALiveSocketIsNotDestroyed covers starting a second player while one is
+// already running. The socket is a file, and removing it to make room for a
+// new player would leave the running one unreachable for the rest of its life,
+// still holding a credentialed stream URL.
+func TestALiveSocketIsNotDestroyed(t *testing.T) {
+	first, dir := stub(t)
+
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	socket := first.Socket()
+	second, err := Start(t.Context(), Options{Binary: self, Socket: socket})
+	if err == nil {
+		_ = second.Close()
+		t.Fatal("a second player started on a socket that was already in use")
+	}
+	var running ErrPlayerRunning
+	if !errors.As(err, &running) {
+		t.Fatalf("got %v, want an ErrPlayerRunning naming the socket", err)
+	}
+	if running.Socket != socket {
+		t.Errorf("the error names %q, want %q", running.Socket, socket)
+	}
+
+	// The player that was already running is still usable.
+	if err := first.SetVolume(t.Context(), 55); err != nil {
+		t.Fatalf("the running player stopped answering: %v", err)
+	}
+	if log := report(t, dir, commandLog); !strings.Contains(log, `"volume"`) {
+		t.Errorf("the running player did not receive the command; log was %q", log)
+	}
+}
+
+// TestAttachDrivesAPlayerItDidNotStart covers connecting to a player this
+// process did not launch, which is how a session and an interface hand the
+// same mpv back and forth.
+func TestAttachDrivesAPlayerItDidNotStart(t *testing.T) {
+	started, dir := stub(t)
+
+	attached, err := Attach(t.Context(), started.Socket())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = attached.Detach() }()
+
+	if err := attached.SetVolume(t.Context(), 33); err != nil {
+		t.Fatalf("the attached player could not send a command: %v", err)
+	}
+	if log := report(t, dir, commandLog); !strings.Contains(log, `"volume"`) {
+		t.Errorf("the command did not reach mpv; log was %q", log)
+	}
+
+	// Detaching leaves the player running for whoever holds it next.
+	if err := attached.Detach(); err != nil {
+		t.Fatal(err)
+	}
+	if err := started.SetVolume(t.Context(), 44); err != nil {
+		t.Errorf("detaching stopped the player it was only borrowing: %v", err)
+	}
+}
+
+// TestClosingAnAttachedPlayerStopsIt covers the other half of Attach. Detach
+// lets a borrowed player carry on; Close ends it, and has no process of its
+// own to wait for.
+func TestClosingAnAttachedPlayerStopsIt(t *testing.T) {
+	started, dir := stub(t)
+
+	attached, err := Attach(t.Context(), started.Socket())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := attached.Close(); err != nil {
+		t.Fatalf("closing an attached player: %v", err)
+	}
+	if log := report(t, dir, commandLog); !strings.Contains(log, `"quit"`) {
+		t.Errorf("closing did not ask the player to quit; log was %q", log)
 	}
 }
