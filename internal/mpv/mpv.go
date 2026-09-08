@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -84,6 +85,9 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 	// The environment is inherited because PipeWire, PulseAudio and ALSA read
 	// from it. Nothing of shanty’s is added.
 	cmd.Env = os.Environ()
+	// mpv runs in its own session, so the terminal’s signals do not reach it
+	// and Close is the only thing that stops it.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stderr = opt.Stderr
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("could not start %s: %w\nInstall mpv, or set its path in config.toml", binary, err)

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -275,5 +276,30 @@ func TestConcurrentCommandsDoNotInterleave(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &probe); err != nil {
 			t.Fatalf("a line on the socket is not valid JSON, so two writes interleaved:\n%s", line)
 		}
+	}
+}
+
+// TestThePlayerRunsInItsOwnSession covers the ownership of the mpv process.
+// mpv is put in a session of its own, so signals sent to the terminal's
+// process group reach shanty and not the player, and Close is the only thing
+// that stops it.
+func TestThePlayerRunsInItsOwnSession(t *testing.T) {
+	p, _ := stub(t)
+
+	child := p.cmd.Process.Pid
+	group, err := syscall.Getpgid(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if group != child {
+		t.Errorf("the player is in process group %d and leads none of its own; it should lead group %d", group, child)
+	}
+
+	ours, err := syscall.Getpgid(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if group == ours {
+		t.Errorf("the player shares process group %d with the process that started it, so a signal to the terminal would reach both", ours)
 	}
 }
