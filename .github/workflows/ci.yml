@@ -50,11 +50,56 @@ jobs:
             apk add --no-cache make git >/dev/null &&
             go test -mod=readonly ./...'
 
-  # Placeholder for the jobs PLAN.md §11 names. Each arrives with the code it
-  # guards, and this list is here so the arrival is visible rather than
-  # forgotten:
+  # §8 as a job. The ran-count assertion is the point: a filter that stops
+  # matching reports a clean run over nothing at all, and an isolation suite
+  # that silently ran zero tests is worse than none, because it reads as proof.
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: |
+          go test ./... -run Isolation -v | tee /tmp/isolation.log
+          ran=$(grep -c '^--- PASS: TestIsolation' /tmp/isolation.log || true)
+          echo "isolation tests that ran: $ran"
+          if [ "$ran" -lt 4 ]; then
+            echo "expected at least 4; the filter has stopped matching or a test was lost"
+            exit 1
+          fi
+
+  golden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      # Run without a terminal on purpose: the golden files pin the colour
+      # profile rather than detecting it, and this is where that would show.
+      - run: go test ./internal/tui/... -v
+      - name: the goldens are committed, not regenerated
+        run: |
+          go test ./internal/tui/ -update
+          git diff --exit-code -- internal/tui/testdata || {
+            echo "the golden files differ from what the code renders"
+            exit 1
+          }
+
+  fuzz-brief:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: go test ./internal/subsonic/ -run=FuzzDecode -fuzz=FuzzDecode -fuzztime=60s
+
+  # Placeholder for the one job §11 names that is not here yet:
   #
-  #   isolation    scratch $HOME, diff the write set, assert the ran-count
-  #   golden       teatest screen renders
-  #   fuzz-brief   the JSON decoder and the filename sanitiser
   #   integration  real deluan/navidrome in docker, build-tagged, CI only
+  #
+  # It is the only test that can answer whether mpv accepts the flags this
+  # program gives it, and whether Navidrome's responses match what the fake
+  # says they look like. Until it exists, both are unverified.
