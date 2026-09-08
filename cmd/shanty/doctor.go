@@ -214,6 +214,16 @@ func checkRuntimeDir(env Env) Result {
 			Detail:  "the mpv socket lives here, and it reaches a player holding a credential",
 			Fix:     "chmod 700 " + env.Paths.Runtime}
 	}
+	// A socket path over the kernel's limit fails to bind with a message that
+	// says nothing about length, so it is named here before anything opens one.
+	for _, path := range []string{env.Paths.Socket(), env.Paths.ControlSocket()} {
+		if over, tooLong := config.TooLongForASocket(path); tooLong {
+			return Result{ID: "runtime-dir", Severity: Fail,
+				Summary: fmt.Sprintf("the path for a socket here is %d over the %d a socket may have", over, config.SocketLimit),
+				Detail:  path,
+				Fix:     "set XDG_RUNTIME_DIR to something shorter"}
+		}
+	}
 	return Result{ID: "runtime-dir", Severity: Pass, Summary: env.Paths.Runtime + " is 0700"}
 }
 

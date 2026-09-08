@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -532,4 +533,26 @@ func scratchOut(t *testing.T) (Env, *bytes.Buffer) {
 	out := &bytes.Buffer{}
 	env.Stdout = out
 	return env, out
+}
+
+// TestTheDoctorNamesASocketPathTooLong covers the check that reports it before
+// anything tries to open one.
+func TestTheDoctorNamesASocketPathTooLong(t *testing.T) {
+	env, _ := scratch(t)
+	env.Paths.Runtime = filepath.Join(t.TempDir(), strings.Repeat("d", 120))
+	if err := os.MkdirAll(env.Paths.Runtime, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	got := checkRuntimeDir(env)
+
+	if got.Severity != Fail {
+		t.Fatalf("a runtime directory too long for a socket is %v: %s", got.Severity, got.Summary)
+	}
+	if !strings.Contains(got.Summary, "over") {
+		t.Errorf("the report reads %q", got.Summary)
+	}
+	if got.Fix == "" {
+		t.Error("a failure with nothing to do about it")
+	}
 }

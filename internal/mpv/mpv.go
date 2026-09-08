@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/bspeelm/shanty/internal/config"
 	"time"
 )
 
@@ -78,6 +80,9 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 	}
 	if opt.Socket == "" {
 		return nil, errors.New("no IPC socket path was given")
+	}
+	if err := checkSocketPath(opt.Socket); err != nil {
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(opt.Socket), 0o700); err != nil {
 		return nil, err
@@ -345,4 +350,15 @@ func numbers(version string) ([]int, bool) {
 		out = append(out, n)
 	}
 	return out, true
+}
+
+// checkSocketPath reports a path too long to hold a socket, which the kernel
+// otherwise refuses with a message that says nothing about length.
+func checkSocketPath(path string) error {
+	over, tooLong := config.TooLongForASocket(path)
+	if !tooLong {
+		return nil
+	}
+	return fmt.Errorf("the path for mpv's socket is %d characters, which is %d over the %d a socket may have:\n%s\n\nSet XDG_RUNTIME_DIR to something shorter",
+		len(path), over, config.SocketLimit, path)
 }

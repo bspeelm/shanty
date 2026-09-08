@@ -111,6 +111,23 @@ func (p Paths) ControlSocket() string { return filepath.Join(p.Runtime, "control
 // CredentialsFile is the path to the file holding the credential.
 func (p Paths) CredentialsFile() string { return filepath.Join(p.Config, "credentials.toml") }
 
+// SocketLimit is the longest a unix socket path may be.
+//
+// The kernel's own limit is 108 bytes on Linux and 104 on macOS, including the
+// end of the string, so the shorter of the two is the one to hold to. A path
+// over it fails to bind with "invalid argument", which says nothing about
+// length.
+const SocketLimit = 103
+
+// TooLongForASocket reports whether a path cannot hold a socket, and by how
+// much.
+func TooLongForASocket(path string) (int, bool) {
+	if over := len(path) - SocketLimit; over > 0 {
+		return over, true
+	}
+	return 0, false
+}
+
 // Backlog is the file holding plays the server has not accepted.
 func (p Paths) Backlog() string { return filepath.Join(p.State, "plays.jsonl") }
 

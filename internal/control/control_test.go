@@ -269,3 +269,17 @@ func TestAStoppingSessionAnswersFirst(t *testing.T) {
 		t.Fatal("the answer never arrived, because the session acted before it replied")
 	}
 }
+
+// TestAControlSocketPathTooLongIsRefusedWithTheReason covers the same limit on
+// the other socket. Both are in the same directory, so they fail together.
+func TestAControlSocketPathTooLongIsRefusedWithTheReason(t *testing.T) {
+	long := filepath.Join(t.TempDir(), strings.Repeat("d", 120), "control.sock")
+
+	_, err := Listen(long)
+	if err == nil {
+		t.Fatal("a socket path over the limit was accepted")
+	}
+	if !strings.Contains(err.Error(), "over") || !strings.Contains(err.Error(), "XDG_RUNTIME_DIR") {
+		t.Errorf("the message reads %v", err)
+	}
+}

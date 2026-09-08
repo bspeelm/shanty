@@ -14,6 +14,8 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/bspeelm/shanty/internal/config"
 )
 
 // Protocol is the version of the wire format. It changes when the shape of a
@@ -220,6 +222,10 @@ func Send(socket string, req Request) (Response, error) {
 // Listen opens the control socket, replacing one left by a session that is
 // gone. It refuses to displace a session that is still answering.
 func Listen(socket string) (net.Listener, error) {
+	if over, tooLong := config.TooLongForASocket(socket); tooLong {
+		return nil, fmt.Errorf("the path for the control socket is %d characters, which is %d over the %d a socket may have:\n%s\n\nSet XDG_RUNTIME_DIR to something shorter",
+			len(socket), over, config.SocketLimit, socket)
+	}
 	if conn, err := net.DialTimeout("unix", socket, timeout); err == nil {
 		_ = conn.Close()
 		return nil, errors.New("a session is already playing\n\nRun `shanty stop` to end it")

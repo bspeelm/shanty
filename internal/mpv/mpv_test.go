@@ -539,3 +539,30 @@ func TestComparingVersionsOfDifferentLengths(t *testing.T) {
 		}
 	}
 }
+
+// TestASocketPathTooLongIsRefusedWithTheReason covers the failure the kernel
+// gives no reason for. Starting mpv against a path over the limit must say
+// what is wrong rather than passing on "invalid argument".
+func TestASocketPathTooLongIsRefusedWithTheReason(t *testing.T) {
+	long := filepath.Join(t.TempDir(), strings.Repeat("d", 120), "mpv.sock")
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(stubEnv, "1")
+	t.Setenv(reportEnv, t.TempDir())
+
+	p, err := Start(t.Context(), Options{Binary: self, Socket: long})
+	if err == nil {
+		_ = p.Close()
+		t.Fatal("a socket path over the limit was accepted")
+	}
+	for _, want := range []string{"over", "XDG_RUNTIME_DIR"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the message does not mention %q: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "invalid argument") {
+		t.Errorf("the message passes on the kernel's own: %v", err)
+	}
+}

@@ -258,3 +258,37 @@ func TestCompletionsFollowTheEnvironment(t *testing.T) {
 		t.Errorf("fish completion goes to %q, want %q", got["fish"], want)
 	}
 }
+
+// TestAPathTooLongForASocketIsNamedAsSuch covers the limit the kernel enforces
+// without explaining. A socket path over it fails to bind with "invalid
+// argument", which says nothing about length.
+func TestAPathTooLongForASocketIsNamedAsSuch(t *testing.T) {
+	for _, tc := range []struct {
+		length int
+		over   int
+		long   bool
+	}{
+		{10, 0, false},
+		{SocketLimit - 1, 0, false},
+		{SocketLimit, 0, false},
+		{SocketLimit + 1, 1, true},
+		{SocketLimit + 40, 40, true},
+	} {
+		over, long := TooLongForASocket(strings.Repeat("a", tc.length))
+		if long != tc.long {
+			t.Errorf("a path of %d characters: too long = %v, want %v", tc.length, long, tc.long)
+		}
+		if over != tc.over {
+			t.Errorf("a path of %d characters is %d over, want %d", tc.length, over, tc.over)
+		}
+	}
+}
+
+// TestTheLimitIsTheShorterOfTheTwoKernels covers the number. Linux allows 108
+// bytes and macOS 104, both including the end of the string, so the shorter is
+// the one to hold to.
+func TestTheLimitIsTheShorterOfTheTwoKernels(t *testing.T) {
+	if SocketLimit != 103 {
+		t.Errorf("the limit is %d; macOS allows 104 bytes including the terminator", SocketLimit)
+	}
+}
