@@ -149,7 +149,6 @@ func TestPlaybackKeysEmitIntents(t *testing.T) {
 		{"[", SeekBy{By: -10 * time.Second}},
 		{"+", VolumeBy{Delta: 5}},
 		{"-", VolumeBy{Delta: -5}},
-		{"q", Quit{}},
 	} {
 		t.Run(tc.key, func(t *testing.T) {
 			_, got := press(t, m, tc.key)
@@ -316,5 +315,155 @@ func TestTheFilterDoesNotFollowYouToAnotherScreen(t *testing.T) {
 	}
 	if m.rows() != 2 {
 		t.Errorf("the albums screen shows %d rows, want 2", m.rows())
+	}
+}
+
+// Quitting ends the session, so it is a command rather than a key. Pressing q
+// says where it went, which beats doing nothing for anyone who learned q
+// elsewhere.
+func TestQSaysWhereQuitWent(t *testing.T) {
+	m := loaded(t)
+
+	m, msg := press(t, m, "q")
+	if msg != nil {
+		t.Errorf("q emitted %#v; it should not act", msg)
+	}
+	if !strings.Contains(m.Status(), ":q") {
+		t.Errorf("q does not say where quit went: %q", m.Status())
+	}
+	if !strings.Contains(m.View(), ":q") {
+		t.Errorf("the message is not on screen:\n%s", m.View())
+	}
+}
+
+// ctrl+c still quits, because it is what people press when a program will not
+// let go and it works below anything shanty decides.
+func TestControlCStillQuits(t *testing.T) {
+	next, cmd := loaded(t).Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	_ = next
+	if cmd == nil {
+		t.Fatal("ctrl+c did nothing")
+	}
+	if _, ok := cmd().(Quit); !ok {
+		t.Errorf("ctrl+c emitted %T, want Quit", cmd())
+	}
+}
+
+// typeCommand enters command mode and types a line, returning the model and
+// whatever running it emitted.
+func typeCommand(t *testing.T, m Model, line string) (Model, tea.Msg) {
+	t.Helper()
+	m, _ = press(t, m, ":")
+	if !m.Commanding() {
+		t.Fatal("pressing : did not enter a command")
+	}
+	for _, c := range line {
+		if c == ' ' {
+			next, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+			m = next.(Model)
+			continue
+		}
+		m, _ = press(t, m, string(c))
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if cmd == nil {
+		return m, nil
+	}
+	return m, cmd()
+}
+
+func TestColonQQuits(t *testing.T) {
+	m, msg := typeCommand(t, loaded(t), "q")
+	if _, ok := msg.(Quit); !ok {
+		t.Errorf(":q emitted %#v, want Quit", msg)
+	}
+	if m.Commanding() {
+		t.Error("running a command left the mode open")
+	}
+}
+
+// A command taking an argument, which is the reason commands exist at all.
+func TestAcommandTakesAnArgument(t *testing.T) {
+	_, msg := typeCommand(t, loaded(t), "volume 40")
+	if got, ok := msg.(VolumeSet); !ok || int(got) != 40 {
+		t.Errorf(":volume 40 emitted %#v, want VolumeSet(40)", msg)
+	}
+}
+
+func TestAnArgumentThatWillNotDoSaysWhatWasWanted(t *testing.T) {
+	m, msg := typeCommand(t, loaded(t), "volume loud")
+	if msg != nil {
+		t.Errorf(":volume loud emitted %#v; it should not act", msg)
+	}
+	if !strings.Contains(m.Status(), "a number from 0 to 100") {
+		t.Errorf("the message does not say what was wanted: %q", m.Status())
+	}
+}
+
+func TestAnUnknownCommandSaysSo(t *testing.T) {
+	m, msg := typeCommand(t, loaded(t), "dance")
+	if msg != nil {
+		t.Errorf(":dance emitted %#v", msg)
+	}
+	if !strings.Contains(m.Status(), "no such command") {
+		t.Errorf("an unknown command said %q", m.Status())
+	}
+}
+
+// Pressing : shows every command, which is what makes the set learnable
+// without going to look for a list of them.
+func TestPressingColonShowsEveryCommand(t *testing.T) {
+	m, _ := press(t, loaded(t), ":")
+	frame := m.View()
+	for _, c := range commands {
+		if !strings.Contains(frame, c.name) {
+			t.Errorf("the completion row does not offer %q:\n%s", c.name, frame)
+		}
+	}
+}
+
+func TestTabCompletesAsFarAsTheMatchesAgree(t *testing.T) {
+	m, _ := press(t, loaded(t), ":")
+	m, _ = press(t, m, "v")
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = next.(Model)
+
+	// One match, and it takes an argument, so the cursor lands where the
+	// argument goes.
+	if m.Line() != "volume " {
+		t.Errorf("tab completed to %q, want %q", m.Line(), "volume ")
+	}
+}
+
+func TestEscapeAbandonsTheCommand(t *testing.T) {
+	m, _ := press(t, loaded(t), ":")
+	m, _ = press(t, m, "q")
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+
+	if m.Commanding() {
+		t.Error("esc did not leave the command line")
+	}
+	if m.Line() != "" {
+		t.Errorf("esc left %q on the line", m.Line())
+	}
+	if cmd != nil {
+		t.Errorf("esc ran something: %#v", cmd())
+	}
+}
+
+// Holding a volume key down stops at the end of the range. Typing a number
+// outside it is a mistake, and is reported rather than quietly changed into a
+// different number.
+func TestAVolumeOutsideTheRangeIsReportedNotClamped(t *testing.T) {
+	for _, arg := range []string{"400", "-1"} {
+		m, msg := typeCommand(t, loaded(t), "volume "+arg)
+		if msg != nil {
+			t.Errorf(":volume %s emitted %#v; it should not act", arg, msg)
+		}
+		if !strings.Contains(m.Status(), "0 to 100") {
+			t.Errorf(":volume %s said %q", arg, m.Status())
+		}
 	}
 }

@@ -56,11 +56,31 @@ When you start a track, shanty also tells mpv about the track after it. mpv
 opens that file in advance, so an album plays through without a pause between
 tracks.
 
+## Commands
+
+Press `:` to type a command. The commands matching what you have typed are
+listed above the line, so pressing `:` on its own shows all of them. `tab`
+completes as far as the matches agree, `enter` runs, and `esc` abandons the
+line.
+
+| Command | What it does |
+|---|---|
+| `:q` | Quit |
+| `:volume 40` | Set the volume to a number, where `+` and `-` change it by steps |
+
+Commands exist for things a key cannot do: those that need something typed
+after them, and those too rare to be worth a key.
+
 ## Quitting
 
 | Key | What it does |
 |---|---|
-| `q` or `ctrl+c` | Quit shanty |
+| `:q` | Quit shanty |
+| `ctrl+c` | Quit shanty |
+
+Quitting is a command rather than a key. It ends the session and cannot be
+undone by pressing something else, so it is not one keystroke away from every
+screen. Pressing `q` tells you this rather than doing nothing.
 
 Quitting also stops mpv. shanty does not leave a player running in the
 background.

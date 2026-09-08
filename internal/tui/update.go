@@ -15,8 +15,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		if m.mode == modeFilter {
+		switch m.mode {
+		case modeFilter:
 			return m.filterKey(msg)
+		case modeCommand:
+			return m.commandKey(msg)
 		}
 		return m.key(msg)
 
@@ -56,12 +59,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "ctrl+c":
 		return m, emit(Quit{})
+
+	case "q":
+		// Quitting ends the session and is a command rather than a key
+		// (ADR-016). Saying so beats doing nothing for anyone who learned q
+		// somewhere else.
+		m.status = "type :q to quit"
+		return m, nil
 
 	case "/":
 		m.mode, m.filter = modeFilter, ""
 		return m.moveTo(0), nil
+
+	case ":":
+		m.mode, m.line, m.status = modeCommand, "", ""
+		return m, nil
 
 	case "up", "k":
 		return m.move(-1), nil
@@ -131,6 +145,57 @@ func (m Model) filterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.move(1), nil
 	}
 	return m, nil
+}
+
+// commandKey handles a keystroke while a command is being typed. The list of
+// matching commands is shown while typing, tab completes as far as the matches
+// agree, enter runs, and esc abandons the line.
+func (m Model) commandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.mode, m.line = modeNormal, ""
+		return m, nil
+	case tea.KeyTab:
+		m.line = complete(m.line)
+		return m, nil
+	case tea.KeyEnter:
+		return m.runCommand()
+	case tea.KeyBackspace:
+		if m.line != "" {
+			m.line = m.line[:len(m.line)-1]
+		}
+		return m, nil
+	case tea.KeyRunes:
+		m.line += string(msg.Runes)
+		return m, nil
+	case tea.KeySpace:
+		m.line += " "
+		return m, nil
+	}
+	return m, nil
+}
+
+// runCommand leaves the mode and acts on the line, reporting a name that is
+// not a command and an argument a command could not use.
+func (m Model) runCommand() (tea.Model, tea.Cmd) {
+	line := m.line
+	m.mode, m.line = modeNormal, ""
+
+	name, arg := split(line)
+	if name == "" {
+		return m, nil
+	}
+	c, found := lookup(line)
+	if !found {
+		m.status = "no such command: " + Sanitise(name)
+		return m, nil
+	}
+	intent, err := c.run(arg)
+	if err != nil {
+		m.status = err.Error()
+		return m, nil
+	}
+	return m, emit(intent)
 }
 
 // open moves down one screen, or plays the selected track. The album travels

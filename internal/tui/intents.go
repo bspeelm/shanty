@@ -22,8 +22,11 @@ type (
 	SkipPrev    struct{}
 	SeekBy      struct{ By time.Duration }
 	VolumeBy    struct{ Delta int }
-	GoBack      struct{}
-	Quit        struct{}
+	// VolumeSet is an absolute volume, from the command line, where VolumeBy
+	// is the relative change the keys make.
+	VolumeSet int
+	GoBack    struct{}
+	Quit      struct{}
 )
 
 // Inputs are what the caller sends back once it has done the work.

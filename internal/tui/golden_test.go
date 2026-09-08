@@ -92,6 +92,19 @@ func TestGoldenScreens(t *testing.T) {
 			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
 			Progress(83*time.Second),
 			PausedChanged(true))},
+		{"commanding", func() Model {
+			c, _ := artists.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+			return c.(Model)
+		}()},
+		{"commanding-typed", func() Model {
+			c, _ := artists.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+			m := c.(Model)
+			for _, r := range "vol" {
+				n, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+				m = n.(Model)
+			}
+			return m
+		}()},
 		{"filtering", func() Model {
 			f, _ := artists.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 			m := f.(Model)

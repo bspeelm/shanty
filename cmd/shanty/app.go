@@ -80,11 +80,9 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.SeekBy:
 		return a, a.act(func(ctx context.Context) error { return a.player.Seek(ctx, msg.By) })
 	case tui.VolumeBy:
-		a.volume = max(0, min(100, a.volume+msg.Delta))
-		volume := a.volume
-		return a, tea.Batch(
-			a.act(func(ctx context.Context) error { return a.player.SetVolume(ctx, volume) }),
-			emit(tui.VolumeChanged(volume)))
+		return a.setVolume(a.volume + msg.Delta)
+	case tui.VolumeSet:
+		return a.setVolume(int(msg))
 
 	case playerEvent:
 		return a.playerSaid(mpv.Event(msg))
@@ -159,6 +157,16 @@ func (a app) playCurrent() tea.Cmd {
 		}
 		return tui.NowPlaying{Title: track.Title, Artist: track.Artist, Duration: track.Duration}
 	}
+}
+
+// setVolume clamps and applies a volume, telling the screen the value it
+// actually took.
+func (a app) setVolume(to int) (tea.Model, tea.Cmd) {
+	a.volume = max(0, min(100, to))
+	volume := a.volume
+	return a, tea.Batch(
+		a.act(func(ctx context.Context) error { return a.player.SetVolume(ctx, volume) }),
+		emit(tui.VolumeChanged(volume)))
 }
 
 func (a app) togglePause() tea.Cmd {

@@ -70,10 +70,15 @@ shanty help         # list the commands
 
 Use the arrow keys or `j` and `k` to move through a list, `enter` to open an
 artist or album, and `enter` on a track to play it. Press `esc` to go back a
-level. While a track is playing, `space` pauses and resumes, `n` and `p` move
-between tracks, `[` and `]` seek backward and forward, `+` and `-` change the
-volume, and `q` quits. The
-[Keys](https://github.com/bspeelm/shanty/wiki/Keys) page lists all of them.
+level, and `/` to filter the list you are looking at.
+
+While a track is playing, `space` pauses and resumes, `n` and `p` move between
+tracks, `[` and `]` seek backward and forward, and `+` and `-` change the
+volume.
+
+Press `:` to type a command; the ones matching what you type are listed as you
+go. `:q` quits. The
+[Keys](https://github.com/bspeelm/shanty/wiki/Keys) page lists everything.
 
 ## How shanty handles your data
 

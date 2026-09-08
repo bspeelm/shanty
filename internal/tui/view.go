@@ -8,9 +8,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// chromeLines is the number of lines that are not list rows: the title, two
-// rules, the player line and the help line.
+// chromeLines is the number of rows that are not list rows: the title, two
+// rules, the player line and the last row.
 const chromeLines = 5
+
+// chrome is how many rows the frame uses for something other than the list.
+// Typing a command adds the row listing the ones that match.
+func (m Model) chrome() int {
+	if m.mode == modeCommand {
+		return chromeLines + 1
+	}
+	return chromeLines
+}
 
 const (
 	defaultWidth  = 80
@@ -35,7 +44,7 @@ func (m Model) View() string {
 	if h <= 0 {
 		h = defaultHeight
 	}
-	visible := max(1, h-chromeLines)
+	visible := max(1, h-m.chrome())
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(fit("shanty · "+m.heading(), w)))
@@ -43,6 +52,9 @@ func (m Model) View() string {
 	b.WriteString(m.list(w, visible))
 	b.WriteString(rule(w) + "\n")
 	b.WriteString(fit(m.player(), w) + "\n")
+	if m.mode == modeCommand {
+		b.WriteString(faintStyle.Render(fit(m.completions(), w)) + "\n")
+	}
 	b.WriteString(m.footer(w))
 	return b.String()
 }
@@ -54,7 +66,28 @@ func (m Model) View() string {
 // them put the cause on one line and what to do about it on the next. The
 // footer is one row, so the breaks become separators before Sanitise removes
 // them and runs the two halves together.
+// completions is the row listing the commands the typed line matches. It is
+// what makes the command set learnable without a manual.
+func (m Model) completions() string {
+	found := matching(m.line)
+	if len(found) == 0 {
+		return "  no command starts with that"
+	}
+	var names []string
+	for _, c := range found {
+		if len(found) == 1 && c.argument != "" {
+			names = append(names, c.name+" <"+c.argument+">   "+c.summary)
+			continue
+		}
+		names = append(names, c.name)
+	}
+	return "  " + strings.Join(names, "   ")
+}
+
 func (m Model) footer(w int) string {
+	if m.mode == modeCommand {
+		return statusStyle.Render(fit(":"+m.line+"\u2588", w))
+	}
 	if m.mode == modeFilter {
 		return statusStyle.Render(fit("/"+m.filter+"\u2588", w))
 	}
@@ -139,7 +172,7 @@ func (m Model) viewWidth() int {
 	return defaultWidth
 }
 
-const help = "↑↓ move · enter open · esc back · / filter · space pause · n/p skip · [ ] seek · +/- volume · q quit"
+const help = "↑↓ move · enter open · esc back · / filter · : command · space pause · n/p skip · [ ] seek · +/- volume · :q quit"
 
 // window returns the first row to draw, scrolling only enough to keep the
 // cursor on screen.

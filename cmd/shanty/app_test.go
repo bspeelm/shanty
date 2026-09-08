@@ -310,6 +310,7 @@ func TestEveryIntentIsWiredUp(t *testing.T) {
 		"SkipPrev":    tui.SkipPrev{},
 		"SeekBy":      tui.SeekBy{By: time.Second},
 		"VolumeBy":    tui.VolumeBy{Delta: 1},
+		"VolumeSet":   tui.VolumeSet(40),
 	} {
 		t.Run(name, func(t *testing.T) {
 			next, cmd := a.Update(msg)
@@ -320,4 +321,29 @@ func TestEveryIntentIsWiredUp(t *testing.T) {
 		})
 	}
 	_ = rec
+}
+
+// The command line sets an absolute volume where the keys change it by steps.
+func TestAnAbsoluteVolumeReachesThePlayer(t *testing.T) {
+	a, rec, _ := wired(t)
+	a, _ = step(t, a, tui.VolumeSet(40))
+
+	if a.volume != 40 {
+		t.Errorf("volume is %d, want 40", a.volume)
+	}
+	if said := strings.Join(rec.said(), "\n"); !strings.Contains(said, "volume 40") {
+		t.Errorf("the player never heard it:\n%s", said)
+	}
+}
+
+func TestAnAbsoluteVolumeIsClamped(t *testing.T) {
+	a, rec, _ := wired(t)
+	a, _ = step(t, a, tui.VolumeSet(400))
+	if a.volume != 100 {
+		t.Errorf("volume is %d, want 100", a.volume)
+	}
+	said := rec.said()
+	if !strings.Contains(said[len(said)-1], "volume 100") {
+		t.Errorf("the player heard %q", said[len(said)-1])
+	}
 }

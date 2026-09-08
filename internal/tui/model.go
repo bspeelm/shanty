@@ -17,6 +17,8 @@ const (
 	modeNormal mode = iota
 	// modeFilter narrows the list on screen as characters are typed.
 	modeFilter
+	// modeCommand takes a line naming a command to run.
+	modeCommand
 )
 
 // Screen identifies one of the three views.
@@ -60,6 +62,8 @@ type Model struct {
 	mode mode
 	// filter narrows the current screen to rows containing it.
 	filter string
+	// line is the command being typed, without its leading colon.
+	line string
 
 	nowPlaying string
 	nowArtist  string
@@ -85,12 +89,14 @@ func New() Model {
 func (m Model) Init() tea.Cmd { return nil }
 
 // Screen, Cursor, Status and Paused report the model’s state.
-func (m Model) Screen() Screen  { return m.screen }
-func (m Model) Filter() string  { return m.filter }
-func (m Model) Filtering() bool { return m.mode == modeFilter }
-func (m Model) Cursor() int     { return m.cursor[m.screen] }
-func (m Model) Status() string  { return m.status }
-func (m Model) Paused() bool    { return m.paused }
+func (m Model) Screen() Screen   { return m.screen }
+func (m Model) Filter() string   { return m.filter }
+func (m Model) Filtering() bool  { return m.mode == modeFilter }
+func (m Model) Commanding() bool { return m.mode == modeCommand }
+func (m Model) Line() string     { return m.line }
+func (m Model) Cursor() int      { return m.cursor[m.screen] }
+func (m Model) Status() string   { return m.status }
+func (m Model) Paused() bool     { return m.paused }
 
 // rows is the number of items the current screen shows, after filtering.
 func (m Model) rows() int { return len(m.matches()) }
