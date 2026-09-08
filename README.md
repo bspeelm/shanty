@@ -28,6 +28,17 @@ than a check on it.
 | decisions | [`docs/decisions.md`](docs/decisions.md) — ADR-001 is the threat model, written first |
 | who has read what | [`docs/reviewed.md`](docs/reviewed.md) — empty, and honest about it |
 
+shanty needs [mpv](https://mpv.io) installed; it does not decode audio itself
+([ADR-011](docs/decisions.md)).
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
+```
+
+The installer verifies the checksum always, and provenance on `--verify`. The
+checksum proves the bytes match what the release published; the attestation
+proves who published them, which a checksum cannot.
+
 ```sh
 shanty              # browse and play
 shanty doctor       # check the setup; every failure names what to type
@@ -70,4 +81,4 @@ what is claimed.
 
 ## Licence
 
-Undecided — ADR-008. MIT unless there is a reason.
+MIT — [`LICENSE`](LICENSE), ADR-008.

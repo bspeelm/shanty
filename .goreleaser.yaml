@@ -1,0 +1,65 @@
+# Release build.
+#
+# The archive name carries no version, because bootstrap/install.sh resolves
+# through /releases/latest/download/ and cannot know one. That coupling is not
+# left to memory: bootstrap/install_test.go reads both files and fails if the
+# name this produces stops being the name the installer asks for.
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: shanty
+    main: ./cmd/shanty
+    binary: shanty
+    env:
+      - CGO_ENABLED=0
+    # -trimpath, or the runner's absolute build paths are baked into the
+    # binary: nothing secret in a public runner's path, but it makes the build
+    # unreproducible for no gain.
+    flags:
+      - -trimpath
+    # The same flags `make build` and `make budgets` use, so the number the
+    # budget measured locally is the number that ships.
+    ldflags:
+      - -s -w -X main.Version={{ .Version }}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: shanty
+    formats: [tar.gz]
+    name_template: "shanty_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksums:
+  name_template: checksums.txt
+
+changelog:
+  # Conventional commits are the changelog (§5.2), so the release notes are
+  # the commits rather than a second account of them that could disagree.
+  use: git
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  footer: |
+    ---
+    Verify what you downloaded:
+
+        sha256sum -c checksums.txt --ignore-missing
+
+    That proves the bytes match what this release published. To prove who
+    published them, which a checksum cannot:
+
+        gh attestation verify shanty_linux_amd64.tar.gz --repo {{ .Env.GITHUB_REPOSITORY }} --bundle attestation.jsonl
+
+    shanty needs mpv installed; it does not decode audio itself (ADR-011).

@@ -1,0 +1,76 @@
+name: outdated
+
+# Weekly, and never an automated bump. An installer that quietly moves its own
+# pins is one whose output nobody can reproduce, and a client that quietly
+# moves its dependencies is no different (§11). This opens one issue and keeps
+# it current; a human decides what to do about it.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  outdated:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: known vulnerabilities
+        id: vuln
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          if govulncheck ./... > /tmp/vuln.txt 2>&1; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+          fi
+          cat /tmp/vuln.txt
+
+      - name: newer versions
+        run: go list -m -u all > /tmp/outdated.txt 2>&1 || true
+
+      - name: open or update the tracking issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "Weekly dependency check, $(date -u +%Y-%m-%d)."
+            echo
+            echo "## govulncheck"
+            echo
+            if [ "${{ steps.vuln.outputs.clean }}" = "true" ]; then
+              echo "No known vulnerabilities."
+            else
+              echo '```'
+              cat /tmp/vuln.txt
+              echo '```'
+            fi
+            echo
+            echo "## Modules with newer versions"
+            echo
+            echo '```'
+            grep '\[' /tmp/outdated.txt || echo "everything is current"
+            echo '```'
+            echo
+            echo "The module budget is 30 (PLAN.md §0). Nothing here is bumped"
+            echo "automatically; an upgrade is a commit somebody made on purpose."
+          } > /tmp/body.md
+
+          existing=$(gh issue list --state open --label dependencies \
+            --search "Weekly dependency check in:title" --json number -q '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file /tmp/body.md
+            echo "updated issue #$existing"
+          else
+            gh issue create --title "Weekly dependency check" \
+              --label dependencies --body-file /tmp/body.md
+          fi

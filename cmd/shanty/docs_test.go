@@ -9,7 +9,23 @@ import (
 
 // Prose has no compiler, and the README's command list is the first thing a
 // reader believes. Held against the command table in both directions.
-var documented = regexp.MustCompile(`(?m)^shanty ([a-z-]+)`)
+//
+// Only the fenced blocks count. A sentence that happens to begin "shanty needs
+// mpv" is prose, and reading it as a command list made this test fail on a
+// correct README -- a parser too eager is a gate that gets worked around.
+var (
+	fenced     = regexp.MustCompile("(?s)```sh\n(.*?)```")
+	documented = regexp.MustCompile(`(?m)^shanty ([a-z-]+)`)
+)
+
+// commandBlocks is every fenced shell block in the README, joined.
+func commandBlocks(readme string) string {
+	var out strings.Builder
+	for _, block := range fenced.FindAllStringSubmatch(readme, -1) {
+		out.WriteString(block[1])
+	}
+	return out.String()
+}
 
 func TestEveryCommandIsDocumentedAndEveryDocumentedCommandExists(t *testing.T) {
 	raw, err := os.ReadFile("../../README.md")
@@ -27,7 +43,7 @@ func TestEveryCommandIsDocumentedAndEveryDocumentedCommandExists(t *testing.T) {
 	}
 
 	var checked int
-	for _, m := range documented.FindAllStringSubmatch(readme, -1) {
+	for _, m := range documented.FindAllStringSubmatch(commandBlocks(readme), -1) {
 		checked++
 		if !exists[m[1]] {
 			t.Errorf("the README documents `shanty %s`, which is not a command", m[1])

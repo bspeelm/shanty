@@ -1,0 +1,89 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+# Read-only at the top and named rather than inherited. The one job that needs
+# to write says so, a scope at a time.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Keyless signing: id-token mints the OIDC token that binds the
+      # certificate to this workflow, attestations writes the result. There is
+      # no private key to store, rotate or leak.
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      # The gates run again here rather than trusting the branch: a tag can be
+      # pushed at any commit, including one CI never saw.
+      - run: make check
+
+      # §7.5 and §9.3: the release blocks until a human has answered the review
+      # packet. The machine cannot judge the answers; it can refuse to ship
+      # without them, which is the whole point of a gate having a shell.
+      - name: the review packet is answered
+        run: |
+          packet="docs/review/${GITHUB_REF_NAME}.md"
+          test -f "$packet" || {
+            echo "::error::no review packet at $packet"
+            echo "The release is blocked until one exists and is answered (§7.5)."
+            exit 1
+          }
+          if grep -n 'ANSWER HERE' "$packet"; then
+            echo "::error::$packet has unanswered sections, listed above"
+            exit 1
+          fi
+          echo "$packet is answered"
+
+      # Every load-bearing surface the packet names must have been read since
+      # it last changed. A ledger that has gone stale reads as coverage while
+      # being none (§13.1).
+      - name: the ledger is not stale
+        run: |
+          if grep -qE '^\| `[a-z/._-]+` \|[^|]*\| — \|' docs/reviewed.md; then
+            echo "::error::docs/reviewed.md still has unread load-bearing surfaces:"
+            grep -nE '^\| `[a-z/._-]+` \|[^|]*\| — \|' docs/reviewed.md
+            exit 1
+          fi
+          echo "every load-bearing surface has a ledger entry"
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Everything the release page offers, not only the archives. Attesting
+      # the tarballs alone would leave checksums.txt -- the file the default
+      # install trusts -- swappable by whoever could swap what it vouches for.
+      - name: sign the release artifacts
+        id: attest
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/shanty_*.tar.gz
+            dist/checksums.txt
+
+      # Published beside the artifacts so that verifying needs no GitHub
+      # account: `gh attestation verify` without --bundle asks the API, which
+      # requires a login; with one it reads from disk.
+      - name: publish the attestation bundle
+        run: |
+          cp "${{ steps.attest.outputs.bundle-path }}" attestation.jsonl
+          gh release upload "${GITHUB_REF_NAME}" attestation.jsonl --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
