@@ -1,7 +1,5 @@
-// Package config owns every file shanty reads or writes. §8 names four
-// directories and says "nothing else, ever"; resolving all four here lets the
-// isolation suite ask one question -- did anything land outside Paths.All() --
-// rather than auditing call sites forever.
+// Package config reads and writes shanty's two configuration files and
+// resolves the four directories it may write to.
 package config
 
 import (
@@ -12,8 +10,7 @@ import (
 
 const appName = "shanty"
 
-// Paths is the whole filesystem contract. Nothing outside these four
-// directories is shanty's to touch.
+// Paths holds the four directories shanty writes to.
 type Paths struct {
 	Config  string // settings and credentials, both user-editable
 	State   string // resume positions and the scrobble backlog
@@ -21,8 +18,8 @@ type Paths struct {
 	Runtime string // the mpv socket, gone at logout
 }
 
-// Discover creates nothing: a command that only reports must not leave a
-// directory behind as the price of having run.
+// Discover resolves the four directories from the environment. It creates
+// none of them.
 func Discover() (Paths, error) {
 	configHome, err := os.UserConfigDir()
 	if err != nil {
@@ -37,9 +34,8 @@ func Discover() (Paths, error) {
 		return Paths{}, err
 	}
 
-	// Never a shared /tmp: the socket name is predictable, so a directory
-	// another account can write to is one where somebody else's socket can be
-	// waiting under our name.
+	// Without XDG_RUNTIME_DIR the socket goes under the cache directory rather
+	// than a shared temporary directory.
 	runtime := os.Getenv("XDG_RUNTIME_DIR")
 	if runtime != "" && !filepath.IsAbs(runtime) {
 		return Paths{}, errors.New("path in $XDG_RUNTIME_DIR is relative")
@@ -58,9 +54,8 @@ func Discover() (Paths, error) {
 	}, nil
 }
 
-// xdgDir mirrors os.UserConfigDir for the variables the standard library has
-// no helper for, refusal of relative paths included: resolving one against the
-// working directory would scatter state wherever shanty was started from.
+// xdgDir returns the directory named by an XDG environment variable, or the
+// given path under the home directory. A relative value is an error.
 func xdgDir(env string, fallback string) (string, error) {
 	if dir := os.Getenv(env); dir != "" {
 		if !filepath.IsAbs(dir) {
@@ -78,21 +73,18 @@ func xdgDir(env string, fallback string) (string, error) {
 func (p Paths) ConfigFile() string { return filepath.Join(p.Config, "config.toml") }
 func (p Paths) Socket() string     { return filepath.Join(p.Runtime, "mpv.sock") }
 
-// CredentialsFile is 0600 and separate from the settings, so config.toml can be
-// pasted into a bug report and the credential cannot.
+// CredentialsFile is the path to the file holding the credential.
 func (p Paths) CredentialsFile() string { return filepath.Join(p.Config, "credentials.toml") }
 
-// All is the write set, and it is closed: uninstall removes exactly these and
-// the isolation suite asserts nothing landed outside them.
+// All returns the four directories shanty writes to.
 func (p Paths) All() []string { return []string{p.Config, p.State, p.Cache, p.Runtime} }
 
-// EnsureRuntime creates the runtime directory at 0700. Not advisory: the
-// socket inside reaches a player holding a credential-bearing URL.
+// EnsureRuntime creates the runtime directory with 0700 permissions, and sets
+// them on a directory that already exists.
 func (p Paths) EnsureRuntime() error {
 	if err := os.MkdirAll(p.Runtime, 0o700); err != nil {
 		return err
 	}
-	// MkdirAll leaves an existing directory's mode alone, so one that was
-	// already there is tightened rather than trusted.
+	// MkdirAll leaves an existing directory’s permissions alone.
 	return os.Chmod(p.Runtime, 0o700)
 }

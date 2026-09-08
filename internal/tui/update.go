@@ -8,8 +8,7 @@ import (
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
-// Update is the whole interaction. It changes the model and returns an intent
-// for anything that needs the world touched.
+// Update applies a message to the model and returns any intent it produces.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -91,8 +90,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// open descends one level, or plays. The intent carries the album by value so
-// the handler does not have to ask this package for state it already sent.
+// open moves down one screen, or plays the selected track. The album travels
+// with the intent.
 func (m Model) open() (tea.Model, tea.Cmd) {
 	if m.rows() == 0 {
 		return m, nil
@@ -111,9 +110,7 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// back climbs one level. From the top it does nothing rather than quitting:
-// leaving a music player by pressing left twice is a surprise nobody wants
-// mid-album.
+// back moves up one screen. At the top it does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case ScreenTracks:
@@ -126,17 +123,15 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 
 func (m Model) move(by int) Model { return m.moveTo(m.cursor[m.screen] + by) }
 
-// moveTo clamps. The caller is a key that can be held down, and there is no
-// useful error for pressing down at the bottom of a list.
+// moveTo selects row to, clamped to the list.
 func (m Model) moveTo(to int) Model {
 	rows := m.rows()
 	if rows == 0 {
 		return m
 	}
 	to = max(0, min(rows-1, to))
-	// The map is shared with the model this one was copied from, so it is
-	// replaced rather than written through: an Update must not change the
-	// model it was called on.
+	// The map is replaced rather than written through, because Update must not
+	// modify the model it was called on.
 	next := make(map[Screen]int, len(m.cursor))
 	for k, v := range m.cursor {
 		next[k] = v
@@ -146,7 +141,7 @@ func (m Model) moveTo(to int) Model {
 	return m
 }
 
-// page is how far pgup and pgdown move, leaving the chrome out of the count.
+// page is how many rows pgup and pgdown move.
 func (m Model) page() int {
 	if n := m.height - chromeLines; n > 1 {
 		return n

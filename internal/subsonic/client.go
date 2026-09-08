@@ -1,6 +1,5 @@
-// Package subsonic is the only package in shanty that imports net/http, which
-// `make budgets` asserts: "what does this program say on the network" has a
-// one-package answer, and this is it.
+// Package subsonic is a client for the Subsonic API. It is the only package in
+// shanty that imports net/http.
 package subsonic
 
 import (
@@ -16,18 +15,17 @@ import (
 	"time"
 )
 
-// §9: the network can delay forever, so every client here has a deadline. The
-// stream has none -- its URL goes to mpv, which owns that connection.
+// Request timeouts. The audio stream has no client here: its URL is given to
+// mpv, which makes that connection itself.
 const (
 	MetadataTimeout = 10 * time.Second
 	ArtTimeout      = 30 * time.Second
 )
 
-// A hostile server should buy a failed request, not the machine's memory. A
-// library large enough to exceed this is a bug report worth having.
+// maxMetadataBytes is the most of a metadata response that will be read.
 const maxMetadataBytes = 16 << 20
 
-// Client talks to exactly one server (§9).
+// Client talks to one Subsonic server.
 type Client struct {
 	base *url.URL
 	auth Authenticator
@@ -38,15 +36,16 @@ type Client struct {
 	log   *slog.Logger
 }
 
-// Options are the knobs that are not credentials. No TLS setting: ADR-004.
+// Options are the settings that are not credentials.
 type Options struct {
-	// UserAgent defaults to shanty/<APIVersion>.
+	// UserAgent defaults to shanty and the API version.
 	UserAgent string
-	// Logger, when set, records every request URL through Redact.
+	// Logger, when set, records each request URL with credentials redacted.
 	Logger *slog.Logger
 }
 
-// New builds a client for one server: the base URL a user typed, no /rest.
+// New returns a client for one server. The server argument is the base URL,
+// without the /rest path.
 func New(server string, auth Authenticator, opt Options) (*Client, error) {
 	if auth == nil {
 		return nil, errors.New("no credential was supplied")
@@ -71,9 +70,8 @@ func New(server string, auth Authenticator, opt Options) (*Client, error) {
 	}, nil
 }
 
-// URL builds a request URL with the credential attached, exported for the one
-// thing needing a URL rather than a response: the stream handed to mpv over
-// IPC, never over argv (§7).
+// URL returns the request URL for an endpoint, with the credential and the
+// standard parameters attached.
 func (c *Client) URL(endpoint string, params url.Values) *url.URL {
 	u := *c.base
 	u.Path = strings.TrimRight(u.Path, "/") + "/rest/" + endpoint + ".view"
@@ -90,13 +88,12 @@ func (c *Client) URL(endpoint string, params url.Values) *url.URL {
 	return &u
 }
 
-// StreamURL is what mpv is told to load; every byte after this is mpv's.
+// StreamURL returns the URL that plays a track.
 func (c *Client) StreamURL(id string) string {
 	return c.URL("stream", url.Values{"id": {id}}).String()
 }
 
-// get performs one metadata request. A nil payload field on an "ok" answer is
-// a server bug, and the caller reports it as one.
+// get performs one metadata request and returns the decoded response.
 func (c *Client) get(ctx context.Context, endpoint string, params url.Values) (*response, error) {
 	u := c.URL(endpoint, params)
 
@@ -112,8 +109,8 @@ func (c *Client) get(ctx context.Context, endpoint string, params url.Values) (*
 
 	resp, err := c.metadata.Do(req)
 	if err != nil {
-		// The URL is in the transport's error, credential and all, so it is
-		// rebuilt from the redacted form rather than wrapped.
+		// Rebuilt from the redacted URL, because the transport’s error contains the
+		// full one.
 		return nil, fmt.Errorf("%s: %w", Redact(u), unwrapURLError(err))
 	}
 	defer resp.Body.Close()
@@ -122,17 +119,12 @@ func (c *Client) get(ctx context.Context, endpoint string, params url.Values) (*
 		return nil, fmt.Errorf("%s answered %s", Redact(u), resp.Status)
 	}
 
-	// An HTML answer is almost never the music server: it is a proxy or a
-	// login page in front of it, and "not valid JSON" would send the user
-	// looking in the wrong place. Other types pass -- ADR-007 makes other
-	// servers best-effort, and refusing an honest text/plain breaks one for
-	// nothing.
+	// An HTML response means something other than the music server answered.
 	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/html") {
 		return nil, fmt.Errorf("%s answered with an HTML page rather than JSON.\nSomething is in front of the server -- a reverse proxy, or a login page. Open that URL in a browser to see what", Redact(u))
 	}
 
-	// Capped before it is read, not after: a body large enough to matter is
-	// one we must not have finished reading to find out about.
+	// The body is read up to maxMetadataBytes.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMetadataBytes))
 	if err != nil {
 		return nil, err
@@ -143,8 +135,8 @@ func (c *Client) get(ctx context.Context, endpoint string, params url.Values) (*
 	return decode(body)
 }
 
-// decode is the trust boundary: every byte was the server's, and FuzzDecode is
-// pointed here.
+// decode parses a response body and returns an error unless the server
+// reported success.
 func decode(body []byte) (*response, error) {
 	var env envelope
 	if err := json.Unmarshal(body, &env); err != nil {
@@ -162,8 +154,8 @@ func decode(body []byte) (*response, error) {
 	return &env.Response, nil
 }
 
-// unwrapURLError strips net/url's wrapper, whose Error prints the whole URL,
-// credential included.
+// unwrapURLError removes net/url’s wrapper, whose message contains the whole
+// URL including the credential.
 func unwrapURLError(err error) error {
 	var uerr *url.Error
 	if errors.As(err, &uerr) {

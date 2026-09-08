@@ -12,10 +12,7 @@ import (
 	"github.com/bspeelm/shanty/internal/tui"
 )
 
-// player is what the app needs from mpv. An interface so the wiring can be
-// tested where mpv is not installed, which is most places -- and so that
-// internal/mpv's API is the one the app actually uses rather than whatever it
-// happens to export.
+// player is the part of mpv.Player the app uses.
 type player interface {
 	Load(ctx context.Context, url string) error
 	Append(ctx context.Context, url string) error
@@ -28,9 +25,8 @@ type player interface {
 	Err() error
 }
 
-// app is the outer model. internal/tui renders and asks; this does. The split
-// is what makes every screen testable without a server or a socket, and it is
-// the reason tui cannot import net, os or os/exec (§4).
+// app connects the interface to the server and the player. It receives the
+// intents tui emits, performs the work, and sends the results back.
 type app struct {
 	ui     tui.Model
 	client *subsonic.Client
@@ -40,8 +36,7 @@ type app struct {
 	ctx    context.Context
 }
 
-// Messages the app sends itself. They are separate from tui's inputs because
-// these are about the machinery, not about what is on screen.
+// Messages the app sends itself.
 type (
 	playerEvent mpv.Event
 	playerGone  struct{ err error }
@@ -58,9 +53,8 @@ func (a app) Init() tea.Cmd {
 
 func (a app) View() string { return a.ui.View() }
 
-// Update handles what the app must act on and passes everything else to the
-// screen. An intent that reaches the default branch is one nobody wired up,
-// which a test asserts cannot happen.
+// Update acts on the intents the interface emits and passes everything else
+// to it.
 func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tui.Quit:
@@ -102,15 +96,15 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a.forward(msg)
 }
 
-// forward hands a message to the screen and keeps whatever it asks for.
+// forward passes a message to the interface and returns what it asks for.
 func (a app) forward(msg tea.Msg) (tea.Model, tea.Cmd) {
 	ui, cmd := a.ui.Update(msg)
 	a.ui = ui.(tui.Model)
 	return a, cmd
 }
 
-// playerSaid turns mpv's notifications into what the screen understands, and
-// advances the queue when a track ends of its own accord.
+// playerSaid handles one mpv event, advancing the queue when a track ends of
+// its own accord.
 func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 	next := a.watchPlayer()
 	switch {
@@ -122,8 +116,8 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 		return a, next
 
 	case e.Name == "end-file":
-		// "eof" is the track finishing; anything else is us having already
-		// moved, and advancing again would skip one.
+		// Only "eof" means the track finished. Any other reason means the queue has
+		// already moved.
 		if e.Reason != "eof" {
 			return a, next
 		}
@@ -145,8 +139,8 @@ func queueFrom(album subsonic.Album) queue.Queue {
 	return queue.New(tracks...)
 }
 
-// playCurrent loads the current track and queues the one after it, which is
-// what makes mpv's prefetch gapless (§7).
+// playCurrent loads the current track and appends the next, so mpv opens it
+// early.
 func (a app) playCurrent() tea.Cmd {
 	track, ok := a.queue.Current()
 	if !ok {
@@ -160,9 +154,7 @@ func (a app) playCurrent() tea.Cmd {
 			return tui.Failed{Message: err.Error()}
 		}
 		if hasNext {
-			// Unchecked on purpose: failing to prefetch costs a gap between
-			// tracks, and reporting it would replace the track that is
-			// playing with an error about the one that is not.
+			// A failed append costs a gap between tracks and is not reported.
 			_ = p.Append(ctx, client.StreamURL(upcoming.ID))
 		}
 		return tui.NowPlaying{Title: track.Title, Artist: track.Artist, Duration: track.Duration}
@@ -180,8 +172,7 @@ func (a app) togglePause() tea.Cmd {
 	}
 }
 
-// paused reads the screen's own idea of the state, so the key toggles what the
-// user can see rather than a second copy that could disagree with it.
+// paused reports what the interface is currently showing.
 func (a app) paused() bool { return a.ui.Paused() }
 
 func (a app) scrobble(id string) tea.Cmd {
@@ -190,9 +181,7 @@ func (a app) scrobble(id string) tea.Cmd {
 	}
 	client := a.client
 	return func() tea.Msg {
-		// Unchecked: a scrobble that does not land is a play the server does
-		// not know about, which is not worth interrupting the music for. The
-		// backlog that makes it durable is v0.2.
+		// A failed report is not surfaced. A durable queue for them comes later.
 		_ = client.Scrobble(a.ctx, id, true)
 		return scrobbled{}
 	}
@@ -231,8 +220,8 @@ func (a app) fetchAlbum(id string) tea.Cmd {
 	}
 }
 
-// watchPlayer takes one event and re-arms. A closed channel is mpv gone, which
-// is reported once and never respawned (§7).
+// watchPlayer waits for one mpv event and returns it. A closed channel means
+// the player has stopped.
 func (a app) watchPlayer() tea.Cmd {
 	p := a.player
 	return func() tea.Msg {
@@ -252,8 +241,8 @@ func (a app) observePosition() tea.Cmd {
 	return a.act(func(ctx context.Context) error { return a.player.Observe(ctx, "time-pos") })
 }
 
-// act runs something against the player and turns a failure into a line on
-// screen rather than a crash.
+// act runs an operation against the player and turns a failure into a message
+// on screen.
 func (a app) act(do func(context.Context) error) tea.Cmd {
 	return func() tea.Msg {
 		if err := do(a.ctx); err != nil {

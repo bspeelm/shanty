@@ -1,11 +1,8 @@
-// Package fake is an in-process Subsonic server for tests. Every layer runs
-// against it, and nothing in `make check` touches the network.
+// Package fake is an in-process Subsonic server for tests.
 //
-// Two things make it worth more than a stub. It fails the test that sends a
-// request breaking the client's own promises -- p=, a missing client name or
-// User-Agent -- wherever in the tree that test lives, so §6 is enforced by
-// every test without being asked. And it lies on request: the malice modes
-// make truncation, stalling and path traversal one-line tests.
+// It fails the calling test when a request omits the client name or
+// User-Agent, carries the legacy plain-password parameter, or authenticates
+// incorrectly. Malice selects ways for it to answer badly.
 package fake
 
 import (
@@ -19,12 +16,10 @@ import (
 	"sync"
 )
 
-// APIVersion is what the fake claims to speak, matching ADR-007.
+// APIVersion is the Subsonic API version the fake reports.
 const APIVersion = "1.16.1"
 
-// TB is an interface rather than *testing.T for one reason: the fake's claim
-// is that it fails the calling test when a promise breaks, and that is only
-// worth making if its own tests can substitute a recorder and check.
+// TB is the part of *testing.T the fake uses.
 type TB interface {
 	Errorf(format string, args ...any)
 	Fatalf(format string, args ...any)
@@ -32,53 +27,46 @@ type TB interface {
 	Cleanup(func())
 }
 
-// Malice selects the ways this server misbehaves. Every field is off by
-// default, so a test opts into exactly the hostility it is about.
+// Malice selects the ways this server misbehaves. Each field is off by
+// default.
 type Malice struct {
-	// TruncateJSON cuts the response body in half mid-object.
+	// TruncateJSON returns half a response body.
 	TruncateJSON bool
-	// OversizeBody pads past any sane cap, so a client reading without an
-	// io.LimitReader exhausts memory instead of failing a request.
+	// OversizeBody returns a response larger than any client would read.
 	OversizeBody bool
-	// Traversal rewrites every server-supplied path into one that escapes if
-	// joined onto a directory unsanitised.
+	// Traversal returns paths and titles that escape a directory if joined onto
+	// one.
 	Traversal bool
-	// WrongContentType answers JSON requests as text/html.
+	// WrongContentType answers with text/html.
 	WrongContentType bool
-	// RejectAuth fails every credential, however correct.
+	// RejectAuth rejects every credential.
 	RejectAuth bool
-	// Stall never responds: the client's timeout is the only way out.
+	// Stall never answers, leaving the client’s timeout to end the request.
 	Stall bool
-	// HostileText puts terminal escape sequences in every displayable string.
-	// A terminal is an interpreter, not a display, and these are the cheapest
-	// attack a server has against a program that prints what it is told
-	// (ADR-013).
+	// HostileText prefixes every displayable string with terminal escape
+	// sequences.
 	HostileText bool
 }
 
-// oversizeBytes is what OversizeBody pads with: comfortably past the 16 MiB
-// this project's own client caps a metadata response at.
+// oversizeBytes is what OversizeBody pads with.
 const oversizeBytes = 24 << 20
 
-// Hostile is what HostileText wraps every displayable string in: a cursor
-// move, a screen clear, a scroll-region change, and a device-status query
-// whose reply some terminals inject back as if it had been typed.
+// Hostile is the escape sequence HostileText prefixes: a screen clear, a
+// cursor move, a scroll-region change and a device-status query.
 const Hostile = "\x1b[2J\x1b[H\x1b[1;1r\x1b[6n\x07\r\n\x9b31m"
 
-// Options configures a fake. With no credential it accepts nothing, which is
-// the right default for a thing whose job is checking credentials.
+// Options configures a fake. With no credential set it accepts nothing.
 type Options struct {
 	User     string
 	Password string
-	APIKey   string // accepted as OpenSubsonic apiKey authentication
-	// OpenSubsonic advertises the API-key extension, so a test can exercise
-	// the client's downgrade to token+salt.
+	APIKey   string // accepted as an API key
+	// OpenSubsonic controls whether the server reports supporting API keys.
 	OpenSubsonic bool
 	Library      Library
 	Malice       Malice
 }
 
-// Server is a running fake; its shutdown is registered with the test.
+// Server is a running fake. It is shut down when the test ends.
 type Server struct {
 	*httptest.Server
 	t    TB
@@ -87,14 +75,14 @@ type Server struct {
 	reqs []Request
 }
 
-// Request is one call as the server saw it, for tests asserting on what was
-// sent. Credentials are not recorded: the server already refused a wrong one.
+// Request is one call as the server received it. Credentials are not
+// recorded.
 type Request struct {
 	Endpoint string
 	Query    url.Values
 }
 
-// New starts a fake. Options.Library defaults to DefaultLibrary.
+// New starts a fake server. Options.Library defaults to DefaultLibrary.
 func New(t TB, opt Options) *Server {
 	t.Helper()
 	if len(opt.Library.Artists) == 0 {
@@ -106,7 +94,7 @@ func New(t TB, opt Options) *Server {
 	return s
 }
 
-// Requests returns what arrived, in order.
+// Requests returns the calls received, in order.
 func (s *Server) Requests() []Request {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -126,8 +114,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.opt.Malice.Stall {
-		// Held open until the client gives up: its timeout is the only thing
-		// that ends this exchange, which is what the test proves exists.
+		// Held open until the client gives up.
 		<-r.Context().Done()
 		return
 	}
@@ -190,8 +177,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "audio/flac")
-		// Not real FLAC: nothing in the unit suite decodes it, and the
-		// integration job is where real audio meets real mpv.
+		// Not real audio. The integration test is where real audio is played.
 		_, _ = w.Write([]byte(strings.Repeat(sg.ID+" ", 64)))
 	case "scrobble":
 		s.ok(w, response{})
@@ -200,8 +186,8 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// hygienic checks the promises the client makes about every request. A
-// violation fails the calling test, naming the mistake where it was made.
+// hygienic checks the parameters every request must carry, and fails the
+// calling test when one is missing or wrong.
 func (s *Server) hygienic(r *http.Request, q url.Values) bool {
 	ok := true
 	if q.Has("p") {
@@ -238,8 +224,8 @@ func (s *Server) authenticated(q url.Values) bool {
 	return token == hex.EncodeToString(sum[:])
 }
 
-// maybeTraverse replaces server paths with ones that escape the tree. The
-// client is expected to have one function making this harmless.
+// maybeTraverse rewrites paths and titles to escape a directory, when the
+// Traversal mode is set.
 func (s *Server) maybeTraverse(in []song) []song {
 	if !s.opt.Malice.Traversal {
 		return in

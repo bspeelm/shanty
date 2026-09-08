@@ -8,9 +8,8 @@ import (
 	"path/filepath"
 )
 
-// runUninstall removes the four directories §8 permits and prints what it
-// removed. It reads Paths.All rather than carrying its own list, so a fifth
-// directory added anywhere cannot be one uninstall leaves behind.
+// runUninstall deletes the directories in Paths.All and prints which were
+// removed and which were absent.
 func runUninstall(_ context.Context, env Env, _ []string) error {
 	var removed, absent []string
 	for _, dir := range env.Paths.All() {
@@ -21,10 +20,7 @@ func runUninstall(_ context.Context, env Env, _ []string) error {
 		case err != nil:
 			return err
 		}
-		// Refusing rather than deleting: a directory shanty would remove is
-		// one a symlink could point anywhere, and the four paths are
-		// well-known enough for that to be worth a check rather than a
-		// paragraph in the release notes.
+		// A directory that is a symbolic link is reported rather than deleted.
 		if err := refuseSymlink(dir); err != nil {
 			return err
 		}
@@ -48,7 +44,7 @@ func runUninstall(_ context.Context, env Env, _ []string) error {
 	return nil
 }
 
-// refuseSymlink stops a delete from following a link out of shanty's own tree.
+// refuseSymlink returns an error if dir is a symbolic link.
 func refuseSymlink(dir string) error {
 	info, err := os.Lstat(dir)
 	if err != nil {

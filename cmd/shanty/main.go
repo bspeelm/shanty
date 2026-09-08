@@ -1,5 +1,4 @@
-// Command shanty is a terminal client for Navidrome and other Subsonic
-// servers.
+// Command shanty is a terminal client for Subsonic and Navidrome servers.
 package main
 
 import (
@@ -16,46 +15,39 @@ import (
 	"github.com/bspeelm/shanty/internal/config"
 )
 
-// Version is stamped by the release build. A development binary says so
-// rather than claiming a number nobody tagged.
+// Version is set by the release build. A development build reports "dev".
 var Version = "dev"
 
-// Env is everything the commands need from the world, in one struct so a test
-// can hand them a different world without a server, a player or a $HOME.
+// Env is what the commands need from the environment, gathered so that tests
+// can supply their own.
 type Env struct {
 	Paths  config.Paths
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
 
-	// ReadSecret asks for something that must not be echoed. Nil means there
-	// is no terminal, and setup says so rather than reading a password off a
-	// pipe into a shell history.
+	// ReadSecret prompts for a value without echoing it. Nil means there is no
+	// terminal to prompt at.
 	ReadSecret func(prompt string) (string, error)
 
-	// LookPath and Command are how mpv is found and asked its version. They
-	// are fields so doctor can be tested where mpv is not installed, which is
-	// every machine this was written on.
+	// LookPath and Command locate mpv and ask its version.
 	LookPath func(string) (string, error)
 	Command  func(ctx context.Context, name string, args ...string) ([]byte, error)
 
-	// ImmutableHost says the root filesystem is managed by rpm-ostree, where
-	// `dnf install` cannot write. A fix line that names the wrong command is
-	// not a fix line.
+	// ImmutableHost reports that the root filesystem is managed by rpm-ostree,
+	// where dnf cannot install packages.
 	ImmutableHost bool
 }
 
-// command is one subcommand. The set is closed: docs_test holds it against the
-// README in both directions, so a command that exists is documented and a
-// command that is documented exists.
+// command is one subcommand. The set is closed: docs_test checks it against
+// the README in both directions.
 type command struct {
 	name    string
 	summary string
 	run     func(ctx context.Context, env Env, args []string) error
 }
 
-// A function rather than a variable: help lists the commands, so a slice would
-// refer to a function that refers back to the slice.
+// A function rather than a variable, so that help can list the commands.
 func commands() []command {
 	return []command{
 		{"setup", "ask for a server and a credential, and write both files", runSetup},
@@ -89,8 +81,7 @@ func main() {
 	}
 
 	if err := run(ctx, env, os.Args[1:]); err != nil {
-		// A cancelled context is the user pressing ctrl-c, which is not a
-		// failure and should not print like one.
+		// A cancelled context is an interrupt, not a failure to report.
 		if !errors.Is(err, context.Canceled) {
 			fmt.Fprintln(env.Stderr, err)
 		}
@@ -110,9 +101,8 @@ func run(ctx context.Context, env Env, args []string) error {
 	return fmt.Errorf("no such command: %s\nRun `shanty help` for the list", args[0])
 }
 
-// readSecret takes a credential without echoing it. A terminal is required:
-// reading one from a pipe would leave it wherever that pipe came from, which
-// is usually a shell history.
+// readSecret prompts for a value on the terminal without echoing it. It fails
+// if standard input is not a terminal.
 func readSecret(prompt string) (string, error) {
 	fd := os.Stdin.Fd()
 	if !term.IsTerminal(fd) {
@@ -127,10 +117,7 @@ func readSecret(prompt string) (string, error) {
 	return string(raw), nil
 }
 
-// immutableHost reports an rpm-ostree root. Inside a toolbox this is false and
-// correctly so: the container has a writable /usr and dnf is the right answer
-// there -- which is also the only place mpv can live, because shanty and mpv
-// have to share a mount namespace to share a socket.
+// immutableHost reports whether the root filesystem is managed by rpm-ostree.
 func immutableHost() bool {
 	_, err := os.Stat("/run/ostree-booted")
 	return err == nil

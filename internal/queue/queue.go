@@ -1,16 +1,11 @@
-// Package queue is the play queue, as pure functions over data.
+// Package queue holds a list of tracks and the current position in it.
 //
-// The strange bugs music players accumulate here -- a track that plays twice,
-// a skip that loses the album -- are not hard to reason about; they are hard
-// to reproduce, because the queue is usually mutable state shared between a UI
-// thread and a playback callback. Here it is a value, so each of those bugs is
-// a property a test checks without a player, a socket, or a clock (§4).
+// Every operation returns a new Queue rather than modifying the receiver.
 package queue
 
 import "time"
 
-// Track is this package's own type: importing the Subsonic package would drag
-// net/http into the one place meant to be provable by reading it.
+// Track is one track in the queue.
 type Track struct {
 	ID       string
 	Title    string
@@ -19,16 +14,15 @@ type Track struct {
 	Duration time.Duration
 }
 
-// Queue is a list of tracks and a position in it. The position may be one past
-// the last track: a queue that clamped would leave the last track current
-// forever, and nothing could tell playing from finished.
+// Queue is a list of tracks and a position in it. The position ranges from 0
+// to Len inclusive; Len means the queue has finished.
 type Queue struct {
 	tracks []Track
 	at     int
 }
 
-// New copies the slice: a caller keeping a reference could otherwise change a
-// queue already handed out.
+// New returns a queue of the given tracks, positioned at the first. The slice
+// is copied.
 func New(tracks ...Track) Queue {
 	return Queue{tracks: append([]Track(nil), tracks...)}
 }
@@ -37,11 +31,12 @@ func (q Queue) Len() int    { return len(q.tracks) }
 func (q Queue) At() int     { return q.at } // 0 to Len inclusive
 func (q Queue) Empty() bool { return len(q.tracks) == 0 }
 
-// Done reports a position past the end, which an empty queue always is. Not
-// the same question as Empty.
+// Done reports whether the position is past the last track. An empty queue is
+// always Done.
 func (q Queue) Done() bool { return q.at >= len(q.tracks) }
 
-// Current is the track that should be playing, and false once Done.
+// Current returns the track that should be playing. The second result is false
+// once the queue is Done.
 func (q Queue) Current() (Track, bool) {
 	if q.Done() {
 		return Track{}, false
@@ -49,8 +44,9 @@ func (q Queue) Current() (Track, bool) {
 	return q.tracks[q.at], true
 }
 
-// Upcoming is what gets appended to mpv's playlist for gapless prefetch (§7),
-// which is the only reason a queue needs to look ahead at all.
+// Upcoming returns the track after the current one. It is used to tell mpv
+// which file to open in advance, so that albums play without a gap between
+// tracks. That is the only reason this package needs to look ahead.
 func (q Queue) Upcoming() (Track, bool) {
 	if next := q.at + 1; next < len(q.tracks) {
 		return q.tracks[next], true
@@ -58,19 +54,17 @@ func (q Queue) Upcoming() (Track, bool) {
 	return Track{}, false
 }
 
-// Tracks is a copy: a caller able to mutate it could rewrite a queue it does
-// not own.
+// Tracks returns a copy of the track list.
 func (q Queue) Tracks() []Track { return append([]Track(nil), q.tracks...) }
 
 func (q Queue) Next() Queue    { return q.jump(q.at + 1) }
 func (q Queue) Restart() Queue { return q.jump(0) }
 
-// Previous from Done is the last track, which is what makes a skip at the end
-// of an album recoverable.
+// Previous moves back one track. From the Done position it selects the last
+// track.
 func (q Queue) Previous() Queue { return q.jump(q.at - 1) }
 
-// Jump clamps rather than refusing an index outside the queue: the caller is a
-// keypress, and there is no useful error for pressing down at the bottom.
+// Jump moves to the track at index i, clamped to the queue.
 func (q Queue) Jump(i int) Queue { return q.jump(i) }
 
 func (q Queue) jump(i int) Queue {

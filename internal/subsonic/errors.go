@@ -9,9 +9,8 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// advice turns a protocol code into the line §5 requires: what happened, and
-// what to type. The set is closed -- a code the server sends that is not here
-// gets the server's own message and nothing else, and the test says so.
+// advice maps a protocol error code to what the user should do about it. A
+// code that is not listed is reported with the server’s own message.
 var advice = map[int]string{
 	0:  "the server did not say what went wrong; its own log will",
 	10: "shanty sent a malformed request, which is a bug in shanty; please report it",

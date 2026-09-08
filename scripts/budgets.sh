@@ -20,7 +20,7 @@ MAX_PANICS=0
 MAX_HTTP_PACKAGES=2
 MAX_CODE_LINES=6000
 MAX_COMMENT_RATIO=25        # hard ceiling: over budget retires prose, never raises this
-MAX_DOC_LINES=4500          # 75% of the code cap, which is bothy's ratio at full size
+MAX_DOC_LINES=4500          # 75% of the code cap
 MAX_BINARY_BYTES=15728640   # 15 MiB, linux_amd64, stripped
 MIN_TEST_RATIO=3            # at least one test line per three code lines
 
@@ -68,21 +68,12 @@ if [ "$codelines" -gt 0 ] && [ $((testlines * MIN_TEST_RATIO)) -lt "$codelines" 
 fi
 
 # --- code, comments, prose ---------------------------------------------------
-# Counted the way bothy counts them, so the two projects' numbers mean the same
-# thing: code is non-test, non-comment, non-blank; comments are measured
-# against it rather than against the file, so prose stays proportionate to what
-# it explains rather than competing with it for room.
+# Code is non-test, non-comment, non-blank. Comments are measured against it.
+# Prose is an absolute line count rather than a share of code, because the plan
+# is written before the code and a ratio would penalise that.
 #
-# The comment ratio is the one hard ceiling. Over budget means retiring a
-# comment, never raising the number -- an agent produces prose the way a fire
-# produces smoke, and this is the only line in the file that pushes back.
-#
-# Prose is an absolute line count rather than bothy's share-of-code, and the
-# reason is this project's own order of work: the plan is written in full
-# before the code, so a ratio would report a project that planned first as
-# worse than one that did not. 4500 is 75% of the code cap -- the same number
-# bothy's rule produces at the size shanty says it will stop growing at -- and
-# like every number here it may tighten and may not grow.
+# The comment ratio is a hard ceiling: over budget means removing a comment
+# rather than raising the number.
 SOURCES=$(find cmd internal -name '*.go' -not -name '*_test.go' 2>/dev/null || true)
 if [ -n "$SOURCES" ]; then
 	# shellcheck disable=SC2086

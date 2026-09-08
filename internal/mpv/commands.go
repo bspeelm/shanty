@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// The IPC wire format. mpv speaks newline-delimited JSON in both directions:
-// commands carry a request_id and are answered, everything else is an event.
+// The IPC format. mpv exchanges newline-delimited JSON: commands carry a
+// request_id and are answered, everything else is an event.
 type message struct {
 	Event     string          `json:"event"`
 	Name      string          `json:"name"`
@@ -25,20 +25,16 @@ type reply struct {
 
 // Event is one notification from mpv.
 type Event struct {
-	// Name is mpv's event name: "end-file" when a track finishes,
-	// "property-change" when something we asked to watch moved.
+	// Name is mpv’s event name, such as "end-file" or "property-change".
 	Name string
-	// Property is which one moved, for a property-change.
+	// Property is the property that changed, for a property-change event.
 	Property string
-	// Reason distinguishes an end-file that reached the end of the track from
-	// one we caused by skipping, which is the difference between advancing the
-	// queue and having already advanced it.
+	// Reason is why a track ended. "eof" means it played to the end.
 	Reason string
 	Data   json.RawMessage
 }
 
-// Float reads a property-change payload, for the numeric ones -- position and
-// volume are the two that matter here.
+// Float decodes a numeric property-change payload.
 func (e Event) Float() (float64, bool) {
 	var f float64
 	if err := json.Unmarshal(e.Data, &f); err != nil {
@@ -48,7 +44,7 @@ func (e Event) Float() (float64, bool) {
 }
 
 // command sends one command and waits for its reply, the player stopping, or
-// the context ending -- whichever comes first.
+// the context ending.
 func (p *Player) command(ctx context.Context, args ...any) (json.RawMessage, error) {
 	if err := p.Err(); err != nil {
 		return nil, err
@@ -76,9 +72,8 @@ func (p *Player) command(ctx context.Context, args ...any) (json.RawMessage, err
 		return nil, err
 	}
 
-	// Writes are serialised separately from the pending map, so a write that
-	// blocks cannot stop the reader from dispatching the replies that would
-	// unblock it.
+	// Writes are serialised separately from the pending map, so a blocked write
+	// cannot stop the reader from dispatching replies.
 	p.writeMu.Lock()
 	_, err = p.conn.Write(append(raw, '\n'))
 	p.writeMu.Unlock()
@@ -101,26 +96,20 @@ func (p *Player) command(ctx context.Context, args ...any) (json.RawMessage, err
 	}
 }
 
-// Load starts a track, replacing whatever was playing.
-//
-// This is the only way a URL reaches mpv, and it is why the socket exists: the
-// URL carries the credential, and going over IPC keeps it out of argv where
-// every account on the machine could read it (§7).
+// Load plays a track, replacing whatever is playing.
 func (p *Player) Load(ctx context.Context, url string) error {
 	_, err := p.command(ctx, "loadfile", url, "replace")
 	return err
 }
 
-// Append queues a track behind the current one. Together with
-// --prefetch-playlist this is what makes playback gapless: mpv opens the next
-// track early, and shanty decodes nothing.
+// Append adds a track after the current one, so mpv opens it early and the
+// album plays without a gap.
 func (p *Player) Append(ctx context.Context, url string) error {
 	_, err := p.command(ctx, "loadfile", url, "append")
 	return err
 }
 
-// Stop clears the playlist without stopping mpv, which stays idle for the next
-// track.
+// Stop clears the playlist. mpv stays running and idle.
 func (p *Player) Stop(ctx context.Context) error {
 	_, err := p.command(ctx, "stop")
 	return err
@@ -135,15 +124,14 @@ func (p *Player) Seek(ctx context.Context, d time.Duration) error {
 	return err
 }
 
-// SetVolume takes 0 to 100 and clamps, because the caller is a keypress that
-// can be held down.
+// SetVolume sets the volume, clamped to 0 and 100.
 func (p *Player) SetVolume(ctx context.Context, percent int) error {
 	percent = max(0, min(100, percent))
 	return p.setProperty(ctx, "volume", percent)
 }
 
 // Observe asks mpv to report a property whenever it changes, delivered on
-// Events. "time-pos" is what a progress bar reads.
+// Events.
 func (p *Player) Observe(ctx context.Context, property string) error {
 	p.mu.Lock()
 	p.observed++

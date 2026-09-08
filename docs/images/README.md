@@ -17,13 +17,9 @@ To regenerate after editing the source:
 go run docs/images/derive.go
 ```
 
-bothy does the same job with ImageMagick and a `-negate`, because its source is
-dark ink on white and darkness has to become opacity. shanty's source is the
-other way round, so brightness becomes opacity and there is nothing to negate.
-This is Go rather than a shell script because Go is the language already here,
-and because the whole transform is thirty lines of `image/png` — one clip to
-remove the anti-aliasing haze that would otherwise ring every character, one
-trim, one flood.
+The script reads `shanty-source.png`, turns brightness into opacity, clips the
+anti-aliasing that would otherwise leave a halo around each character, trims
+the empty border, and fills the result with one colour.
 
-The two colours are provisional. shanty ships no palette yet — themes are v0.3
-— and they will come from it when there is one.
+The two colours are provisional and will come from shanty's palette once it
+has one.

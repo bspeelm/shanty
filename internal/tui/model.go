@@ -8,7 +8,7 @@ import (
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
-// Screen is which of the three v0.1 views is showing.
+// Screen identifies one of the three views.
 type Screen int
 
 const (
@@ -17,8 +17,7 @@ const (
 	ScreenTracks
 )
 
-// Screens is every screen, so a test can assert the set is closed rather than
-// checking the three somebody remembered.
+// Screens lists every screen.
 var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks}
 
 func (s Screen) String() string {
@@ -33,8 +32,8 @@ func (s Screen) String() string {
 	return "unknown"
 }
 
-// Model is the whole interface as data. Nothing here can fetch, play or write
-// anything: it renders what it has been given and says what it would like done.
+// Model is the state of the interface. It renders itself and reports intents;
+// it cannot fetch, play or write anything.
 type Model struct {
 	screen        Screen
 	width, height int
@@ -43,7 +42,7 @@ type Model struct {
 	artist  subsonic.Artist
 	album   subsonic.Album
 
-	// cursor per screen, so going back lands where the user left.
+	// cursor holds the selected row for each screen.
 	cursor map[Screen]int
 
 	nowPlaying string
@@ -57,7 +56,7 @@ type Model struct {
 	loading bool
 }
 
-// New builds an empty model waiting for its first artists.
+// New returns a model with nothing loaded.
 func New() Model {
 	return Model{
 		cursor:  map[Screen]int{},
@@ -69,14 +68,13 @@ func New() Model {
 
 func (m Model) Init() tea.Cmd { return nil }
 
-// Screen, Cursor and Status exist so tests can assert on state without parsing
-// the rendered frame, which is the golden files' job.
+// Screen, Cursor, Status and Paused report the model’s state.
 func (m Model) Screen() Screen { return m.screen }
 func (m Model) Cursor() int    { return m.cursor[m.screen] }
 func (m Model) Status() string { return m.status }
 func (m Model) Paused() bool   { return m.paused }
 
-// rows is how many items the current screen lists.
+// rows is the number of items on the current screen.
 func (m Model) rows() int {
 	switch m.screen {
 	case ScreenArtists:

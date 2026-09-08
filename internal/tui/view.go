@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// chromeLines is everything that is not a list row: title, two rules, the
-// player line and the help line.
+// chromeLines is the number of lines that are not list rows: the title, two
+// rules, the player line and the help line.
 const chromeLines = 5
 
 const (
@@ -17,17 +17,15 @@ const (
 	defaultHeight = 24
 )
 
-// Styling is terminal-native on purpose. Bold, faint and reverse work on every
-// emulator and against every background; a palette is ADR territory and
-// belongs with themes in v0.3, not smuggled in as a default nobody chose.
+// Bold, faint and reverse only. Colours arrive with themes.
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true)
 	selectedStyle = lipgloss.NewStyle().Reverse(true)
 	faintStyle    = lipgloss.NewStyle().Faint(true)
 )
 
-// View renders the whole frame. Every string that came from the server passes
-// through Sanitise on its way here (ADR-013).
+// View renders the frame. Every string from the server passes through
+// Sanitise on the way.
 func (m Model) View() string {
 	w, h := m.width, m.height
 	if w <= 0 {
@@ -81,8 +79,8 @@ func (m Model) list(w, visible int) string {
 	return pad(strings.TrimRight(b.String(), "\n"), visible)
 }
 
-// row is the two halves of one line: what it is on the left, and its count or
-// duration on the right.
+// row returns the two halves of one list line: what it is, and its count or
+// duration.
 func (m Model) row(i int) (string, string) {
 	switch m.screen {
 	case ScreenArtists:
@@ -120,8 +118,8 @@ func (m Model) viewWidth() int {
 
 const help = "↑↓ move · enter open · esc back · space pause · n/p skip · [ ] seek · +/- volume · q quit"
 
-// window is the first row to draw, scrolling only as much as it takes to keep
-// the cursor on screen.
+// window returns the first row to draw, scrolling only enough to keep the
+// cursor on screen.
 func window(cursor, rows, visible int) int {
 	if rows <= visible || cursor < visible/2 {
 		return 0
@@ -130,8 +128,8 @@ func window(cursor, rows, visible int) int {
 	return min(start, rows-visible)
 }
 
-// columns puts right flush against the edge, and gives up on the gap rather
-// than the text when the terminal is too narrow for both.
+// columns puts left and right on one line of width w, dropping the gap when
+// there is no room for both.
 func columns(left, right string, w int) string {
 	gap := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
@@ -140,8 +138,8 @@ func columns(left, right string, w int) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// fit truncates to a display width rather than a rune count, so a CJK title
-// takes the two cells it occupies instead of the one it counts as.
+// fit truncates s to a display width of w, measured in terminal cells rather
+// than characters.
 func fit(s string, w int) string {
 	if w <= 0 || lipgloss.Width(s) <= w {
 		return s
@@ -165,8 +163,8 @@ func gutter(selected bool) string {
 
 func rule(w int) string { return faintStyle.Render(strings.Repeat("─", max(1, w))) }
 
-// pad keeps the list the same height whatever it holds, so the player line
-// does not walk up the screen as a shorter album is opened.
+// pad extends body to the given number of lines, so the player line stays in
+// the same place.
 func pad(body string, lines int) string {
 	have := strings.Count(body, "\n") + 1
 	return body + strings.Repeat("\n", max(1, lines-have+1))

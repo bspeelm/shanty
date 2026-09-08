@@ -7,9 +7,8 @@ import (
 	"sort"
 )
 
-// The wire format, declared here and again in the fake: two independent
-// statements are what make a decoding mistake fail rather than agree with
-// itself.
+// The response format. It is declared here and again in the fake server, so
+// that the two are independent.
 type envelope struct {
 	Response response `json:"subsonic-response"`
 }
@@ -34,8 +33,8 @@ type artistList struct {
 	} `json:"index"`
 }
 
-// Artist, Album and Song are what the TUI renders, and carry no behaviour:
-// giving it a type that could fetch something hands it the I/O rule to break.
+// Artist, Album and Song are the types the interface displays. They carry no
+// methods.
 type Artist struct {
 	ID         string  `json:"id"`
 	Name       string  `json:"name"`
@@ -63,26 +62,25 @@ type Song struct {
 	Track    int    `json:"track"`
 	Duration int    `json:"duration"`
 	Suffix   string `json:"suffix"`
-	// Path is the server's, and it is not a filename. Nothing in shanty joins
-	// it onto a directory; when cover art arrives and something has to, it
-	// goes through one sanitiser with its own tests (§2).
+	// Path is the server’s path for the track. It is not used as a filename.
 	Path string `json:"path"`
 }
 
-// Extension is one OpenSubsonic capability the server advertises.
+// Extension is one OpenSubsonic capability the server reports supporting.
 type Extension struct {
 	Name     string `json:"name"`
 	Versions []int  `json:"versions"`
 }
 
-// Ping asks whether the server answers and the credential works.
+// Ping reports whether the server responds and accepts the credential.
 func (c *Client) Ping(ctx context.Context) error {
 	_, err := c.get(ctx, "ping", nil)
 	return err
 }
 
-// Extensions lists what the server says it supports. An empty list is an
-// answer: it means token and salt, not that the server is broken.
+// Extensions lists the OpenSubsonic capabilities the server reports. An empty
+// list is a valid answer and means the server supports none of them, not that
+// the request failed.
 func (c *Client) Extensions(ctx context.Context) ([]Extension, error) {
 	res, err := c.get(ctx, "getOpenSubsonicExtensions", nil)
 	if err != nil {
@@ -91,8 +89,8 @@ func (c *Client) Extensions(ctx context.Context) ([]Extension, error) {
 	return res.Extensions, nil
 }
 
-// SupportsAPIKeys reports whether the server offers the credential ADR-001
-// prefers, so doctor can name it when the user is on something weaker.
+// SupportsAPIKeys reports whether the server accepts API keys, so that doctor
+// can suggest one when the user is authenticating with something weaker.
 func (c *Client) SupportsAPIKeys(ctx context.Context) (bool, error) {
 	exts, err := c.Extensions(ctx)
 	if err != nil {
@@ -106,10 +104,8 @@ func (c *Client) SupportsAPIKeys(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// Artists flattens the server's index. The index letters are dropped rather
-// than reproduced: shanty carries no article list, because a client that
-// disagreed with its server about where "The Bilge Pumps" files would be wrong
-// in a way nobody could fix.
+// Artists returns every artist, flattened out of the server’s alphabetical
+// index and sorted by name.
 func (c *Client) Artists(ctx context.Context) ([]Artist, error) {
 	res, err := c.get(ctx, "getArtists", nil)
 	if err != nil {
@@ -126,7 +122,7 @@ func (c *Client) Artists(ctx context.Context) ([]Artist, error) {
 	return out, nil
 }
 
-// Artist returns one artist with its albums.
+// Artist returns one artist together with their albums.
 func (c *Client) Artist(ctx context.Context, id string) (Artist, error) {
 	res, err := c.get(ctx, "getArtist", url.Values{"id": {id}})
 	if err != nil {
@@ -138,7 +134,7 @@ func (c *Client) Artist(ctx context.Context, id string) (Artist, error) {
 	return *res.Artist, nil
 }
 
-// Album returns one album with its songs, in track order.
+// Album returns one album with its songs, ordered by track number.
 func (c *Client) Album(ctx context.Context, id string) (Album, error) {
 	res, err := c.get(ctx, "getAlbum", url.Values{"id": {id}})
 	if err != nil {
@@ -152,9 +148,8 @@ func (c *Client) Album(ctx context.Context, id string) (Album, error) {
 	return album, nil
 }
 
-// Scrobble tells the server what was played. submission false is a "now
-// playing" notice; true is the play itself. Where it goes from there is the
-// server's business and deliberately not ours (ADR-005).
+// Scrobble reports a play to the server. A submission of false is a "now
+// playing" notification; true records the play.
 func (c *Client) Scrobble(ctx context.Context, id string, submission bool) error {
 	_, err := c.get(ctx, "scrobble", url.Values{
 		"id":         {id},

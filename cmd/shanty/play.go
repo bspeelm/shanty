@@ -11,13 +11,7 @@ import (
 	"github.com/bspeelm/shanty/internal/mpv"
 )
 
-// loadOrSetUp reads the configuration, or asks for one and writes it.
-//
-// north-star measures a first run in minutes and calls it one command. Sending
-// a new user away to write two TOML files by hand is not one command, and the
-// file they would most obviously write by hand holds a plaintext password --
-// the credential ADR-001 ranks last. Doing it here means shanty derives a
-// token instead and the password never reaches disk.
+// loadOrSetUp returns the configuration, running setup first if there is none.
 func loadOrSetUp(ctx context.Context, env Env) (config.Config, config.Credentials, error) {
 	cfg, err := config.LoadConfig(env.Paths.ConfigFile())
 	if err != nil {
@@ -25,8 +19,8 @@ func loadOrSetUp(ctx context.Context, env Env) (config.Config, config.Credential
 	}
 	creds, err := config.LoadCredentials(env.Paths.CredentialsFile())
 	if err != nil {
-		// A file that exists and cannot be read is a problem to report, not a
-		// reason to start asking questions over the top of it.
+		// A file that exists but cannot be read is reported, rather than being
+		// overwritten by setup.
 		return cfg, creds, err
 	}
 
@@ -49,11 +43,8 @@ func loadOrSetUp(ctx context.Context, env Env) (config.Config, config.Credential
 	return cfg, creds, err
 }
 
-// play is `shanty` with no arguments: the whole program.
-//
-// It refuses to start rather than starting broken. A music player that opens
-// to an empty screen and an error somewhere in it has spent the user's
-// attention to tell them what doctor would have said in one line.
+// play runs the interface: it loads the configuration, starts mpv, and hands
+// both to the model.
 func play(ctx context.Context, env Env) error {
 	cfg, creds, err := loadOrSetUp(ctx, env)
 	if err != nil {
@@ -75,8 +66,7 @@ func play(ctx context.Context, env Env) error {
 	if err != nil {
 		return err
 	}
-	// The player outlives the program only if something here panics, which the
-	// panic budget says nothing does.
+	// mpv is stopped when play returns.
 	defer func() { _ = p.Close() }()
 
 	program := tea.NewProgram(newApp(ctx, client, p),

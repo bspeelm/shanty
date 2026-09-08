@@ -1,10 +1,7 @@
-// Package mpv runs one mpv for the life of the program, over a unix socket.
+// Package mpv starts one mpv process and controls it over a unix socket.
 //
-// The socket is a security boundary, not a convenience: a stream URL carries
-// the credential, and a URL on a command line is readable by every account on
-// the machine through ps, which the audit found a shipping client doing. Every
-// track is loaded over IPC, so the URL is in mpv's memory and nowhere
-// inspectable (§7).
+// Tracks are loaded over the socket rather than passed as command-line
+// arguments, because a stream URL contains the credential.
 package mpv
 
 import (
@@ -22,26 +19,20 @@ import (
 	"time"
 )
 
-// Long enough for a loaded machine, short enough that a broken install is a
-// message rather than a hang.
+// startTimeout is how long mpv is given to create its socket.
 const startTimeout = 10 * time.Second
 
-// Options configure the one player. No field for extra mpv flags: §3 makes
-// shanty not a manager of anyone's mpv config, and a passthrough is how that
-// promise gets broken one bug report at a time.
+// Options configure the player. There is no field for extra mpv flags.
 type Options struct {
-	// Binary is the mpv to run. Empty means "mpv", resolved on PATH.
+	// Binary is the mpv executable. Empty means "mpv", resolved on PATH.
 	Binary string
-	// Socket is where mpv listens. Its directory is created 0700.
+	// Socket is the path mpv listens on. Its directory is created 0700.
 	Socket string
-	// Stderr is where mpv's own diagnostics go. Nil discards them, which is
-	// right for a TUI that owns the screen -- but a player that fails without
-	// saying why leaves nothing to report, so doctor and the integration test
-	// pass a buffer.
+	// Stderr receives mpv’s diagnostics. Nil discards them.
 	Stderr io.Writer
 }
 
-// Player is a running mpv.
+// Player is a running mpv process.
 type Player struct {
 	cmd  *exec.Cmd
 	conn net.Conn
@@ -55,18 +46,18 @@ type Player struct {
 
 	events chan Event
 
-	// done closes when the player stops, and cause says why. Nothing restarts
-	// it: a loop turns "mpv is not installed" into a machine that is merely
-	// slow (§7).
+	// done closes when the player stops, and cause records why. Nothing restarts
+	// it.
 	done     chan struct{}
 	closeOne sync.Once
 	causeMu  sync.Mutex
 	cause    error
 }
 
-// Start launches mpv and connects to it. The flags are fixed: --no-config
-// leaves the user's own setup as it was found, --idle waits for a track rather
-// than exiting, and the prefetch makes gapless playback mpv's job, not ours.
+// Start launches mpv and connects to its socket. The flags are fixed:
+// --no-config so the user’s own mpv configuration is not read, --no-video,
+// --idle so it waits for a track, and --prefetch-playlist so the next track
+// is opened early.
 func Start(ctx context.Context, opt Options) (*Player, error) {
 	binary := opt.Binary
 	if binary == "" {
@@ -78,8 +69,7 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 	if err := os.MkdirAll(filepath.Dir(opt.Socket), 0o700); err != nil {
 		return nil, err
 	}
-	// A socket left by a previous run refuses the bind and looks exactly like
-	// a permissions problem.
+	// A socket left by a previous run would refuse the bind.
 	if err := os.Remove(opt.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -91,9 +81,8 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 		"--prefetch-playlist=yes",
 		"--input-ipc-server="+opt.Socket,
 	)
-	// The environment is inherited because audio depends on it: PipeWire and
-	// PulseAudio read XDG_RUNTIME_DIR, ALSA reads HOME. Nothing of shanty's is
-	// added -- the credential goes over the socket, which is the point of it.
+	// The environment is inherited because PipeWire, PulseAudio and ALSA read
+	// from it. Nothing of shanty’s is added.
 	cmd.Env = os.Environ()
 	cmd.Stderr = opt.Stderr
 	if err := cmd.Start(); err != nil {
@@ -119,8 +108,8 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 	return p, nil
 }
 
-// dial waits for mpv to bind the socket, which it does after startup: the
-// first several failures are the normal case, not an error worth reporting.
+// dial connects to the socket, retrying until mpv has created it or
+// startTimeout passes.
 func dial(ctx context.Context, socket string) (net.Conn, error) {
 	deadline := time.Now().Add(startTimeout)
 	for {
@@ -139,8 +128,7 @@ func dial(ctx context.Context, socket string) (net.Conn, error) {
 	}
 }
 
-// reap records why the process ended, so a caller gets the exit status rather
-// than a closed socket.
+// reap waits for the process and records why it ended.
 func (p *Player) reap() {
 	err := p.cmd.Wait()
 	if err == nil {
@@ -149,16 +137,15 @@ func (p *Player) reap() {
 	p.stop(fmt.Errorf("mpv stopped: %w", err))
 }
 
-// read demultiplexes: replies go to whoever waits on the request id, the rest
-// are events.
+// read dispatches replies to whoever is waiting on the request id, and
+// everything else to Events.
 func (p *Player) read() {
 	scan := bufio.NewScanner(p.conn)
 	scan.Buffer(make([]byte, 0, 64<<10), 1<<20)
 	for scan.Scan() {
 		var msg message
 		if err := json.Unmarshal(scan.Bytes(), &msg); err != nil {
-			// A line we cannot parse is mpv's problem, not a reason to stop
-			// listening to the ones we can.
+			// An unparseable line is skipped.
 			continue
 		}
 		if msg.Event != "" {
@@ -179,8 +166,7 @@ func (p *Player) read() {
 	p.stop(errors.New("the connection to mpv closed"))
 }
 
-// stop keeps the first cause: the socket closing because the process died is
-// not news.
+// stop records the first cause and releases everyone waiting.
 func (p *Player) stop(cause error) {
 	p.closeOne.Do(func() {
 		p.causeMu.Lock()
@@ -191,10 +177,10 @@ func (p *Player) stop(cause error) {
 	})
 }
 
-// Done closes when the player stops. Nothing here restarts it.
+// Done closes when the player stops.
 func (p *Player) Done() <-chan struct{} { return p.done }
 
-// Err is why the player stopped, or nil while it is running.
+// Err returns why the player stopped, or nil while it runs.
 func (p *Player) Err() error {
 	select {
 	case <-p.done:
@@ -206,13 +192,13 @@ func (p *Player) Err() error {
 	}
 }
 
-// Events carries mpv's notifications. It closes when the player stops.
+// Events carries mpv’s notifications. It closes when the player stops.
 func (p *Player) Events() <-chan Event { return p.events }
 
-// Close shuts mpv down and waits for it.
+// Close stops mpv and waits for it to exit.
 func (p *Player) Close() error {
-	// Ask, then close the socket, then kill. Each step is unchecked because
-	// the next covers it and only the process ending matters.
+	// Ask, then close the socket, then kill. Each step is unchecked because the
+	// next covers it.
 	_, _ = p.command(context.Background(), "quit")
 	_ = p.conn.Close()
 	if p.cmd.Process != nil {

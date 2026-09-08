@@ -63,10 +63,7 @@ crossbuild:
 	        go build -trimpath -o /dev/null ./... || exit 1; \
 	done
 
-# Named for what it installs, matching bothy's target so one habit covers both.
-# There is no `shanty install` for it to collide with -- §3 keeps shanty out of
-# the business of installing anything but itself -- and the name still says
-# which of the two things is meant.
+# Builds shanty and copies it to ~/.local/bin.
 install-binary: build
 	install -Dm755 $(BINARY) $(HOME)/.local/bin/$(BINARY)
 	@echo "installed to ~/.local/bin/$(BINARY)"

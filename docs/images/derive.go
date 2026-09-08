@@ -1,18 +1,11 @@
 //go:build ignore
 
-// Derive the README's two images from the source artwork.
+// Derive the README’s two images from the source artwork.
 //
 //	go run docs/images/derive.go
 //
-// bothy does this with ImageMagick and one -negate: its source is dark ink on
-// white, so darkness becomes opacity. shanty's source is the other way round --
-// light glyphs on a dark ground -- so brightness becomes opacity and there is
-// nothing to negate. Everything after that is the same idea: clip the
-// anti-aliasing that would leave a haze around every character, trim the empty
-// border, and flood what remains with one colour.
-//
-// It is Go rather than a shell script because that is the language already
-// here, and because the whole transform is thirty lines of image/png.
+// The source is light glyphs on a dark ground. Brightness becomes opacity,
+// the empty border is trimmed, and the result is flooded with one colour.
 package main
 
 import (
@@ -24,14 +17,11 @@ import (
 	"path/filepath"
 )
 
-// The clip. Below lo the pixel is background and becomes fully transparent;
-// above hi it is a glyph and becomes fully opaque. The source's ground sits at
-// 0.13 luminance and its glyphs at 0.97, so this has room on both sides.
+// Pixels below lo become fully transparent and above hi fully opaque, which
+// removes the anti-aliasing around each character.
 const lo, hi = 0.20, 0.92
 
-// Provisional, and the only colours in the project. shanty ships no palette
-// yet -- themes are v0.3 -- so these are chosen to sit on a dark and a light
-// page respectively and will be replaced from the palette when there is one.
+// The fill colour for each variant.
 var variants = map[string]color.NRGBA{
 	"dark":  {0x8b, 0xe9, 0xfd, 0xff},
 	"light": {0x31, 0x68, 0x7a, 0xff},
@@ -59,20 +49,19 @@ func main() {
 	}
 }
 
-// opacity turns brightness into alpha and reports the box outside which
-// everything is transparent.
+// opacity returns per-pixel alpha derived from brightness, and the box
+// outside which every pixel is transparent.
 func opacity(img image.Image) ([]uint8, image.Rectangle) {
 	b := img.Bounds()
 	out := make([]uint8, b.Dx()*b.Dy())
-	// Tracked by hand rather than by unioning rectangles: image.Rect puts its
-	// arguments in order, so an inverted rectangle to start from is silently
-	// canonicalised into the whole image and nothing is ever trimmed.
+	// The bounds are tracked as four integers. image.Rect orders its arguments,
+	// so an inverted rectangle cannot be used as a starting value.
 	minX, minY, maxX, maxY := b.Dx(), b.Dy(), -1, -1
 
 	for y := range b.Dy() {
 		for x := range b.Dx() {
 			r, g, bl, _ := img.At(b.Min.X+x, b.Min.Y+y).RGBA()
-			// Rec. 709 luminance, on the 0..1 scale RGBA's 16-bit values need.
+			// Rec. 709 luminance, scaled to 0..1.
 			l := (0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(bl)) / 65535
 			a := (l - lo) / (hi - lo)
 			switch {
@@ -89,7 +78,7 @@ func opacity(img image.Image) ([]uint8, image.Rectangle) {
 	if maxX < 0 {
 		must(fmt.Errorf("every pixel is below the %.2f clip; the source is not light-on-dark", lo))
 	}
-	// A little air, so the glyphs are not flush against the edge.
+	// Padding, so the glyphs are not flush against the edge.
 	const pad = 8
 	return out, image.Rect(
 		max(0, minX-pad), max(0, minY-pad),

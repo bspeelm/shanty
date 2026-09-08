@@ -13,8 +13,7 @@ import (
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
-// Severity separates "this is broken" from "this works, but not the way you
-// would want it to".
+// Severity is how serious a check result is.
 type Severity string
 
 const (
@@ -24,9 +23,7 @@ const (
 	Skip Severity = "skip"
 )
 
-// Result is one check's verdict. Every Fail and every Warn carries a Fix, and
-// a test asserts it: an error that names a problem without naming the command
-// that solves it is half an error (§5).
+// Result is one check’s outcome. Every Fail and Warn carries a Fix.
 type Result struct {
 	ID       string   `json:"id"`
 	Severity Severity `json:"severity"`
@@ -35,15 +32,13 @@ type Result struct {
 	Fix      string   `json:"fix,omitempty"`
 }
 
-// Report is every check, in the order §8 asks for them: the local setup first,
-// because there is no point asking a server anything until mpv and the config
-// are in order.
+// Report is every check, in the order they were run: the local setup first,
+// then the server.
 type Report struct {
 	Results []Result `json:"results"`
 }
 
-// OK reports whether anything failed. Warnings do not fail the command; they
-// are things the user would want to know, not things that stop playback.
+// OK reports whether every check passed. Warnings do not fail a report.
 func (r Report) OK() bool {
 	for _, res := range r.Results {
 		if res.Severity == Fail {
@@ -53,9 +48,8 @@ func (r Report) OK() bool {
 	return true
 }
 
-// checkIDs is the closed set. A check added without a line here fails
-// TestTheDoctorChecksAreAClosedSet, which asks the author to decide what the
-// new one should say rather than letting it arrive uncovered.
+// checkIDs is every check the report contains. A test holds this list and the
+// report to each other.
 var checkIDs = []string{
 	"mpv", "mpv-version", "runtime-dir", "config", "credentials",
 	"server", "auth", "auth-mode",
@@ -98,9 +92,8 @@ func printReport(env Env, r Report) {
 	}
 }
 
-// diagnose runs every check. Later checks skip rather than fail when an
-// earlier one has already made them unanswerable: "cannot reach the server" is
-// noise when the reason is that no server is configured.
+// diagnose runs every check. Checks that an earlier failure has made
+// unanswerable are skipped rather than failed.
 func diagnose(ctx context.Context, env Env) Report {
 	var out []Result
 	add := func(r Result) Result { out = append(out, r); return r }
@@ -167,9 +160,7 @@ func checkMpv(env Env) Result {
 	return Result{ID: "mpv", Severity: Pass, Summary: "mpv is at " + path}
 }
 
-// checkMpvVersion reports rather than judges. §8 wants a minimum version
-// checked here; nobody has chosen one, and inventing a number would be a gate
-// that fails for a reason no record supports. It is open in §13.
+// checkMpvVersion reports mpv’s version. There is no minimum version.
 func checkMpvVersion(ctx context.Context, env Env, mpv Result) Result {
 	if mpv.Severity == Fail {
 		return skipped("mpv-version", "not checked; mpv was not found")
@@ -185,10 +176,7 @@ func checkMpvVersion(ctx context.Context, env Env, mpv Result) Result {
 	return Result{ID: "mpv-version", Severity: Pass, Summary: line}
 }
 
-// checkRuntimeDir reports without creating, because internal/config already
-// says a command that only reports must not leave a directory behind as the
-// price of having run, and doctor is that command. `doctor -json` is meant for
-// a script, and a check with side effects is not one.
+// checkRuntimeDir reports on the runtime directory without creating it.
 func checkRuntimeDir(env Env) Result {
 	info, err := os.Stat(env.Paths.Runtime)
 	if errors.Is(err, os.ErrNotExist) {
@@ -241,8 +229,8 @@ func checkCredentials(env Env) (config.Credentials, Result) {
 	if err != nil {
 		var perr *config.PermissionError
 		if errors.As(err, &perr) {
-			// The error already carries the exact chmod; splitting it keeps
-			// the fix on the fix line rather than buried in a paragraph.
+			// The message already contains the chmod command; it is split so the command
+			// appears on the fix line.
 			summary, fix, _ := strings.Cut(perr.Error(), "\n")
 			return creds, Result{ID: "credentials", Severity: Fail,
 				Summary: "the credentials file is readable by other accounts",
@@ -271,8 +259,8 @@ func checkServer(ctx context.Context, env Env, cfg config.Config, client *subson
 	if err := client.Ping(ctx); err != nil {
 		var serr *subsonic.Error
 		if errors.As(err, &serr) && serr.Unauthorized() {
-			// Reachable, but it refused us. That is the auth check's business,
-			// and reporting it twice would send the user to the wrong file.
+			// The server answered. A rejected credential is the auth check’s result, not
+			// this one’s.
 			return Result{ID: "server", Severity: Pass, Summary: cfg.Server + " answered"}
 		}
 		return Result{ID: "server", Severity: Fail,
@@ -293,9 +281,8 @@ func checkAuth(ctx context.Context, env Env, client *subsonic.Client) Result {
 	return Result{ID: "auth", Severity: Pass, Summary: "the credential works"}
 }
 
-// checkAuthMode is the check ADR-001 exists for: it names a better credential
-// when the server offers one, so the preference order is something the user is
-// told about rather than something only this repository knows.
+// checkAuthMode reports whether the server supports a stronger credential
+// than the one in use.
 func checkAuthMode(ctx context.Context, creds config.Credentials, client *subsonic.Client) Result {
 	mode, _ := creds.Mode()
 	if mode == config.AuthAPIKey {
@@ -315,9 +302,7 @@ func checkAuthMode(ctx context.Context, creds config.Credentials, client *subson
 		Fix:     "create one in the server's web interface and put it in credentials.toml as api_key"}
 }
 
-// dial builds the client doctor asks with, choosing the credential the same
-// way playback will -- a doctor that authenticated differently from the player
-// would report on a setup nobody runs.
+// dial returns a client authenticated the same way playback will be.
 func dial(env Env, cfg config.Config, creds config.Credentials) (*subsonic.Client, error) {
 	auth, err := authenticator(cfg, creds)
 	if err != nil {

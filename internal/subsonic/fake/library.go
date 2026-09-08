@@ -5,10 +5,8 @@ import (
 	"strings"
 )
 
-// The wire types are declared here rather than imported, and the duplication
-// is the point: a fake marshalling the client's own structs agrees with it
-// about every field name by construction, wrong ones included, and can never
-// catch a decoding mistake.
+// The response types. They are declared here and again in the client, so that
+// the two are independent.
 
 // envelope is the "subsonic-response" wrapper every endpoint returns.
 type envelope struct {
@@ -75,8 +73,7 @@ type song struct {
 	Track    int    `json:"track"`
 	Duration int    `json:"duration"`
 	Suffix   string `json:"suffix"`
-	// Path is server-supplied and reaches the client as a candidate filename,
-	// which is why the traversal malice mode rewrites exactly this field.
+	// Path is the server’s path for the track.
 	Path string `json:"path"`
 }
 
@@ -86,9 +83,7 @@ type Library struct {
 	Artists []artist
 }
 
-// DefaultLibrary is two artists across three albums: small enough for a golden
-// test to hold in view, and containing one artist whose name sorts under a
-// different letter than its first character suggests.
+// DefaultLibrary is two artists across three albums.
 func DefaultLibrary() Library {
 	return Library{Artists: []artist{
 		{
@@ -159,8 +154,7 @@ func (l Library) findSong(id string) (song, bool) {
 	return song{}, false
 }
 
-// indexed groups artists the way getArtists does: by the first letter of the
-// name with articles ignored, which is why "The Bilge Pumps" files under B.
+// indexed groups the artists by index letter, the way getArtists does.
 func (l Library) indexed() artistList {
 	byLetter := map[string][]artist{}
 	var order []string
@@ -169,8 +163,7 @@ func (l Library) indexed() artistList {
 		if _, seen := byLetter[letter]; !seen {
 			order = append(order, letter)
 		}
-		// The index carries the artist without its albums; getArtist is what
-		// expands one.
+		// The index omits albums; getArtist returns them.
 		byLetter[letter] = append(byLetter[letter], artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount})
 	}
 	sort.Strings(order)
@@ -181,12 +174,11 @@ func (l Library) indexed() artistList {
 	return out
 }
 
-// ignoredArticles is what Navidrome reports by default. The client is expected
-// to take the server's word for it rather than carry its own list.
+// ignoredArticles is the list of leading words the index skips.
 const ignoredArticles = "The El La Los Las Le Les"
 
-// indexLetter files a name the way a Subsonic server does: leading article
-// stripped, first rune upper-cased, anything not a letter under "#".
+// indexLetter returns the index letter for a name: leading article removed,
+// first character upper-cased, anything not a letter under "#".
 func indexLetter(name string) string {
 	for _, article := range strings.Fields(ignoredArticles) {
 		if prefix := article + " "; strings.HasPrefix(name, prefix) {

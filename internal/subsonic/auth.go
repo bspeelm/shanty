@@ -8,26 +8,21 @@ import (
 )
 
 const (
-	APIVersion = "1.16.1" // what shanty declares it speaks (ADR-007)
-	// ClientName is the c= every request carries. Servers log it and users
-	// filter play history by it, which is half of why ADR-002 settled the
-	// name before any request was sent.
+	// APIVersion is the Subsonic API version sent with every request.
+	APIVersion = "1.16.1"
+	// ClientName is sent with every request as the c= parameter.
 	ClientName = "shanty"
 )
 
-// Authenticator adds one credential to a request's query. A function so a
-// password-backed credential can mint a fresh salt per request, and so nothing
-// assembles a credential except the three constructors -- none of which can
-// produce p=.
+// Authenticator adds one credential to a request’s query parameters.
 type Authenticator func(url.Values)
 
-// APIKeyAuth is the strongest mode: one revocable string, killed server-side.
+// APIKeyAuth authenticates with an API key.
 func APIKeyAuth(key string) Authenticator {
 	return func(q url.Values) { q.Set("apiKey", key) }
 }
 
-// TokenAuth replays a stored pair, so a server logging query strings sees the
-// same one every time: the cost of storing a token, and still not the password.
+// TokenAuth authenticates with a stored token and salt.
 func TokenAuth(username, token, salt string) Authenticator {
 	return func(q url.Values) {
 		q.Set("u", username)
@@ -36,8 +31,8 @@ func TokenAuth(username, token, salt string) Authenticator {
 	}
 }
 
-// PasswordAuth mints a fresh salt for every request, so no two requests carry
-// the same token and a single logged URL replays nothing.
+// PasswordAuth authenticates with a password, generating a new salt for each
+// request.
 func PasswordAuth(username, password string) Authenticator {
 	return func(q url.Values) {
 		salt := Salt()
@@ -47,23 +42,22 @@ func PasswordAuth(username, password string) Authenticator {
 	}
 }
 
-// Salt is a fresh salt. Exported because setup stores one: a token that has to
-// survive a restart cannot be salted afresh each request.
+// Salt returns a new random salt.
 func Salt() string { return rand.Text() }
 
-// Token is the Subsonic hash: md5 of password+salt. MD5 is the protocol's
-// choice, and is why §2 treats a token as replayable-here, not as protection.
+// Token returns the MD5 of password and salt that Subsonic servers accept in
+// place of a password.
 func Token(password, salt string) string {
 	sum := md5.Sum([]byte(password + salt))
 	return hex.EncodeToString(sum[:])
 }
 
-// redacted includes the legacy p= this client does not send: a redactor
-// covering only today's modes stops working the moment somebody adds one.
+// redacted lists the query parameters Redact replaces. It includes the legacy
+// plain-password parameter, which shanty never sends.
 var redacted = []string{"t", "s", "apiKey", "p"}
 
-// Redact rewrites a URL for logging, with no setting to turn it off: a knob
-// that exists gets turned, and this one by whoever pastes a log into an issue.
+// Redact returns the URL with credential parameters replaced, for logging. The
+// URL passed in is not modified.
 func Redact(u *url.URL) string {
 	c := *u
 	q := c.Query()

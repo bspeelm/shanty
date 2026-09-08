@@ -14,32 +14,29 @@ and a re-proposal is answered with its ADR number rather than a fresh argument.
 enforces it. **A standard without a gate is a wish** — if you add one, add its
 gate in the same commit.
 
-## Comments record intent, never history
+## Comments describe what the code does
 
-A comment answers "why is this code shaped this way", so that changing it badly
-is harder. It does not record what the code used to be. Git and
-`docs/decisions.md` hold history; a source file that also holds it is a
-changelog with a compiler.
+A comment says what a function, type or field is and what it does. It does not
+explain why the code was written that way, what was considered instead, or what
+it used to be. Reasoning belongs in `docs/decisions.md`, and history belongs in
+commit messages.
 
-The register to aim for, from the sibling project: not what the code does, but
-what it refuses to do and why — *"a corrupt download never lands on disk at
-all."*
-
-The test: **would this comment still make sense to someone who had never seen
-the previous version?** If it only lands as "we got this wrong once", it
-belongs in a commit message.
-
-**The same test governs user-facing prose.** A README sentence that only makes
-sense to someone who saw the previous draft is history in the documentation,
-and the documentation has one reader: someone arriving for the first time.
+If a comment is arguing for a decision, it is in the wrong file.
 
 Corollaries:
 
+- Write plainly. Complete sentences that state the subject and the fact. No
+  aphorisms, no inversion for effect, no sentences built to land rather than to
+  inform. This applies to every artefact: comments, commit messages, decision
+  records, the README and the wiki.
+- Never reference another project by name in code, comments or documentation.
 - A bug fix ships with a test or a doctor check, and the test name carries the
-  story. That is where "this broke once" belongs.
-- No self-narration. Comments describe the code, not the process that produced
-  it, and not the person producing it.
+  story.
 - Prefer deleting a comment to writing one that restates the line below it.
+
+**User-facing prose says what the program does.** The README and the wiki
+describe behaviour: what happens, what to type, what to expect. Nothing about
+how the project was built, why a decision was taken, or which test proves what.
 
 ## Everything else
 

@@ -11,17 +11,9 @@ import (
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
-// runSetup asks the four questions and writes both files.
-//
-// §12 measures a first run in minutes, and the version of this that did not
-// exist made the user write two TOML files by hand and remember to chmod one
-// of them. Worse, the obvious thing to hand-write is a plaintext password,
-// which is the credential ADR-001 ranks last -- so the absence of this command
-// was actively steering people to the weakest mode the program supports.
-//
-// It takes a password once, derives the token and salt from it, and writes
-// those. The password never reaches disk, which is a promise shanty can keep
-// only if it is the thing doing the writing.
+// runSetup asks for a server, a username and a credential, checks them
+// against the server, and writes both configuration files. It writes nothing
+// if the server rejects the credential.
 func runSetup(ctx context.Context, env Env, _ []string) error {
 	if env.ReadSecret == nil || env.Stdin == nil {
 		return errors.New("setup needs a terminal; write the two files by hand instead (see the README)")
@@ -56,8 +48,7 @@ func runSetup(ctx context.Context, env Env, _ []string) error {
 		return err
 	}
 
-	// Verified before it is written, so a typo is a question repeated rather
-	// than a config file that looks right and does not work.
+	// Checked before anything is written.
 	fmt.Fprint(env.Stdout, "\nchecking… ")
 	client, err := dial(env, cfg, creds)
 	if err != nil {
@@ -80,7 +71,6 @@ func runSetup(ctx context.Context, env Env, _ []string) error {
 	fmt.Fprintf(env.Stdout, "\nwrote %s\n", env.Paths.ConfigFile())
 	fmt.Fprintf(env.Stdout, "wrote %s (0600, holding the %s)\n", env.Paths.CredentialsFile(), mode)
 	if mode == config.AuthToken {
-		// Saying what was not written matters as much as saying what was.
 		fmt.Fprintln(env.Stdout, "\nYour password was not saved. shanty stored the hash the Subsonic\nprotocol sends instead, which works against this server and nowhere else.")
 		if better, err := client.SupportsAPIKeys(ctx); err == nil && better {
 			fmt.Fprintln(env.Stdout, "\nThis server also offers API keys, which are revoked in one click.\nMake one in its web interface and `shanty setup` again to use it.")
@@ -90,8 +80,7 @@ func runSetup(ctx context.Context, env Env, _ []string) error {
 	return nil
 }
 
-// askCredential prefers an API key and falls back to a password, which is
-// ADR-001's order asked out loud rather than assumed.
+// askCredential asks for an API key, then for a password if none was given.
 func askCredential(env Env, cfg config.Config) (config.Credentials, error) {
 	key, err := env.ReadSecret("API key (press enter to use a password instead): ")
 	if err != nil {
@@ -109,10 +98,8 @@ func askCredential(env Env, cfg config.Config) (config.Credentials, error) {
 		return config.Credentials{}, errors.New("no credential was given")
 	}
 
-	// A salt chosen once and stored, because a stored token has to be
-	// reproducible. subsonic.PasswordAuth mints a fresh one per request and is
-	// what a password_file credential uses; this is the trade for not keeping
-	// the password at all.
+	// The salt is generated once and stored, because a stored token has to keep
+	// the salt it was made with.
 	salt := subsonic.Salt()
 	return config.Credentials{Token: subsonic.Token(password, salt), Salt: salt}, nil
 }

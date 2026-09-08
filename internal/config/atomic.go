@@ -5,27 +5,25 @@ import (
 	"path/filepath"
 )
 
-// writeAtomic writes data at mode, or leaves what was there untouched. A
-// half-written credentials file authenticates against nothing, at the moment
-// the user least wants to debug their music player.
+// writeAtomic writes data to path with the given permissions, through a
+// temporary file in the same directory. On any failure the existing file at
+// path is left unchanged.
 func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
-	// 0700: this directory holds the credentials file, and one others can list
-	// is one whose contents they know to come back for.
+	// The directory is created 0700.
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 
-	// A unique name, not path+".tmp": two shantys started at once would share
-	// that one name, and one could rename the other's half-written file into
-	// place, defeating the atomicity this exists for.
+	// CreateTemp gives each writer its own name, so two processes writing at once
+	// cannot rename each other’s partial files into place.
 	f, err := os.CreateTemp(dir, filepath.Base(path)+".shanty-*")
 	if err != nil {
 		return err
 	}
 	tmp := f.Name()
-	// Unchecked: after a rename there is nothing left to remove, and after a
-	// failure the intact original is what matters.
+	// Nothing remains to remove after a successful rename, and after a failure the
+	// original file is what matters.
 	defer func() { _ = os.Remove(tmp) }()
 
 	if _, err := f.Write(data); err != nil {
@@ -35,8 +33,8 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	// Set before the rename, so nothing ever observes the file at the wrong
-	// permissions -- not even for the instant between two syscalls.
+	// Permissions are set before the rename, so the file never exists at path with
+	// the wrong ones.
 	if err := os.Chmod(tmp, mode); err != nil {
 		return err
 	}
