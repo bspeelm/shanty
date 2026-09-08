@@ -42,6 +42,7 @@ program gives it.
 | [`internal/mpv`](internal/mpv) | one mpv, its socket, and its lifetime |
 | [`internal/queue`](internal/queue) | what plays next; pure functions over data |
 | [`internal/control`](internal/control) | the socket a detached session is commanded through |
+| [`internal/backlog`](internal/backlog) | the plays a server would not accept, kept until it will |
 | [`internal/tui`](internal/tui) | the screens; renders and emits intents, does no I/O |
 
 Three rules hold that shape, and `make budgets` enforces all three: `internal/tui`

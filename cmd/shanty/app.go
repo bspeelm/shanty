@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/backlog"
 	"github.com/bspeelm/shanty/internal/control"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/queue"
@@ -45,6 +46,10 @@ type app struct {
 	detach func(handoff) error
 	// starred is what the server has starred, by identifier.
 	starred map[string]bool
+	// backlog is the file holding plays the server would not accept. It is
+	// empty when there is nowhere to keep them, which is how the tests that
+	// have no state directory run.
+	backlog string
 	// headless is set in a session. It has nobody to show a message to, so it
 	// ends when there is nothing left to play.
 	headless bool
@@ -77,7 +82,8 @@ func newApp(ctx context.Context, client *subsonic.Client, p player) app {
 }
 
 func (a app) Init() tea.Cmd {
-	return tea.Batch(a.fetchArtists(), a.watchPlayer(), a.observePosition(), a.fetchStarred())
+	return tea.Batch(a.fetchArtists(), a.watchPlayer(), a.observePosition(),
+		a.fetchStarred(), func() tea.Msg { return a.flushBacklog() })
 }
 
 // View renders the interface. A session has no terminal to render to.
@@ -272,16 +278,50 @@ func (a app) setPaused(paused bool) tea.Cmd {
 // paused reports what the interface is currently showing.
 func (a app) paused() bool { return a.ui.Paused() }
 
+// scrobble tells the server a track was played, and keeps the report if it
+// cannot be delivered.
+//
+// A session reports plays where nobody is watching, so a report that is
+// dropped is a listening history that quietly loses days. The report is kept
+// with the time it happened and sent on the next one that works.
 func (a app) scrobble(id string) tea.Cmd {
 	if id == "" {
 		return nil
 	}
-	client := a.client
+	client, path, at := a.client, a.backlog, time.Now()
 	return func() tea.Msg {
-		// A failed report is not surfaced. A durable queue for them comes later.
-		_ = client.Scrobble(a.ctx, id, true)
+		if err := client.Scrobble(a.ctx, id, true, at); err != nil {
+			if path != "" {
+				_ = backlog.Add(path, backlog.Play{ID: id, At: at})
+			}
+			return scrobbled{}
+		}
+		// The server is answering, so anything waiting has a chance now.
+		return a.flushBacklog()
+	}
+}
+
+// flushBacklog reports the plays the server would not take before, and keeps
+// whatever it still will not take.
+func (a app) flushBacklog() tea.Msg {
+	if a.backlog == "" {
 		return scrobbled{}
 	}
+	waiting, err := backlog.Load(a.backlog)
+	if err != nil || len(waiting) == 0 {
+		return scrobbled{}
+	}
+	var left []backlog.Play
+	for i, play := range waiting {
+		if err := a.client.Scrobble(a.ctx, play.ID, true, play.At); err != nil {
+			// The server has stopped taking them again, so this one and
+			// everything after it stays rather than being tried one by one.
+			left = waiting[i:]
+			break
+		}
+	}
+	_ = backlog.Replace(a.backlog, left)
+	return scrobbled{}
 }
 
 func (a app) fetchArtists() tea.Cmd {

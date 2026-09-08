@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // The response format. It is declared here and again in the fake server, so
@@ -227,10 +228,17 @@ func (c *Client) Starred(ctx context.Context) (Results, error) {
 
 // Scrobble reports a play to the server. A submission of false is a "now
 // playing" notification; true records the play.
-func (c *Client) Scrobble(ctx context.Context, id string, submission bool) error {
-	_, err := c.get(ctx, "scrobble", url.Values{
+func (c *Client) Scrobble(ctx context.Context, id string, submission bool, at time.Time) error {
+	params := url.Values{
 		"id":         {id},
 		"submission": {fmt.Sprint(submission)},
-	})
+	}
+	// A play reported late says when it happened, so a history kept while the
+	// server was unreachable is not all dated to the moment it caught up. A
+	// server takes this in milliseconds.
+	if !at.IsZero() {
+		params.Set("time", strconv.FormatInt(at.UnixMilli(), 10))
+	}
+	_, err := c.get(ctx, "scrobble", params)
 	return err
 }

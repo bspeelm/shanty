@@ -158,7 +158,7 @@ func TestBrowseWalksTheLibrary(t *testing.T) {
 
 func TestScrobbleReachesTheServer(t *testing.T) {
 	c, srv := dial(t, fake.Options{})
-	if err := c.Scrobble(context.Background(), "tr-1", true); err != nil {
+	if err := c.Scrobble(context.Background(), "tr-1", true, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	reqs := srv.Requests()

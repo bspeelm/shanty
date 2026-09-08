@@ -44,6 +44,13 @@ list of track identifiers; it looks up your credential itself. It is commanded
 through a second socket in the same directory, which accepts a fixed list of
 seven things and cannot be asked to open a file or run a program.
 
+## What shanty keeps about your listening
+
+A play your server would not accept is kept on disk until it will, in a file
+only your account can read. It holds the track identifier and the time, which
+is what the server is told when it is reachable again. Nothing is kept once the
+report has been accepted.
+
 ## Revoking a credential does not stop a session
 
 If you revoke an API key or change your password while a session is playing,

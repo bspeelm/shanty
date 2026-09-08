@@ -111,6 +111,9 @@ func (p Paths) ControlSocket() string { return filepath.Join(p.Runtime, "control
 // CredentialsFile is the path to the file holding the credential.
 func (p Paths) CredentialsFile() string { return filepath.Join(p.Config, "credentials.toml") }
 
+// Backlog is the file holding plays the server has not accepted.
+func (p Paths) Backlog() string { return filepath.Join(p.State, "plays.jsonl") }
+
 // All returns the four directories shanty writes to.
 func (p Paths) All() []string { return []string{p.Config, p.State, p.Cache, p.Runtime} }
 

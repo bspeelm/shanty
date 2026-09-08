@@ -47,6 +47,12 @@ type Malice struct {
 	// HostileText prefixes every displayable string with terminal escape
 	// sequences.
 	HostileText bool
+	// RefuseScrobbles rejects every play report and answers everything else,
+	// which is a server that is up and unhappy rather than one that is down.
+	RefuseScrobbles bool
+	// RefuseScrobblesAfter takes that many play reports and then rejects the
+	// rest, which is a server that goes away part way through catching up.
+	RefuseScrobblesAfter int
 }
 
 // oversizeBytes is what OversizeBody pads with.
@@ -77,6 +83,9 @@ type Server struct {
 	// starred is what star and unstar have done, so that getStarred2 reports
 	// what a test actually did rather than a fixture.
 	starred map[string]bool
+	// scrobbles counts the play reports taken, for the server that stops
+	// taking them part way through.
+	scrobbles int
 }
 
 // Starred reports whether the server has the id starred. A test asserts on
@@ -252,6 +261,16 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		}
 		s.ok(w, response{Starred: &found})
 	case "scrobble":
+		s.mu.Lock()
+		s.scrobbles++
+		taken := s.scrobbles
+		s.mu.Unlock()
+		refuse := s.opt.Malice.RefuseScrobbles ||
+			(s.opt.Malice.RefuseScrobblesAfter > 0 && taken > s.opt.Malice.RefuseScrobblesAfter)
+		if refuse {
+			s.fail(w, 0, "Scrobbling is off")
+			return
+		}
 		s.ok(w, response{})
 	default:
 		s.fail(w, 0, "Unknown endpoint "+endpoint)

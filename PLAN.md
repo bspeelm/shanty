@@ -248,7 +248,7 @@ a loop.
 
 ```
 ~/.config/shanty/          settings and credentials, both user-editable
-~/.local/state/shanty/     resume position, scrobble backlog
+~/.local/state/shanty/     resume position, and the plays a server would not take
 ~/.cache/shanty/           cover art; deleting it costs bandwidth only
 $XDG_RUNTIME_DIR/shanty/   the mpv socket and the control socket, gone at logout
 ```

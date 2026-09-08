@@ -5,7 +5,7 @@ shanty writes to four directories and nowhere else.
 | Directory | What is in it | If you delete it |
 |---|---|---|
 | `~/.config/shanty/` | Your server address, username and credential | Run `shanty setup` to recreate it |
-| `~/.local/state/shanty/` | Your position in a track and any plays not yet reported | You lose a small amount of listening history. *Not used yet.* |
+| `~/.local/state/shanty/` | Plays your server would not accept, kept until it will | You lose the listening history that had not been reported yet. |
 | `~/.cache/shanty/` | Downloaded cover art | It is downloaded again when needed. *Not used yet.* |
 | `$XDG_RUNTIME_DIR/shanty/` | The connection to mpv, and the one a session left by `:headless` is commanded through | Nothing. It is removed when you log out. |
 
@@ -42,3 +42,17 @@ programs and are not shanty's to remove.
 
 The shanty binary itself is not deleted. Remove it from wherever you installed
 it, usually `~/.local/bin/shanty`.
+
+## Plays your server did not take
+
+If your server is unreachable or refuses a play report, shanty keeps the play
+in `~/.local/state/shanty/plays.jsonl` and sends it the next time a report
+works. The record carries the time you listened, so a history that catches up a
+day later is not all dated to the moment it caught up.
+
+Nothing accumulates once your server is answering: the file is removed when
+there is nothing left waiting.
+
+The file is one line of JSON per play, readable only by your account, and it
+holds track identifiers and times rather than anything about you.
+

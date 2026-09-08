@@ -119,6 +119,7 @@ func runSession(ctx context.Context, env Env) error {
 
 	a := newApp(ctx, client, p)
 	a.headless = true
+	a.backlog = env.Paths.Backlog()
 	a.queue = h.resume()
 	a.volume = h.Volume
 	playing, _ := h.nowPlaying()

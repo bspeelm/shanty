@@ -9,7 +9,10 @@ import (
 	"testing"
 
 	"github.com/bspeelm/shanty/internal/config"
+	"github.com/bspeelm/shanty/internal/mpv"
+	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/subsonic/fake"
+	"github.com/bspeelm/shanty/internal/tui"
 )
 
 // The isolation suite is §8 as a test: four directories, and nothing else,
@@ -327,5 +330,47 @@ func TestIsolationOnlyTheInstallerWritesOutsideTheFourDirectories(t *testing.T) 
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("the %s completion survived uninstall", shell)
 		}
+	}
+}
+
+// TestIsolationTheBacklogIsTheOnlyThingInTheStateDirectory covers the first
+// use of that directory. It holds what somebody listened to, so what goes in
+// it and what comes back out are both worth pinning.
+func TestIsolationTheBacklogIsTheOnlyThingInTheStateDirectory(t *testing.T) {
+	env, home := isolated(t)
+	srv := fake.New(t, fake.Options{APIKey: "k-1", Malice: fake.Malice{RefuseScrobbles: true}})
+	configure(t, env, config.Config{Server: srv.URL, Username: user}, config.Credentials{APIKey: "k-1"})
+
+	client, err := subsonic.New(srv.URL, subsonic.APIKeyAuth("k-1"), subsonic.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newApp(t.Context(), client, newRecorder())
+	a.backlog = env.Paths.Backlog()
+
+	before := snapshot(t, home)
+	a, _ = step(t, a, tui.PlayFrom{Album: threeTracks, Index: 0})
+	_, _ = step(t, a, playerEvent(mpv.Event{Name: "end-file", Reason: "eof"}))
+
+	// .local/state/ is already there: another program's state is one of the
+	// decoys, which is the point of putting it where a careless program would
+	// tread.
+	want := map[string]bool{
+		".local/state/shanty/":            true,
+		".local/state/shanty/plays.jsonl": true,
+	}
+	for _, rel := range added(before, snapshot(t, home)) {
+		if !want[rel] {
+			t.Errorf("keeping a play wrote %s, which the contract does not name", rel)
+		}
+		delete(want, rel)
+	}
+	for rel := range want {
+		t.Errorf("the contract names %s and it was not written", rel)
+	}
+
+	// It names what was listened to, so nobody else may read it.
+	if mode := snapshot(t, home)[".local/state/shanty/plays.jsonl"]; !strings.HasPrefix(mode, "-rw-------") {
+		t.Errorf("the backlog is %q", strings.SplitN(mode, " ", 2)[0])
 	}
 }
