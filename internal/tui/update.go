@@ -29,13 +29,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ArtistLoaded:
 		m.artist, m.screen, m.loading, m.status = subsonic.Artist(msg), ScreenAlbums, false, ""
+		m = m.selecting(ScreenAlbums, 0)
 		m.filter = ""
-		m.cursor[ScreenAlbums] = 0
 		return m, nil
 	case AlbumLoaded:
 		m.album, m.screen, m.loading, m.status = subsonic.Album(msg), ScreenTracks, false, ""
+		m = m.selecting(ScreenTracks, 0)
 		m.filter = ""
-		m.cursor[ScreenTracks] = 0
 		return m, nil
 
 	case NowPlaying:
@@ -56,6 +56,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case Notice:
 		m.status = string(msg)
+		return m, nil
+	case QueueChanged:
+		m.queued, m.queuedAt = msg.Tracks, msg.At
+		if m.screen == ScreenQueue {
+			m = m.selecting(ScreenQueue, min(m.cursor[ScreenQueue], max(0, len(msg.Tracks)-1)))
+		}
 		return m, nil
 	}
 	return m, nil
@@ -121,6 +127,11 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.move(-m.page() * repeat), nil
 	case "pgdown":
 		return m.move(m.page() * repeat), nil
+
+	case "a":
+		return m.queueSelected(false)
+	case "A":
+		return m.queueSelected(true)
 
 	case "enter", "l", "right":
 		return m.open()
@@ -256,8 +267,8 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
 		return m, nil
 	case "q":
-		m.status = "the queue screen is not built yet"
-		return m, nil
+		m.screen, m.status, m.filter = ScreenQueue, "", ""
+		return m.selecting(ScreenQueue, max(0, min(len(m.queued)-1, m.queuedAt))), nil
 	case "p":
 		m.status = "the playlists screen is not built yet"
 		return m, nil
@@ -284,8 +295,32 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		return m, emit(OpenAlbum{ID: m.artist.Albums[at].ID})
 	case ScreenTracks:
 		return m, emit(PlayFrom{Album: m.album, Index: at})
+	case ScreenQueue:
+		return m, emit(JumpTo(at))
 	}
 	return m, nil
+}
+
+// queueSelected asks for the selected track to be queued, either after the one
+// playing or at the end. It works on the track list, which is the only screen
+// where a row is one track.
+func (m Model) queueSelected(next bool) (tea.Model, tea.Cmd) {
+	if m.screen != ScreenQueue && m.screen != ScreenTracks {
+		m.status = "there is nothing to queue here; open an album first"
+		return m, nil
+	}
+	if m.screen == ScreenQueue {
+		m.status = "that is already in the queue"
+		return m, nil
+	}
+	if m.rows() == 0 {
+		return m, nil
+	}
+	at := m.matches()[m.cursor[ScreenTracks]]
+	if next {
+		return m, emit(PlayNext{Album: m.album, Index: at})
+	}
+	return m, emit(Enqueue{Album: m.album, Index: at})
 }
 
 // back moves up one screen. At the top it does nothing.
@@ -294,6 +329,10 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 	case ScreenTracks:
 		m.screen, m.status, m.filter = ScreenAlbums, "", ""
 	case ScreenAlbums:
+		m.screen, m.status, m.filter = ScreenArtists, "", ""
+	case ScreenQueue:
+		// The queue is reached from anywhere, so back leaves for the one
+		// screen that is always there rather than wherever it was opened from.
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
 	}
 	return m, nil
@@ -307,14 +346,20 @@ func (m Model) moveTo(to int) Model {
 	if rows == 0 {
 		return m
 	}
-	to = max(0, min(rows-1, to))
-	// The map is replaced rather than written through, because Update must not
-	// modify the model it was called on.
-	next := make(map[Screen]int, len(m.cursor))
+	return m.selecting(m.screen, max(0, min(rows-1, to)))
+}
+
+// selecting returns a model with the cursor of one screen moved.
+//
+// The map is replaced rather than written through, because Model is a value
+// and Update must not modify the one it was called on. Writing through it
+// would reach every copy, including ones already rendered.
+func (m Model) selecting(screen Screen, to int) Model {
+	next := make(map[Screen]int, len(m.cursor)+1)
 	for k, v := range m.cursor {
 		next[k] = v
 	}
-	next[m.screen] = to
+	next[screen] = to
 	m.cursor = next
 	return m
 }

@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/queue"
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
@@ -55,6 +56,24 @@ func library() []subsonic.Artist {
 	}
 }
 
+// queued is a queue with a track from more than one album in it, which is
+// what a queue looks like once anything has been added to one.
+// onQueue presses gq, which is how the queue screen is reached.
+func onQueue(t *testing.T, m Model) Model {
+	t.Helper()
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	next, _ = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	return next.(Model)
+}
+
+func queued() []queue.Track {
+	return []queue.Track{
+		{ID: "tr-1", Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
+		{ID: "tr-2", Title: "Ballast", Artist: "Aoi", Duration: 200 * time.Second},
+		{ID: "tr-9", Title: "Low Water", Artist: "The Bilge Pumps", Duration: 220 * time.Second},
+	}
+}
+
 func sized(m Model) Model {
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 64, Height: 12})
 	return next.(Model)
@@ -84,6 +103,15 @@ func TestGoldenScreens(t *testing.T) {
 		{"artists-cursor-moved", send(t, artists, tea.KeyMsg{Type: tea.KeyDown})},
 		{"albums", albums},
 		{"tracks", tracks},
+		// The queue arrives before the screen is opened, which is the order it
+		// happens in: something is playing, and then you look at it.
+		{"queue", onQueue(t, send(t, tracks,
+			QueueChanged{Tracks: queued(), At: 1},
+			NowPlaying{Title: "Ballast", Artist: "Aoi", Duration: 200 * time.Second},
+			Progress(45*time.Second)))},
+		{"queue-empty", onQueue(t, tracks)},
+		{"queue-finished", onQueue(t, send(t, tracks,
+			QueueChanged{Tracks: queued(), At: 3}))},
 		{"tracks-playing", send(t, tracks,
 			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
 			Progress(83*time.Second),

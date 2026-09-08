@@ -22,6 +22,7 @@ type player interface {
 	Seek(ctx context.Context, d time.Duration) error
 	SeekTo(ctx context.Context, d time.Duration) error
 	SetVolume(ctx context.Context, percent int) error
+	Prefetch(ctx context.Context, url string) error
 	Observe(ctx context.Context, property string) error
 	Events() <-chan mpv.Event
 	Close() error
@@ -93,7 +94,15 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.PlayFrom:
 		a.queue = queueFrom(msg.Album).Jump(msg.Index)
-		return a, a.playCurrent()
+		return a, tea.Batch(a.playCurrent(), a.queueChanged())
+
+	case tui.PlayNext:
+		return a.enqueue(msg.Album, msg.Index, true)
+	case tui.Enqueue:
+		return a.enqueue(msg.Album, msg.Index, false)
+	case tui.JumpTo:
+		a.queue = a.queue.Jump(int(msg))
+		return a, tea.Batch(a.playCurrent(), a.queueChanged())
 
 	case tui.TogglePause:
 		return a, a.setPaused(!a.paused())
@@ -101,10 +110,10 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.setPaused(bool(msg))
 	case tui.SkipNext:
 		a.queue = a.queue.Next()
-		return a, a.playCurrent()
+		return a, tea.Batch(a.playCurrent(), a.queueChanged())
 	case tui.SkipPrev:
 		a.queue = a.queue.Previous()
-		return a, a.playCurrent()
+		return a, tea.Batch(a.playCurrent(), a.queueChanged())
 	case tui.SeekBy:
 		return a, a.act(func(ctx context.Context) error { return a.player.Seek(ctx, msg.By) })
 	case tui.SeekTo:
@@ -190,7 +199,7 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 		if a.headless && a.queue.Done() {
 			return a, tea.Batch(a.scrobble(finished.ID), tea.Quit)
 		}
-		return a, tea.Batch(next, a.scrobble(finished.ID), a.playCurrent())
+		return a, tea.Batch(next, a.scrobble(finished.ID), a.playCurrent(), a.queueChanged())
 	}
 	return a, next
 }
@@ -198,10 +207,7 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 func queueFrom(album subsonic.Album) queue.Queue {
 	tracks := make([]queue.Track, 0, len(album.Songs))
 	for _, s := range album.Songs {
-		tracks = append(tracks, queue.Track{
-			ID: s.ID, Title: s.Title, Album: album.Name, Artist: s.Artist,
-			Duration: time.Duration(s.Duration) * time.Second,
-		})
+		tracks = append(tracks, trackFrom(album, s))
 	}
 	return queue.New(tracks...)
 }
@@ -352,4 +358,56 @@ func clock(d time.Duration) string {
 		d = 0
 	}
 	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+// enqueue adds a track to the queue, either after the one playing or at the
+// end, and starts it if nothing was playing.
+func (a app) enqueue(album subsonic.Album, index int, next bool) (tea.Model, tea.Cmd) {
+	if index < 0 || index >= len(album.Songs) {
+		return a, nil
+	}
+	track := trackFrom(album, album.Songs[index])
+	wasIdle := a.queue.Done()
+
+	if next {
+		a.queue = a.queue.InsertNext(track)
+	} else {
+		a.queue = a.queue.Append(track)
+	}
+
+	// A queue with nothing playing starts on what was just added; one that is
+	// playing keeps playing, and mpv is told what now comes next.
+	if wasIdle {
+		return a, tea.Batch(a.playCurrent(), a.queueChanged(),
+			emit(tui.Notice("playing "+track.Title)))
+	}
+	where := "added " + track.Title + " to the end of the queue"
+	if next {
+		where = "playing " + track.Title + " next"
+	}
+	return a, tea.Batch(a.prefetch(), a.queueChanged(), emit(tui.Notice(where)))
+}
+
+// prefetch tells mpv which track follows the one playing.
+func (a app) prefetch() tea.Cmd {
+	upcoming, ok := a.queue.Upcoming()
+	url := ""
+	if ok {
+		url = a.client.StreamURL(upcoming.ID)
+	}
+	p := a.player
+	return a.act(func(ctx context.Context) error { return p.Prefetch(ctx, url) })
+}
+
+// queueChanged sends the interface the queue to draw.
+func (a app) queueChanged() tea.Cmd {
+	return emit(tui.QueueChanged{Tracks: a.queue.Tracks(), At: a.queue.At()})
+}
+
+// trackFrom turns a song on an album into a queue entry.
+func trackFrom(album subsonic.Album, s subsonic.Song) queue.Track {
+	return queue.Track{
+		ID: s.ID, Title: s.Title, Album: album.Name, Artist: s.Artist,
+		Duration: time.Duration(s.Duration) * time.Second,
+	}
 }

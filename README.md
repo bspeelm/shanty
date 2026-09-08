@@ -93,6 +93,9 @@ Use the arrow keys or `j` and `k` to move through a list, `enter` to open an
 artist or album, and `enter` on a track to play it. Press `esc` to go back a
 level, and `/` to filter the list you are looking at.
 
+`a` adds the selected track to the end of the queue and `A` plays it next.
+`gq` shows the queue.
+
 While a track is playing, `space` pauses and resumes, `n` and `p` move between
 tracks, `[` and `]` seek backward and forward, and `+` and `-` change the
 volume.

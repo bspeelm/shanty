@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/queue"
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
@@ -39,6 +40,18 @@ type (
 	Quit      struct{}
 	// Detach asks for the interface to end while playback carries on.
 	Detach struct{}
+	// PlayNext asks for the selected track to play after the current one, and
+	// Enqueue for it to go on the end.
+	PlayNext struct {
+		Album subsonic.Album
+		Index int
+	}
+	Enqueue struct {
+		Album subsonic.Album
+		Index int
+	}
+	// JumpTo asks for the queue to move to one of its own tracks.
+	JumpTo int
 )
 
 // Inputs are what the caller sends back once it has done the work.
@@ -49,6 +62,12 @@ type (
 	NowPlaying    struct {
 		Title, Artist string
 		Duration      time.Duration
+	}
+	// QueueChanged is what is queued and where in it playback has reached. The
+	// caller owns the queue; this is what the screen draws.
+	QueueChanged struct {
+		Tracks []queue.Track
+		At     int
 	}
 	Progress      time.Duration
 	PausedChanged bool

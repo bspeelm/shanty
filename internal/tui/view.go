@@ -112,6 +112,16 @@ func (m Model) heading() string {
 		return Sanitise(m.artist.Name)
 	case ScreenTracks:
 		return Sanitise(m.album.Artist) + " · " + Sanitise(m.album.Name)
+	case ScreenQueue:
+		switch {
+		case len(m.queued) == 0:
+			return "queue"
+		case m.queuedAt >= len(m.queued):
+			// Every track has been played. Saying "3 of 3" here would name a
+			// track as playing when none is.
+			return fmt.Sprintf("queue · finished, %s", plural(len(m.queued), "track"))
+		}
+		return fmt.Sprintf("queue · %d of %d", m.queuedAt+1, len(m.queued))
 	}
 	return "artists"
 }
@@ -156,6 +166,13 @@ func (m Model) row(i int) (string, string) {
 	case ScreenTracks:
 		s := m.album.Songs[i]
 		return fmt.Sprintf("%2d. %s", s.Track, Sanitise(s.Title)), clock(time.Duration(s.Duration) * time.Second)
+	case ScreenQueue:
+		t := m.queued[i]
+		mark := "  "
+		if i == m.queuedAt {
+			mark = "▶ "
+		}
+		return mark + Sanitise(t.Title) + " · " + Sanitise(t.Artist), clock(t.Duration)
 	}
 	return "", ""
 }

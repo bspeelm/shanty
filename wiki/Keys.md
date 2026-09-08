@@ -17,6 +17,8 @@ work on all three.
 | `enter`, `l` or `→` | Open the selected artist or album, or play the selected track |
 | `esc`, `h`, `←` or `backspace` | Go back to the previous screen |
 | `/` | Filter the list you are looking at |
+| `a` | Add the selected track to the end of the queue |
+| `A` | Play the selected track after the one playing |
 
 Pressing back on the artist list does nothing, because there is nothing above
 it. This prevents you from quitting the player by pressing back once too often.
@@ -43,12 +45,25 @@ If nothing matches, the screen says so rather than going blank.
 | Key | What it does |
 |---|---|
 | `ga` | Artists |
-| `gq` | The queue |
+| `gq` | The queue, opened on the track playing |
 | `gp` | Playlists |
 | `gs` | Starred |
 
-The queue, playlists and starred screens are not built yet. Pressing their keys
-says so.
+The playlists and starred screens are not built yet. Pressing their keys says
+so.
+
+## The queue
+
+`gq` shows what is playing and what follows it, with the playing track marked.
+`enter` on a row plays it, and `esc` returns to the artist list.
+
+`a` and `A` add the track you have selected in an album. `a` puts it at the
+end; `A` plays it after the track playing now, without interrupting it. Adding
+to an empty queue starts it playing, because there is nothing else sensible to
+do with a track you asked to hear next when nothing is on.
+
+The queue is what a session plays after `:headless`, and what the interface
+picks back up when you return to it.
 
 ## Controlling playback
 

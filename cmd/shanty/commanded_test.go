@@ -164,7 +164,6 @@ func TestABadArgumentIsRefusedWithoutTouchingThePlayer(t *testing.T) {
 	} {
 		t.Run(tc.verb+" "+tc.arg, func(t *testing.T) {
 			socket, rec := session(t)
-			before := len(rec.said())
 
 			res, err := control.Send(socket, control.Request{Verb: control.Verb(tc.verb), Arg: tc.arg})
 			if err != nil {
@@ -176,8 +175,12 @@ func TestABadArgumentIsRefusedWithoutTouchingThePlayer(t *testing.T) {
 			if !strings.Contains(res.Error, tc.want) {
 				t.Errorf("the refusal reads %q, want it to mention %q", res.Error, tc.want)
 			}
-			if now := len(rec.said()); now != before {
-				t.Errorf("a refused command still reached the player: %v", rec.said()[before:])
+			// What the player was told, not how much: a session watches its
+			// own position, so traffic arrives without anyone asking for it.
+			for _, said := range rec.said() {
+				if strings.HasPrefix(said, tc.verb) {
+					t.Errorf("a refused command still reached the player: %q", said)
+				}
 			}
 		})
 	}

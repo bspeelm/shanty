@@ -6,6 +6,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/bspeelm/shanty/internal/queue"
 )
 
 // press returns the model after a key, and whatever intent it emitted.
@@ -209,8 +211,8 @@ func TestEveryScreenHasAHeadingAndRenders(t *testing.T) {
 			t.Errorf("screen %s rendered nothing", s)
 		}
 	}
-	if len(Screens) != 3 {
-		t.Errorf("Screens lists %d screens; v0.1 has three, so this is a change to the interface", len(Screens))
+	if len(Screens) != 4 {
+		t.Errorf("Screens lists %d screens; there are four, so this is a change to the interface", len(Screens))
 	}
 }
 
@@ -489,7 +491,14 @@ func TestTheGPrefix(t *testing.T) {
 		t.Errorf("gg left the cursor at %d, want 0", m.Cursor())
 	}
 
-	for key, want := range map[string]string{"q": "queue", "p": "playlists", "s": "starred"} {
+	// gq opens a screen that exists; the other two say they do not yet.
+	n, _ := press(t, m, "g")
+	n, _ = press(t, n, "q")
+	if n.Screen() != ScreenQueue {
+		t.Errorf("gq went to %s, want the queue", n.Screen())
+	}
+
+	for key, want := range map[string]string{"p": "playlists", "s": "starred"} {
 		n, _ := press(t, m, "g")
 		n, _ = press(t, n, key)
 		if !strings.Contains(n.Status(), want) {
@@ -570,5 +579,118 @@ func TestPercentWithoutACountSaysWhatIsMissing(t *testing.T) {
 	}
 	if !strings.Contains(m.Status(), "percentage") {
 		t.Errorf("a bare %% said %q", m.Status())
+	}
+}
+
+// TestAModelDoesNotShareItsCursorWithACopy covers the one reference inside a
+// value type. Model is copied on every update, and its cursor is a map, so
+// writing through it would reach every copy that came before -- including
+// screens already rendered.
+func TestAModelDoesNotShareItsCursorWithACopy(t *testing.T) {
+	base := loaded(t)
+	base = send(t, base, QueueChanged{Tracks: []queue.Track{
+		{ID: "a", Title: "One"}, {ID: "b", Title: "Two"}, {ID: "c", Title: "Three"},
+	}, At: 0})
+
+	// Two screens taken from the same model, moved to different rows.
+	first, _ := press(t, base, "g")
+	first, _ = press(t, first, "q")
+	first, _ = press(t, first, "j")
+
+	second, _ := press(t, base, "g")
+	second, _ = press(t, second, "q")
+
+	if first.Cursor() == second.Cursor() {
+		t.Fatalf("both copies are on row %d; one moved and the other did not", first.Cursor())
+	}
+	if second.Cursor() != 0 {
+		t.Errorf("moving one copy moved the other to row %d", second.Cursor())
+	}
+	if base.Screen() != ScreenArtists {
+		t.Errorf("opening a screen on a copy changed the original to %s", base.Screen())
+	}
+}
+
+// TestOpeningTheQueuePutsTheCursorOnWhatIsPlaying covers where gq lands. The
+// queue is looked at to see what is coming, so it opens on the track playing
+// rather than at the top.
+func TestOpeningTheQueuePutsTheCursorOnWhatIsPlaying(t *testing.T) {
+	m := loaded(t)
+	m = send(t, m, QueueChanged{Tracks: []queue.Track{
+		{ID: "a"}, {ID: "b"}, {ID: "c"},
+	}, At: 2})
+
+	m, _ = press(t, m, "g")
+	m, _ = press(t, m, "q")
+
+	if m.Screen() != ScreenQueue {
+		t.Fatalf("gq went to %s", m.Screen())
+	}
+	if m.Cursor() != 2 {
+		t.Errorf("the queue opened on row %d, want the playing track at 2", m.Cursor())
+	}
+}
+
+// TestTheQueueScreenSurvivesAQueueThatShrinks covers a cursor left past the
+// end when tracks are played off the front of the queue.
+func TestTheQueueScreenSurvivesAQueueThatShrinks(t *testing.T) {
+	m := loaded(t)
+	m = send(t, m, QueueChanged{Tracks: []queue.Track{{ID: "a"}, {ID: "b"}, {ID: "c"}}, At: 2})
+	m, _ = press(t, m, "g")
+	m, _ = press(t, m, "q")
+
+	m = send(t, m, QueueChanged{Tracks: []queue.Track{{ID: "a"}}, At: 0})
+
+	if m.Cursor() != 0 {
+		t.Errorf("the cursor is on row %d of a one-track queue", m.Cursor())
+	}
+	if frame := m.View(); frame == "" {
+		t.Error("the queue screen rendered nothing after the queue shrank")
+	}
+}
+
+// TestQueueingKeysAskForTheSelectedTrack covers the two keys that put a track
+// in the queue. They work on the track list, which is the only screen where a
+// row is one track.
+func TestQueueingKeysAskForTheSelectedTrack(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "enter") // artist
+	m = send(t, m, ArtistLoaded(library()[0]))
+	m, _ = press(t, m, "enter") // album
+	m = send(t, m, AlbumLoaded(library()[0].Albums[0]))
+	m, _ = press(t, m, "j") // the second track
+
+	_, got := press(t, m, "a")
+	add, ok := got.(Enqueue)
+	if !ok {
+		t.Fatalf("a emitted %T, want Enqueue", got)
+	}
+	if add.Index != 1 {
+		t.Errorf("a queued track %d, want the selected one at 1", add.Index)
+	}
+
+	_, got = press(t, m, "A")
+	next, ok := got.(PlayNext)
+	if !ok {
+		t.Fatalf("A emitted %T, want PlayNext", got)
+	}
+	if next.Index != 1 {
+		t.Errorf("A queued track %d, want the selected one at 1", next.Index)
+	}
+}
+
+// TestQueueingSomewhereWithNoTrackSaysSo covers the screens where a row is not
+// a track, so the keys have nothing to act on.
+func TestQueueingSomewhereWithNoTrackSaysSo(t *testing.T) {
+	for _, key := range []string{"a", "A"} {
+		m := loaded(t) // the artist list
+
+		m, got := press(t, m, key)
+		if got != nil {
+			t.Errorf("%s on the artist list emitted %T", key, got)
+		}
+		if !strings.Contains(m.Status(), "open an album") {
+			t.Errorf("%s said %q", key, m.Status())
+		}
 	}
 }

@@ -110,6 +110,23 @@ func (p *Player) Append(ctx context.Context, url string) error {
 }
 
 // Stop clears the playlist. mpv stays running and idle.
+// Prefetch replaces whatever mpv has queued after the current track, so that
+// it opens the right one in advance. An empty url leaves nothing queued.
+//
+// mpv is given the next track early to play an album without a gap, so
+// changing what comes next has to change what mpv is holding, or it plays a
+// moment of the track that used to be next.
+func (p *Player) Prefetch(ctx context.Context, url string) error {
+	if _, err := p.command(ctx, "playlist-clear"); err != nil {
+		return err
+	}
+	if url == "" {
+		return nil
+	}
+	_, err := p.command(ctx, "loadfile", url, "append")
+	return err
+}
+
 func (p *Player) Stop(ctx context.Context) error {
 	_, err := p.command(ctx, "stop")
 	return err

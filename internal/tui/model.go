@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/queue"
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
@@ -21,17 +22,18 @@ const (
 	modeCommand
 )
 
-// Screen identifies one of the three views.
+// Screen identifies one of the views.
 type Screen int
 
 const (
 	ScreenArtists Screen = iota
 	ScreenAlbums
 	ScreenTracks
+	ScreenQueue
 )
 
 // Screens lists every screen.
-var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks}
+var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue}
 
 func (s Screen) String() string {
 	switch s {
@@ -41,6 +43,8 @@ func (s Screen) String() string {
 		return "albums"
 	case ScreenTracks:
 		return "tracks"
+	case ScreenQueue:
+		return "queue"
 	}
 	return "unknown"
 }
@@ -54,6 +58,11 @@ type Model struct {
 	artists []subsonic.Artist
 	artist  subsonic.Artist
 	album   subsonic.Album
+
+	// queued is what is playing and what follows it, and queuedAt is the
+	// position in it. The caller owns the queue; this is a copy to draw.
+	queued   []queue.Track
+	queuedAt int
 
 	// cursor holds the selected row for each screen, as an index into the
 	// filtered list rather than the whole one.
@@ -133,6 +142,8 @@ func (m Model) allRows() int {
 		return len(m.artist.Albums)
 	case ScreenTracks:
 		return len(m.album.Songs)
+	case ScreenQueue:
+		return len(m.queued)
 	}
 	return 0
 }
@@ -147,6 +158,8 @@ func (m Model) rowName(i int) string {
 		return m.artist.Albums[i].Name
 	case ScreenTracks:
 		return m.album.Songs[i].Title
+	case ScreenQueue:
+		return m.queued[i].Title + " " + m.queued[i].Artist
 	}
 	return ""
 }
