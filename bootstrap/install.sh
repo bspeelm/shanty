@@ -116,6 +116,12 @@ install -m 755 "$tmp/shanty" "$BINDIR/shanty"
 
 echo "shanty: installed to $BINDIR/shanty"
 
+# Shell completion is a file each shell reads from a directory of its own, so
+# it is put there rather than added to a startup file. A failure here is not
+# worth failing an install over.
+"$BINDIR/shanty" completions install >/dev/null 2>&1 &&
+    echo "shanty: shell completion installed"
+
 # ~/.local/bin missing from PATH is the commonest reason a fresh install looks
 # like it did nothing, so say so now rather than letting the next command fail
 # with "not found".

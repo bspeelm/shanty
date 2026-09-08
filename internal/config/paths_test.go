@@ -195,3 +195,66 @@ func TestAllIsEveryDirectoryPathsResolves(t *testing.T) {
 		}
 	}
 }
+
+// TestCompletionsGoWhereEachShellLooks covers the files the installer writes
+// beside the binary. They are not shanty's own data: a shell reads completions
+// from a directory of its own, so a file kept with the four directories would
+// never be read.
+func TestCompletionsGoWhereEachShellLooks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, name := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"} {
+		t.Setenv(name, "")
+	}
+
+	paths, err := Discover()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := paths.Completions()
+
+	want := map[string]string{
+		"bash": filepath.Join(home, ".local", "share", "bash-completion", "completions", "shanty"),
+		"fish": filepath.Join(home, ".config", "fish", "completions", "shanty.fish"),
+	}
+	for shell, path := range want {
+		if got[shell] != path {
+			t.Errorf("%s completion goes to %q, want %q", shell, got[shell], path)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("there are %d completion files and %d were checked", len(got), len(want))
+	}
+
+	// None of them is inside a directory shanty writes to, because uninstall
+	// removes those wholesale and these belong to the shell.
+	for shell, path := range got {
+		for _, dir := range paths.All() {
+			if strings.HasPrefix(path, dir+string(filepath.Separator)) {
+				t.Errorf("the %s completion is inside %s", shell, dir)
+			}
+		}
+	}
+}
+
+// TestCompletionsFollowTheEnvironment covers a machine that puts its XDG
+// directories somewhere other than the default.
+func TestCompletionsFollowTheEnvironment(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "dat"))
+
+	paths, err := Discover()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := paths.Completions()
+
+	if want := filepath.Join(home, "dat", "bash-completion", "completions", "shanty"); got["bash"] != want {
+		t.Errorf("bash completion goes to %q, want %q", got["bash"], want)
+	}
+	if want := filepath.Join(home, "cfg", "fish", "completions", "shanty.fish"); got["fish"] != want {
+		t.Errorf("fish completion goes to %q, want %q", got["fish"], want)
+	}
+}

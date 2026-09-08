@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -17,8 +20,40 @@ var shells = []string{"bash", "zsh", "fish"}
 func following() map[string][]string {
 	return map[string][]string{
 		"doctor":      {"-json"},
-		"completions": shells,
+		"completions": append([]string{"install"}, shells...),
 	}
+}
+
+// install writes the completion script for every shell on this machine that
+// reads one from a directory of its own, creating the directory if it is not
+// there. It reports what it wrote.
+//
+// This is what the installer calls, so that completion works without anybody
+// creating a directory or editing a startup file.
+func install(env Env) ([]string, error) {
+	var written []string
+	for shell, path := range env.Paths.Completions() {
+		// A shell that is not on this machine gets no file, so nothing is
+		// left in a directory nothing reads.
+		if _, err := env.LookPath(shell); err != nil {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return written, err
+		}
+		script := &bytes.Buffer{}
+		out := env
+		out.Stdout = script
+		if err := runCompletions(context.Background(), out, []string{shell}); err != nil {
+			return written, err
+		}
+		if err := os.WriteFile(path, script.Bytes(), 0o644); err != nil {
+			return written, err
+		}
+		written = append(written, path)
+	}
+	sort.Strings(written)
+	return written, nil
 }
 
 // runCompletions writes a completion script for one shell.
@@ -27,8 +62,23 @@ func following() map[string][]string {
 // the commands that exist. Nothing is checked in that could fall behind.
 func runCompletions(_ context.Context, env Env, args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("`shanty completions` needs the name of a shell: %s",
+		return fmt.Errorf("`shanty completions` needs `install`, or the name of a shell: %s",
 			strings.Join(shells, ", "))
+	}
+	if args[0] == "install" {
+		written, err := install(env)
+		if err != nil {
+			return err
+		}
+		if len(written) == 0 {
+			fmt.Fprintln(env.Stdout, "no shell here reads completions from a directory of its own")
+			return nil
+		}
+		for _, path := range written {
+			fmt.Fprintln(env.Stdout, "wrote", path)
+		}
+		fmt.Fprintln(env.Stdout, "\ncompletion works in the next terminal you open")
+		return nil
 	}
 	write, ok := map[string]func(Env){
 		"bash": bashCompletions,

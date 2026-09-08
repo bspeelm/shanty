@@ -10,12 +10,17 @@ import (
 
 const appName = "shanty"
 
-// Paths holds the four directories shanty writes to.
+// Paths holds the four directories shanty writes to, and the completion files
+// its installer writes beside the binary.
 type Paths struct {
 	Config  string // settings and credentials, both user-editable
 	State   string // resume positions and the scrobble backlog
 	Cache   string // cover art; deleting it costs bandwidth only
 	Runtime string // the mpv socket, gone at logout
+
+	// dataHome is where a shell reads completions from. It is not one of the
+	// four directories, and nothing but the installer writes there.
+	dataHome string
 }
 
 // Discover resolves the four directories from the environment. It creates
@@ -46,12 +51,38 @@ func Discover() (Paths, error) {
 		runtime = filepath.Join(runtime, appName)
 	}
 
+	dataHome, err := xdgDir("XDG_DATA_HOME", filepath.Join(".local", "share"))
+	if err != nil {
+		return Paths{}, err
+	}
+
 	return Paths{
-		Config:  filepath.Join(configHome, appName),
-		State:   filepath.Join(stateHome, appName),
-		Cache:   filepath.Join(cacheHome, appName),
-		Runtime: runtime,
+		Config:   filepath.Join(configHome, appName),
+		State:    filepath.Join(stateHome, appName),
+		Cache:    filepath.Join(cacheHome, appName),
+		Runtime:  runtime,
+		dataHome: dataHome,
 	}, nil
+}
+
+// Completions are the files a shell reads to complete shanty's commands, by
+// the name of the shell.
+//
+// They are not shanty's own data. A shell reads completions from a directory
+// of its own and nowhere else, so a file kept with the four directories would
+// never be read. Nothing writes these but the installer, and `shanty
+// uninstall` removes them.
+func (p Paths) Completions() map[string]string {
+	if p.dataHome == "" {
+		return nil
+	}
+	// fish reads its configuration from the same place shanty does, so the
+	// directory holding shanty's own is the one to start from.
+	configHome := filepath.Dir(p.Config)
+	return map[string]string{
+		"bash": filepath.Join(p.dataHome, "bash-completion", "completions", appName),
+		"fish": filepath.Join(configHome, "fish", "completions", appName+".fish"),
+	}
 }
 
 // xdgDir returns the directory named by an XDG environment variable, or the

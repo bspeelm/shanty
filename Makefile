@@ -67,6 +67,7 @@ crossbuild:
 install-binary: build
 	install -Dm755 $(BINARY) $(HOME)/.local/bin/$(BINARY)
 	@echo "installed to ~/.local/bin/$(BINARY)"
+	@$(HOME)/.local/bin/$(BINARY) completions install || true
 	@case ":$$PATH:" in \
 	    *":$(HOME)/.local/bin:"*) ;; \
 	    *) echo; echo "~/.local/bin is not on your PATH. Add it:"; \

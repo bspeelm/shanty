@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 // runUninstall deletes the directories in Paths.All and prints which were
@@ -36,6 +37,22 @@ func runUninstall(_ context.Context, env Env, _ []string) error {
 		}
 		removed = append(removed, dir)
 	}
+
+	// The completion files are not in any of those directories, because a
+	// shell reads them from one of its own. The installer put them there and
+	// this takes them away again.
+	// A completion for a shell that is not on this machine was never written,
+	// and saying so would be noise rather than news.
+	for _, path := range env.Paths.Completions() {
+		switch err := os.Remove(path); {
+		case errors.Is(err, os.ErrNotExist):
+		case err != nil:
+			return err
+		default:
+			removed = append(removed, path)
+		}
+	}
+	sort.Strings(removed)
 
 	for _, dir := range removed {
 		fmt.Fprintln(env.Stdout, "removed", dir)

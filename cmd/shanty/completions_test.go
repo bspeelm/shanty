@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -174,5 +176,102 @@ func TestEveryDocumentedOptionIsCompleted(t *testing.T) {
 		if !slices.Contains(following()[name], flag) {
 			t.Errorf("the README documents `shanty %s %s` and no shell completes it", name, flag)
 		}
+	}
+}
+
+// TestInstallingCompletionsWritesOnlyWhereAShellReads covers what the
+// installer does. Nobody creates a directory and no startup file is touched:
+// a shell reads completions from a directory of its own, so the file goes
+// there and the shell finds it by itself.
+func TestInstallingCompletionsWritesOnlyWhereAShellReads(t *testing.T) {
+	env, _ := scratch(t)
+	home := os.Getenv("HOME")
+	// Both shells are present, so both files are expected.
+	env.LookPath = func(string) (string, error) { return "/usr/bin/anything", nil }
+
+	written, err := install(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := env.Paths.Completions()
+	if len(written) != len(want) {
+		t.Fatalf("the installer wrote %d files and there are %d shells: %v", len(written), len(want), written)
+	}
+	for shell, path := range want {
+		if !slices.Contains(written, path) {
+			t.Errorf("no %s completion was written", shell)
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: %v", shell, err)
+		}
+		if !strings.Contains(string(body), "shanty") {
+			t.Errorf("the %s file does not look like a completion script", shell)
+		}
+	}
+
+	// Nothing was added to a startup file.
+	for _, name := range []string{".bashrc", ".bash_profile", ".profile", ".zshrc", ".config/fish/config.fish"} {
+		if _, err := os.Stat(filepath.Join(home, name)); err == nil {
+			t.Errorf("the installer created or touched %s", name)
+		}
+	}
+}
+
+// TestACompletionIsNotWrittenForAShellThatIsNotHere covers the machine with
+// one shell on it. A file in a directory nothing reads is litter.
+func TestACompletionIsNotWrittenForAShellThatIsNotHere(t *testing.T) {
+	env, _ := scratch(t)
+	env.LookPath = func(name string) (string, error) {
+		if name == "bash" {
+			return "/usr/bin/bash", nil
+		}
+		return "", errors.New("not here")
+	}
+
+	written, err := install(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(written) != 1 || written[0] != env.Paths.Completions()["bash"] {
+		t.Errorf("the installer wrote %v, want only the bash completion", written)
+	}
+}
+
+// TestUninstallTakesTheCompletionsBack covers the other half of the promise.
+// The installer put these outside the four directories, so uninstall is what
+// leaves nothing behind.
+func TestUninstallTakesTheCompletionsBack(t *testing.T) {
+	env, out := scratch(t)
+	home := os.Getenv("HOME")
+	env.LookPath = func(string) (string, error) { return "/usr/bin/anything", nil }
+
+	written, err := install(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runUninstall(t.Context(), env, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range written {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s survived uninstall", path)
+		}
+		if !strings.Contains(out.String(), path) {
+			t.Errorf("uninstall removed %s without saying so", path)
+		}
+	}
+
+	var left []string
+	_ = filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			left = append(left, path)
+		}
+		return nil
+	})
+	if len(left) != 0 {
+		t.Errorf("uninstall left %v", left)
 	}
 }

@@ -272,3 +272,60 @@ func empty(t *testing.T, dir string) bool {
 	}
 	return len(entries) == 0
 }
+
+// TestIsolationOnlyTheInstallerWritesOutsideTheFourDirectories covers the one
+// exception in the contract. A shell reads completions from a directory of its
+// own, so `shanty completions install` writes there and nothing else does.
+func TestIsolationOnlyTheInstallerWritesOutsideTheFourDirectories(t *testing.T) {
+	env, home := isolated(t)
+	env.LookPath = func(string) (string, error) { return "/usr/bin/anything", nil }
+	srv := fake.New(t, fake.Options{APIKey: "k-1"})
+
+	// Everything a person runs in the ordinary way.
+	before := snapshot(t, home)
+	configure(t, env, config.Config{Server: srv.URL, Username: user}, config.Credentials{APIKey: "k-1"})
+	if err := runDoctor(t.Context(), env, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range added(before, snapshot(t, home)) {
+		if strings.Contains(rel, "completion") {
+			t.Errorf("an ordinary command wrote %s; only the installer should", rel)
+		}
+	}
+
+	// The installer, which is the exception.
+	before = snapshot(t, home)
+	if err := runCompletions(t.Context(), env, []string{"install"}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, path := range env.Paths.Completions() {
+		rel, err := filepath.Rel(home, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[rel] = true
+	}
+	for _, rel := range added(before, snapshot(t, home)) {
+		if strings.HasSuffix(rel, "/") {
+			continue // the directories a shell reads from
+		}
+		if !want[rel] {
+			t.Errorf("installing completion wrote %s, which the contract does not name", rel)
+		}
+		delete(want, rel)
+	}
+	for rel := range want {
+		t.Errorf("the contract names %s and it was not written", rel)
+	}
+
+	// And uninstall takes every file back.
+	if err := runUninstall(t.Context(), env, nil); err != nil {
+		t.Fatal(err)
+	}
+	for shell, path := range env.Paths.Completions() {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("the %s completion survived uninstall", shell)
+		}
+	}
+}

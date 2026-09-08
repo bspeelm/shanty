@@ -66,16 +66,12 @@ shanty doctor -json # the same report, as JSON
 shanty uninstall    # remove the directories shanty created
 shanty version      # print the version of this build
 shanty help         # list the commands
-shanty completions bash   # a completion script for bash, zsh or fish
+shanty completions install # set up tab completion for your shell
 ```
 
-For bash, write it where your shell already looks and it works from the next
-terminal on. Nothing to add to `~/.bashrc`:
-
-```sh
-mkdir -p ~/.local/share/bash-completion/completions
-shanty completions bash > ~/.local/share/bash-completion/completions/shanty
-```
+Installing shanty sets up tab completion already, so there is usually nothing
+to run. Nothing is added to `~/.bashrc`, and `shanty uninstall` removes it
+again.
 
 Type `:headless` and the interface closes while the music keeps playing. These
 command the session it leaves behind, from any shell:

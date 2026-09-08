@@ -253,6 +253,20 @@ a loop.
 $XDG_RUNTIME_DIR/shanty/   the mpv socket and the control socket, gone at logout
 ```
 
+One file sits outside that set, and only the installer writes it:
+
+```
+$XDG_DATA_HOME/bash-completion/completions/shanty
+$XDG_CONFIG_HOME/fish/completions/shanty.fish
+```
+
+A shell reads completions from a directory of its own and nowhere else, so a
+completion script kept with the four directories would never be read. It is
+written by whatever installs the binary, alongside `~/.local/bin/shanty` which
+is already outside this set, and `shanty uninstall` removes it. No startup file
+is ever written to. `TestIsolationOnlyTheInstallerWritesOutsideTheFourDirectories`
+holds this to one command.
+
 Those are the Linux paths. macOS resolves elsewhere: `os.UserConfigDir` is
 `~/Library/Application Support` and `os.UserCacheDir` is `~/Library/Caches`,
 and there is no `XDG_RUNTIME_DIR`. The table above is one platform's shape of
