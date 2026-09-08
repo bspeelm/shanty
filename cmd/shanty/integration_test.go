@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -215,7 +216,8 @@ func TestIntegrationVerticalSlice(t *testing.T) {
 
 	t.Run("stream", func(t *testing.T) {
 		socket := filepath.Join(t.TempDir(), "mpv.sock")
-		player, err := mpv.Start(ctx, mpv.Options{Binary: mpvPath, Socket: socket})
+		var said bytes.Buffer
+		player, err := mpv.Start(ctx, mpv.Options{Binary: mpvPath, Socket: socket, Stderr: &said})
 		if err != nil {
 			t.Fatalf("starting real mpv: %v", err)
 		}
@@ -236,7 +238,7 @@ func TestIntegrationVerticalSlice(t *testing.T) {
 				}
 				if e.Name == "end-file" {
 					if e.Reason != "eof" {
-						t.Fatalf("the track ended with reason %q, not eof", e.Reason)
+						t.Fatalf("the track ended with reason %q, not eof.\nmpv said:\n%s", e.Reason, said.String())
 					}
 					return
 				}

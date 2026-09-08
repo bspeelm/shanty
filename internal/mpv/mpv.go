@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -33,6 +34,11 @@ type Options struct {
 	Binary string
 	// Socket is where mpv listens. Its directory is created 0700.
 	Socket string
+	// Stderr is where mpv's own diagnostics go. Nil discards them, which is
+	// right for a TUI that owns the screen -- but a player that fails without
+	// saying why leaves nothing to report, so doctor and the integration test
+	// pass a buffer.
+	Stderr io.Writer
 }
 
 // Player is a running mpv.
@@ -89,6 +95,7 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 	// PulseAudio read XDG_RUNTIME_DIR, ALSA reads HOME. Nothing of shanty's is
 	// added -- the credential goes over the socket, which is the point of it.
 	cmd.Env = os.Environ()
+	cmd.Stderr = opt.Stderr
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("could not start %s: %w\nInstall mpv, or set its path in config.toml", binary, err)
 	}
