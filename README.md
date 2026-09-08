@@ -26,7 +26,9 @@ format mpv supports.
 You need mpv installed. shanty finds music on your server and controls
 playback; mpv does the actual decoding and produces the sound. shanty will not
 start without it, and `shanty doctor` will tell you the command to install it
-on your system.
+on your system. The [Installing](https://github.com/bspeelm/shanty/wiki/Installing) page covers
+installing mpv on each platform, including containers and image-based systems
+such as Fedora Silverblue.
 
 ## Installing
 
@@ -42,10 +44,6 @@ this repository:
 ```sh
 make install-binary
 ```
-
-The [Installing](https://github.com/bspeelm/shanty/wiki/Installing) page covers
-installing mpv on each platform, including containers and image-based systems
-such as Fedora Silverblue.
 
 ## Using it
 
