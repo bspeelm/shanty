@@ -56,6 +56,35 @@ func library() []subsonic.Artist {
 	}
 }
 
+// spoken is a model that has said a few things, with the clock pinned so the
+// times in the golden file do not move.
+func spoken(t *testing.T, m Model) Model {
+	t.Helper()
+	at := time.Date(2026, 9, 8, 15, 4, 5, 0, time.UTC)
+	m.now = func() time.Time { at = at.Add(37 * time.Second); return at }
+	return send(t, m,
+		Notice("leaving the interface; the music keeps playing"),
+		Failed{Message: "mpv stopped: exit status 1\nrestart shanty to play again"},
+		Notice("playing Ballast next"))
+}
+
+// onMessages presses :messages, which is how the screen is reached.
+func onMessages(t *testing.T, m Model) Model {
+	t.Helper()
+	m = send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+	for _, c := range "messages" {
+		m = send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(string(c))})
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			m = send(t, m, msg)
+		}
+	}
+	return m
+}
+
 // starredChanged is what the server reports starred: one of each kind, so
 // every list has a marker in it.
 func starredChanged() StarredChanged {
@@ -152,6 +181,8 @@ func TestGoldenScreens(t *testing.T) {
 		{"tracks-starred", send(t, tracks, starredChanged())},
 		{"starred", onStarred(t, send(t, tracks, starredChanged()))},
 		{"starred-nothing", onStarred(t, tracks)},
+		{"messages", onMessages(t, spoken(t, artists))},
+		{"messages-nothing", onMessages(t, artists)},
 		{"search", send(t, base, SearchLoaded{Query: "water", Results: results()})},
 		{"search-nothing", send(t, base, SearchLoaded{Query: "zzzz", Results: subsonic.Results{}})},
 		{"search-tracks-only", send(t, base, SearchLoaded{Query: "slipway",

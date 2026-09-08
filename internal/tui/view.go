@@ -116,6 +116,11 @@ func (m Model) heading() string {
 		return searchHeading(m.query, m.found)
 	case ScreenStarred:
 		return starredHeading(m.starredRows)
+	case ScreenMessages:
+		if len(m.said) == 0 {
+			return "messages · nothing said yet"
+		}
+		return fmt.Sprintf("messages · %s", plural(len(m.said), "message"))
 	case ScreenQueue:
 		switch {
 		case len(m.queued) == 0:
@@ -176,6 +181,11 @@ func (m Model) row(i int) (string, string) {
 			return faintStyle.Render(r.name), ""
 		}
 		return m.star(r.id) + Sanitise(r.name), Sanitise(r.detail)
+	case ScreenMessages:
+		said := m.said[m.saidAt(i)]
+		// The message is one row, and some carry the cause on one line and
+		// what to do on the next.
+		return Sanitise(strings.ReplaceAll(said.text, "\n", " · ")), said.at.Format("15:04:05")
 	case ScreenQueue:
 		t := m.queued[i]
 		mark := "  "
@@ -248,7 +258,13 @@ func window(cursor, rows, visible int) int {
 
 // columns puts left and right on one line of width w, dropping the gap when
 // there is no room for both.
+// columns puts left at the start of a row and right at its end. A left too
+// long to leave room is cut, so that the right is not the part that goes: on
+// the messages screen it is the time, which is what makes a log a log.
 func columns(left, right string, w int) string {
+	if room := w - lipgloss.Width(right) - 1; room > 0 && lipgloss.Width(left) > room {
+		left = fit(left, room)
+	}
 	gap := w - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		return left

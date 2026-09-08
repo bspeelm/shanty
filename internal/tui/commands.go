@@ -38,6 +38,11 @@ var commands = []command{
 		},
 	},
 	{
+		name:    "messages",
+		summary: "show what shanty has said this session",
+		run:     func(string) (any, error) { return ShowMessages{}, nil },
+	},
+	{
 		name:    "resume",
 		summary: "carry on from the queue saved on the server",
 		run:     func(string) (any, error) { return Resume{}, nil },

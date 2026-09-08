@@ -32,10 +32,11 @@ const (
 	ScreenQueue
 	ScreenSearch
 	ScreenStarred
+	ScreenMessages
 )
 
 // Screens lists every screen.
-var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue, ScreenSearch, ScreenStarred}
+var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue, ScreenSearch, ScreenStarred, ScreenMessages}
 
 func (s Screen) String() string {
 	switch s {
@@ -51,6 +52,8 @@ func (s Screen) String() string {
 		return "search"
 	case ScreenStarred:
 		return "starred"
+	case ScreenMessages:
+		return "messages"
 	}
 	return "unknown"
 }
@@ -103,7 +106,24 @@ type Model struct {
 
 	status  string
 	loading bool
+
+	// said is every message shown this session, oldest first, so that one
+	// which scrolled past can be read again. It is kept in memory only.
+	said []message
+	// now reads the clock. It is a field so that a test can pin what a
+	// message is stamped with.
+	now func() time.Time
 }
+
+// message is one thing shanty said, and when.
+type message struct {
+	at   time.Time
+	text string
+}
+
+// remembered is how many messages are kept. Older ones go, because the recent
+// ones are what somebody looking for what just happened wants.
+const remembered = 200
 
 // New returns a model with nothing loaded.
 func New() Model {
@@ -112,6 +132,7 @@ func New() Model {
 		volume:  100,
 		loading: true,
 		status:  "loading the library",
+		now:     time.Now,
 	}
 }
 
@@ -172,6 +193,8 @@ func (m Model) allRows() int {
 		return len(m.queued)
 	case ScreenSearch, ScreenStarred:
 		return len(m.grouped())
+	case ScreenMessages:
+		return len(m.said)
 	}
 	return 0
 }
@@ -190,6 +213,31 @@ func (m Model) rowName(i int) string {
 		return m.queued[i].Title + " " + m.queued[i].Artist
 	case ScreenSearch, ScreenStarred:
 		return m.grouped()[i].name
+	case ScreenMessages:
+		return m.said[m.saidAt(i)].text
 	}
 	return ""
+}
+
+// saidAt maps a row of the messages screen to a message. The newest is at the
+// top, because what just happened is what somebody is looking for.
+func (m Model) saidAt(row int) int { return len(m.said) - 1 - row }
+
+// remember keeps a message so that it can be read after it has been replaced.
+func (m Model) remember(text string) Model {
+	if strings.TrimSpace(text) == "" {
+		return m
+	}
+	at := time.Now()
+	if m.now != nil {
+		at = m.now()
+	}
+	said := make([]message, 0, len(m.said)+1)
+	said = append(said, m.said...)
+	said = append(said, message{at: at, text: text})
+	if len(said) > remembered {
+		said = said[len(said)-remembered:]
+	}
+	m.said = said
+	return m
 }

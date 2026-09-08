@@ -56,6 +56,9 @@ type (
 	Search string
 	// Resume asks for the queue the server is holding to be taken up.
 	Resume struct{}
+	// ShowMessages asks for what shanty has said this session. It is handled
+	// by the interface itself, which is the only thing that has it.
+	ShowMessages struct{}
 	// ToggleStar asks for something to be starred or unstarred on the server.
 	ToggleStar struct {
 		Kind    Kind

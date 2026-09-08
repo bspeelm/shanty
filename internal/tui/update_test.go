@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -226,8 +227,8 @@ func TestEveryScreenHasAHeadingAndRenders(t *testing.T) {
 			t.Errorf("screen %s rendered nothing", s)
 		}
 	}
-	if len(Screens) != 6 {
-		t.Errorf("Screens lists %d screens; there are six, so this is a change to the interface", len(Screens))
+	if len(Screens) != 7 {
+		t.Errorf("Screens lists %d screens; there are seven, so this is a change to the interface", len(Screens))
 	}
 }
 
@@ -1027,5 +1028,131 @@ func TestEveryListMarksWhatIsStarred(t *testing.T) {
 	// And nothing is marked when nothing is starred.
 	if frame := loaded(t).View(); strings.Contains(frame, "★") {
 		t.Errorf("a list with nothing starred shows a marker:\n%s", frame)
+	}
+}
+
+// TestWhatWasSaidIsKept covers the point of the screen: a message is shown on
+// one row until the next replaces it, so anything that went wrong while
+// something else had your attention is otherwise gone.
+func TestWhatWasSaidIsKept(t *testing.T) {
+	m := loaded(t)
+
+	m = send(t, m, Failed{Message: "the server refused a play"})
+	m = send(t, m, Notice("playing Ballast next"))
+	m = send(t, m, Failed{Message: "mpv stopped"})
+
+	if got := m.Status(); got != "mpv stopped" {
+		t.Errorf("the last row shows %q, want the newest message", got)
+	}
+
+	m, _ = press(t, m, ":")
+	for _, c := range "messages" {
+		m, _ = press(t, m, string(c))
+	}
+	m, msg := press(t, m, "enter")
+	if msg != nil {
+		m = send(t, m, msg)
+	}
+
+	if m.Screen() != ScreenMessages {
+		t.Fatalf(":messages went to %s", m.Screen())
+	}
+	if m.rows() != 3 {
+		t.Fatalf("the screen holds %d messages, want 3", m.rows())
+	}
+	// Newest first: what just happened is what somebody is looking for.
+	frame := m.View()
+	newest := strings.Index(frame, "mpv stopped")
+	oldest := strings.Index(frame, "the server refused a play")
+	if newest < 0 || oldest < 0 {
+		t.Fatalf("a message is missing from the screen:\n%s", frame)
+	}
+	if newest > oldest {
+		t.Error("the messages are oldest first, want the newest at the top")
+	}
+}
+
+// TestTheMessagesKeptAreBounded covers a long session. The recent ones are
+// what anybody wants, so the older ones go rather than growing for ever.
+func TestTheMessagesKeptAreBounded(t *testing.T) {
+	m := loaded(t)
+	for i := range remembered + 50 {
+		m = send(t, m, Notice(fmt.Sprintf("message %d", i)))
+	}
+
+	if len(m.said) != remembered {
+		t.Errorf("kept %d messages, want the limit of %d", len(m.said), remembered)
+	}
+	if newest := m.said[len(m.said)-1].text; newest != fmt.Sprintf("message %d", remembered+49) {
+		t.Errorf("the newest message is %q", newest)
+	}
+	if oldest := m.said[0].text; oldest == "message 0" {
+		t.Error("the oldest message was kept over newer ones")
+	}
+}
+
+// TestAnEmptyMessageIsNotKept covers the messages that clear the last row
+// rather than saying anything.
+func TestAnEmptyMessageIsNotKept(t *testing.T) {
+	m := loaded(t)
+
+	m = send(t, m, Notice(""))
+	m = send(t, m, Failed{Message: "   "})
+
+	if len(m.said) != 0 {
+		t.Errorf("kept %d empty messages: %v", len(m.said), m.said)
+	}
+}
+
+// TestTheMessagesScreenWithNothingSaidSaysSo covers the screen reached before
+// anything has gone wrong.
+func TestTheMessagesScreenWithNothingSaidSaysSo(t *testing.T) {
+	m := send(t, loaded(t), ShowMessages{})
+
+	if m.Screen() != ScreenMessages {
+		t.Fatalf(":messages went to %s", m.Screen())
+	}
+	if frame := m.View(); !strings.Contains(frame, "nothing said yet") {
+		t.Errorf("the screen reads:\n%s", frame)
+	}
+}
+
+// TestALongMessageKeepsItsTime covers the row that will not fit. The time is
+// what makes a log a log, so the message is cut rather than the time.
+func TestALongMessageKeepsItsTime(t *testing.T) {
+	m := sized(loaded(t))
+	at := time.Date(2026, 9, 8, 15, 4, 5, 0, time.UTC)
+	m.now = func() time.Time { return at }
+
+	m = send(t, m, Failed{Message: strings.Repeat("a very long failure ", 8)})
+	m = send(t, m, ShowMessages{})
+
+	if frame := m.View(); !strings.Contains(frame, "15:04:05") {
+		t.Errorf("a long message pushed its own time off the row:\n%s", frame)
+	}
+}
+
+// TestRememberingDoesNotReachACopy covers the same hazard the cursor has:
+// Model is a value copied on every update, and its messages are a slice. Once
+// the list has been trimmed to its limit it has room to spare, and appending
+// through that room would rewrite what a copy already holds.
+func TestRememberingDoesNotReachACopy(t *testing.T) {
+	base := loaded(t)
+	// Past the limit, so the list has been trimmed and has spare room.
+	for i := range remembered + 10 {
+		base = send(t, base, Notice(fmt.Sprintf("message %d", i)))
+	}
+
+	first := send(t, base, Notice("what the first copy said"))
+	second := send(t, base, Notice("what the second copy said"))
+
+	if got := first.said[len(first.said)-1].text; got != "what the first copy said" {
+		t.Errorf("the first copy ends with %q", got)
+	}
+	if got := second.said[len(second.said)-1].text; got != "what the second copy said" {
+		t.Errorf("the second copy ends with %q", got)
+	}
+	if got := base.said[len(base.said)-1].text; !strings.HasPrefix(got, "message ") {
+		t.Errorf("adding to a copy changed the model it came from, which now ends with %q", got)
 	}
 }

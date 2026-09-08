@@ -27,6 +27,14 @@ it. This prevents you from quitting the player by pressing back once too often.
 Each screen remembers which row you had selected. If you open an album and then
 go back, the album you opened is still highlighted.
 
+## What shanty said earlier
+
+The last row shows one message until the next replaces it, so something that
+went wrong while you were reading a track list is gone by the time you look.
+
+`:messages` lists everything shanty has said this session, newest first, with
+the time. It is kept in memory only: closing shanty forgets it.
+
 ## Carrying on from another machine
 
 Your server keeps a queue and the position in it, so what you were playing on
@@ -153,6 +161,7 @@ line.
 | `:headless` | Close the interface and keep playing |
 | `:search slipway` | Find artists, albums and tracks on the server |
 | `:resume` | Carry on from the queue saved on your server |
+| `:messages` | Show what shanty has said this session |
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.

@@ -53,10 +53,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case Failed:
 		m.loading, m.status = false, msg.Message
-		return m, nil
+		return m.remember(msg.Message), nil
 	case Notice:
 		m.status = string(msg)
-		return m, nil
+		return m.remember(string(msg)), nil
 	case StarredChanged:
 		m.starredRows, m.starred = flatten(msg.Results), msg.IDs
 		if m.screen == ScreenStarred {
@@ -67,6 +67,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.found, m.query = flatten(msg.Results), msg.Query
 		m.screen, m.loading, m.status, m.filter = ScreenSearch, false, "", ""
 		return m.selecting(ScreenSearch, firstSelectable(m.found)), nil
+	case ShowMessages:
+		m.screen, m.status, m.filter = ScreenMessages, "", ""
+		return m.selecting(ScreenMessages, 0), nil
 	case QueueChanged:
 		m.queued, m.queuedAt = msg.Tracks, msg.At
 		if m.screen == ScreenQueue {
@@ -390,7 +393,7 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		m.screen, m.status, m.filter = ScreenAlbums, "", ""
 	case ScreenAlbums:
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
-	case ScreenQueue, ScreenSearch, ScreenStarred:
+	case ScreenQueue, ScreenSearch, ScreenStarred, ScreenMessages:
 		// Both are reached from anywhere, so back leaves for the one screen
 		// that is always there rather than wherever it was opened from.
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
