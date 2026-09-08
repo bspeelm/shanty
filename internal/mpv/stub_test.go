@@ -21,6 +21,7 @@ import (
 // protocol against a child that is guaranteed to exist because it is us.
 const (
 	stubEnv     = "SHANTY_TEST_STUB_MPV"
+	wedgedEnv   = "SHANTY_TEST_STUB_WEDGED"
 	reportEnv   = "SHANTY_TEST_STUB_REPORT"
 	commandLog  = "commands.jsonl"
 	argvFile    = "argv"
@@ -90,6 +91,11 @@ func stubMain() {
 					continue
 				}
 				if len(msg.Command) > 0 && msg.Command[0] == "quit" {
+					// A wedged player reads the command and does nothing,
+					// which is what Close has to survive.
+					if os.Getenv(wedgedEnv) == "1" {
+						continue
+					}
 					os.Exit(0)
 				}
 				// A test-only command, so the event path can be driven

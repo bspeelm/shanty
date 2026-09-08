@@ -23,6 +23,9 @@ import (
 // startTimeout is how long mpv is given to create its socket.
 const startTimeout = 10 * time.Second
 
+// stopGrace is how long mpv is given to quit on its own before it is killed.
+const stopGrace = 500 * time.Millisecond
+
 // Options configure the player. There is no field for extra mpv flags.
 type Options struct {
 	// Binary is the mpv executable. Empty means "mpv", resolved on PATH.
@@ -75,7 +78,7 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 		return nil, err
 	}
 
-	cmd := exec.CommandContext(ctx, binary,
+	cmd := exec.Command(binary,
 		"--no-config",
 		"--no-video",
 		"--idle=yes",
@@ -85,8 +88,8 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 	// The environment is inherited because PipeWire, PulseAudio and ALSA read
 	// from it. Nothing of shanty’s is added.
 	cmd.Env = os.Environ()
-	// mpv runs in its own session, so the terminal’s signals do not reach it
-	// and Close is the only thing that stops it.
+	// mpv runs in its own session and is not tied to a context, so neither the
+	// terminal nor a cancellation stops it. Close is the only thing that does.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stderr = opt.Stderr
 	if err := cmd.Start(); err != nil {
@@ -250,8 +253,11 @@ func (p *Player) Events() <-chan Event { return p.events }
 // Close stops mpv and waits for it to exit.
 func (p *Player) Close() error {
 	// Ask, then close the socket, then kill. Each step is unchecked because the
-	// next covers it.
-	_, _ = p.command(context.Background(), "quit")
+	// next covers it, and the ask is bounded so that a player which has stopped
+	// answering cannot hold up the program stopping it.
+	ctx, cancel := context.WithTimeout(context.Background(), stopGrace)
+	_, _ = p.command(ctx, "quit")
+	cancel()
 	_ = p.conn.Close()
 	if p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Process.Kill()

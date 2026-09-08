@@ -1,6 +1,7 @@
 package mpv
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -382,5 +383,65 @@ func TestClosingAnAttachedPlayerStopsIt(t *testing.T) {
 	}
 	if log := report(t, dir, commandLog); !strings.Contains(log, `"quit"`) {
 		t.Errorf("closing did not ask the player to quit; log was %q", log)
+	}
+}
+
+// TestCancellingTheContextDoesNotStopThePlayer covers the other half of who
+// owns mpv. The context bounds how long Start waits for the socket; it does
+// not own the process afterwards, so a cancellation leaves the player running
+// and Close is what ends it.
+func TestCancellingTheContextDoesNotStopThePlayer(t *testing.T) {
+	report := t.TempDir()
+	socket := filepath.Join(t.TempDir(), "run", "mpv.sock")
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(stubEnv, "1")
+	t.Setenv(reportEnv, report)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	p, err := Start(ctx, Options{Binary: self, Socket: socket})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+
+	cancel()
+	select {
+	case <-p.Done():
+		t.Fatal("cancelling the context stopped the player")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := p.SetVolume(t.Context(), 60); err != nil {
+		t.Fatalf("the player stopped answering after the context was cancelled: %v", err)
+	}
+
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	<-p.Done()
+}
+
+// TestClosingAPlayerThatWillNotQuitDoesNotHang covers a player that has
+// stopped answering. Close asks it to quit, and the asking is bounded, so a
+// player that never replies is killed rather than waited on for ever.
+func TestClosingAPlayerThatWillNotQuitDoesNotHang(t *testing.T) {
+	p, _ := stub(t, wedgedEnv+"=1")
+
+	done := make(chan time.Duration, 1)
+	go func() {
+		start := time.Now()
+		_ = p.Close()
+		done <- time.Since(start)
+	}()
+
+	select {
+	case took := <-done:
+		if took > 5*stopGrace {
+			t.Errorf("closing a wedged player took %v, which is not a bound", took)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("closing a player that will not quit never returned")
 	}
 }
