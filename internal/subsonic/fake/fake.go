@@ -74,6 +74,18 @@ type Server struct {
 	opt  Options
 	mu   sync.Mutex
 	reqs []Request
+	// starred is what star and unstar have done, so that getStarred2 reports
+	// what a test actually did rather than a fixture.
+	starred map[string]bool
+}
+
+// Starred reports whether the server has the id starred. A test asserts on
+// this rather than on the request log, because starring twice and unstarring
+// once is a different state from starring once.
+func (s *Server) Starred(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.starred[id]
 }
 
 // Request is one call as the server received it. Credentials are not
@@ -209,6 +221,36 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.ok(w, response{SearchResult: &found})
+	case "star", "unstar":
+		id := firstOf(q, "id", "albumId", "artistId")
+		if id == "" {
+			s.fail(w, 10, "Required parameter id is missing")
+			return
+		}
+		if !s.opt.Library.knows(id) {
+			s.fail(w, 70, "Not found")
+			return
+		}
+		s.mu.Lock()
+		if s.starred == nil {
+			s.starred = map[string]bool{}
+		}
+		s.starred[id] = endpoint == "star"
+		s.mu.Unlock()
+		s.ok(w, response{})
+	case "getStarred2":
+		s.mu.Lock()
+		set := make(map[string]bool, len(s.starred))
+		for k, v := range s.starred {
+			set[k] = v
+		}
+		s.mu.Unlock()
+		found := s.opt.Library.starredIn(set)
+		if found.Artists == nil && found.Albums == nil && found.Songs == nil {
+			s.ok(w, response{})
+			return
+		}
+		s.ok(w, response{Starred: &found})
 	case "scrobble":
 		s.ok(w, response{})
 	default:
@@ -305,4 +347,15 @@ func (s *Server) write(w http.ResponseWriter, body response) {
 	}
 	w.Header().Set("Content-Type", contentType)
 	_, _ = w.Write(raw)
+}
+
+// firstOf returns the first of the named parameters that is present. star and
+// unstar name what they act on differently depending on its kind.
+func firstOf(q url.Values, names ...string) string {
+	for _, name := range names {
+		if v := q.Get(name); v != "" {
+			return v
+		}
+	}
+	return ""
 }

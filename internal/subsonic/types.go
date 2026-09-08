@@ -25,6 +25,7 @@ type response struct {
 	Album        *Album      `json:"album"`
 	Extensions   []Extension `json:"openSubsonicExtensions"`
 	SearchResult *Results    `json:"searchResult3"`
+	Starred      *Results    `json:"starred2"`
 }
 
 type artistList struct {
@@ -188,6 +189,40 @@ func (c *Client) Search(ctx context.Context, query string) (Results, error) {
 		return Results{}, nil
 	}
 	return *res.SearchResult, nil
+}
+
+// Kind is what a starrable thing is, which decides the parameter the server
+// wants it under.
+type Kind string
+
+const (
+	KindArtist Kind = "artistId"
+	KindAlbum  Kind = "albumId"
+	KindSong   Kind = "id"
+)
+
+// Star marks something as starred on the server. Unstarring is the same call
+// under a different name, so one function does both.
+func (c *Client) Star(ctx context.Context, kind Kind, id string, starred bool) error {
+	endpoint := "star"
+	if !starred {
+		endpoint = "unstar"
+	}
+	_, err := c.get(ctx, endpoint, url.Values{string(kind): {id}})
+	return err
+}
+
+// Starred returns everything the server has starred.
+func (c *Client) Starred(ctx context.Context) (Results, error) {
+	res, err := c.get(ctx, "getStarred2", nil)
+	if err != nil {
+		return Results{}, err
+	}
+	// A server with nothing starred may leave the list out altogether.
+	if res.Starred == nil {
+		return Results{}, nil
+	}
+	return *res.Starred, nil
 }
 
 // Scrobble reports a play to the server. A submission of false is a "now

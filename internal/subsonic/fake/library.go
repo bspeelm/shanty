@@ -25,6 +25,7 @@ type response struct {
 	Album         *album      `json:"album,omitempty"`
 	Extensions    []extension `json:"openSubsonicExtensions,omitempty"`
 	SearchResult  *results    `json:"searchResult3,omitempty"`
+	Starred       *results    `json:"starred2,omitempty"`
 }
 
 // results is what search3 returns.
@@ -238,4 +239,49 @@ func (l Library) search(query string, limit int) results {
 		}
 	}
 	return out
+}
+
+// starredIn returns everything in the library whose id is in the set, in the
+// three kinds a server reports them.
+func (l Library) starredIn(set map[string]bool) results {
+	var out results
+	for _, a := range l.Artists {
+		if set[a.ID] {
+			out.Artists = append(out.Artists, artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount})
+		}
+		for _, al := range a.Albums {
+			if set[al.ID] {
+				bare := al
+				bare.Songs = nil
+				out.Albums = append(out.Albums, bare)
+			}
+			for _, sg := range al.Songs {
+				if set[sg.ID] {
+					out.Songs = append(out.Songs, sg)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// knows reports whether the id belongs to anything in the library, which is
+// what lets the fake refuse a star for something that does not exist.
+func (l Library) knows(id string) bool {
+	for _, a := range l.Artists {
+		if a.ID == id {
+			return true
+		}
+		for _, al := range a.Albums {
+			if al.ID == id {
+				return true
+			}
+			for _, sg := range al.Songs {
+				if sg.ID == id {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

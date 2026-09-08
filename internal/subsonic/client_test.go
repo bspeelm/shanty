@@ -366,3 +366,117 @@ func TestASearchQueryIsEscaped(t *testing.T) {
 		}
 	}
 }
+
+// TestStarringEachKindNamesItTheWayTheServerExpects covers the three kinds. A
+// server takes the thing being starred under a different parameter for each,
+// so getting it wrong stars nothing and reports success.
+func TestStarringEachKindNamesItTheWayTheServerExpects(t *testing.T) {
+	for _, tc := range []struct {
+		kind  subsonic.Kind
+		id    string
+		param string
+	}{
+		{subsonic.KindArtist, "ar-1", "artistId"},
+		{subsonic.KindAlbum, "al-1", "albumId"},
+		{subsonic.KindSong, "tr-1", "id"},
+	} {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			c, srv := dial(t, fake.Options{User: user, Password: pass})
+
+			if err := c.Star(t.Context(), tc.kind, tc.id, true); err != nil {
+				t.Fatal(err)
+			}
+			if !srv.Starred(tc.id) {
+				t.Errorf("the server did not star %s", tc.id)
+			}
+
+			var last fake.Request
+			for _, r := range srv.Requests() {
+				if r.Endpoint == "star" {
+					last = r
+				}
+			}
+			if got := last.Query.Get(tc.param); got != tc.id {
+				t.Errorf("the server was asked to star %s=%q, want %q", tc.param, got, tc.id)
+			}
+		})
+	}
+}
+
+// TestUnstarringUndoesStarring covers the other half. It is the same call
+// under a different name, so a mistake sends one where the other was meant.
+func TestUnstarringUndoesStarring(t *testing.T) {
+	c, srv := dial(t, fake.Options{User: user, Password: pass})
+
+	if err := c.Star(t.Context(), subsonic.KindSong, "tr-1", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Star(t.Context(), subsonic.KindSong, "tr-1", false); err != nil {
+		t.Fatal(err)
+	}
+
+	if srv.Starred("tr-1") {
+		t.Error("unstarring left the track starred")
+	}
+	var sent []string
+	for _, r := range srv.Requests() {
+		if r.Endpoint == "star" || r.Endpoint == "unstar" {
+			sent = append(sent, r.Endpoint)
+		}
+	}
+	if len(sent) != 2 || sent[0] != "star" || sent[1] != "unstar" {
+		t.Errorf("the server was sent %v, want star then unstar", sent)
+	}
+}
+
+// TestStarredReportsWhatWasStarred covers the list the starred screen shows.
+func TestStarredReportsWhatWasStarred(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+
+	// Nothing starred is an answer, not a failure, and a server may leave the
+	// list out of its response altogether.
+	found, err := c.Starred(t.Context())
+	if err != nil {
+		t.Fatalf("asking for starred items with none starred failed: %v", err)
+	}
+	if !found.Empty() {
+		t.Errorf("nothing was starred and the server reported %+v", found)
+	}
+
+	for _, s := range []struct {
+		kind subsonic.Kind
+		id   string
+	}{{subsonic.KindArtist, "ar-1"}, {subsonic.KindAlbum, "al-1"}, {subsonic.KindSong, "tr-2"}} {
+		if err := c.Star(t.Context(), s.kind, s.id, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	found, err = c.Starred(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Artists) != 1 || found.Artists[0].ID != "ar-1" {
+		t.Errorf("starred artists are %+v", found.Artists)
+	}
+	if len(found.Albums) != 1 || found.Albums[0].ID != "al-1" {
+		t.Errorf("starred albums are %+v", found.Albums)
+	}
+	if len(found.Songs) != 1 || found.Songs[0].ID != "tr-2" {
+		t.Errorf("starred tracks are %+v", found.Songs)
+	}
+	if found.Count() != 3 {
+		t.Errorf("three things were starred and the server reports %d", found.Count())
+	}
+}
+
+// TestStarringSomethingTheServerDoesNotHaveIsReported covers an id that is not
+// in the library, which a stale screen can produce.
+func TestStarringSomethingTheServerDoesNotHaveIsReported(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+
+	err := c.Star(t.Context(), subsonic.KindSong, "tr-does-not-exist", true)
+	if err == nil {
+		t.Fatal("starring something that does not exist reported success")
+	}
+}
