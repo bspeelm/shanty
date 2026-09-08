@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/tui"
@@ -179,4 +181,56 @@ func TestTheOfferSaysWhoLeftIt(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestReloadAsksForWhatTheScreenIsShowing covers which thing is fetched.
+// Reloading a track list has to ask for that album: asking for something else
+// answers, replaces the screen, and looks like it worked.
+func TestReloadAsksForWhatTheScreenIsShowing(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		setup    []tea.Msg
+		endpoint string
+	}{
+		{"artists", nil, "getArtists"},
+		{"albums", []tea.Msg{tui.ArtistLoaded(subsonic.Artist{ID: "ar-1", Name: "Aoi"})}, "getArtist"},
+		{"tracks", []tea.Msg{tui.AlbumLoaded(subsonic.Album{ID: "al-1", Name: "Harbour"})}, "getAlbum"},
+		{"starred", []tea.Msg{tui.ShowMessages{}, tui.StarredChanged{}}, "getStarred2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, srv := wired(t)
+			for _, msg := range tc.setup {
+				a, _ = step(t, a, msg)
+			}
+			if tc.name == "starred" {
+				a, _ = step(t, a, tui.ShowMessages{})
+				next, _ := a.ui.Update(keyRunes("g"))
+				next, _ = next.(tui.Model).Update(keyRunes("s"))
+				a.ui = next.(tui.Model)
+			}
+			before := len(srv.Requests())
+
+			a, msgs := step(t, a, tui.Reload{})
+			_ = msgs
+
+			var asked []string
+			for _, r := range srv.Requests()[before:] {
+				asked = append(asked, r.Endpoint)
+			}
+			found := false
+			for _, e := range asked {
+				if e == tc.endpoint {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("reloading the %s screen asked for %v, want %s", tc.name, asked, tc.endpoint)
+			}
+		})
+	}
+}
+
+// keyRunes is a key press as characters, for driving the interface directly.
+func keyRunes(s string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }

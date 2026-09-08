@@ -110,6 +110,9 @@ type Model struct {
 	// said is every message shown this session, oldest first, so that one
 	// which scrolled past can be read again. It is kept in memory only.
 	said []message
+	// keep is what was selected when a reload was asked for, so the cursor can
+	// go back to it once the answer arrives.
+	keep string
 	// now reads the clock. It is a field so that a test can pin what a
 	// message is stamped with.
 	now func() time.Time
@@ -149,6 +152,10 @@ func (m Model) Count() string    { return m.count }
 func (m Model) Cursor() int      { return m.cursor[m.screen] }
 func (m Model) Status() string   { return m.status }
 func (m Model) Paused() bool     { return m.paused }
+
+// Artist and Album are what the screens below the artist list are showing.
+func (m Model) Artist() subsonic.Artist { return m.artist }
+func (m Model) Album() subsonic.Album   { return m.album }
 
 // Position is how far into the track playback has reached.
 func (m Model) Position() time.Duration { return m.position }

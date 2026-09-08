@@ -1156,3 +1156,93 @@ func TestRememberingDoesNotReachACopy(t *testing.T) {
 		t.Errorf("adding to a copy changed the model it came from, which now ends with %q", got)
 	}
 }
+
+// TestReloadKeepsTheSelectionOnWhatWasSelected covers the point of the
+// command: a library that has gained an album should not send the cursor back
+// to the top of a list that mostly did not change.
+func TestReloadKeepsTheSelectionOnWhatWasSelected(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "j") // the second artist
+
+	was := m.artists[m.Cursor()].ID
+	m = send(t, m, Reload{})
+	if !m.loading {
+		t.Error("a reload does not say it is under way")
+	}
+
+	// The server answers with a new artist at the front, which would push the
+	// selection down a row if the cursor were left where it was.
+	grown := append([]subsonic.Artist{{ID: "ar-0", Name: "A New Arrival", AlbumCount: 1}}, library()...)
+	m = send(t, m, ArtistsLoaded(grown))
+
+	if m.loading {
+		t.Error("the reload never finished")
+	}
+	if got := m.artists[m.Cursor()].ID; got != was {
+		t.Errorf("the cursor moved to %q, want it to stay on %q", got, was)
+	}
+	if !strings.Contains(m.Status(), "reloaded") {
+		t.Errorf("a reload that returned the same list said %q", m.Status())
+	}
+	if !strings.Contains(m.Status(), "4 artists") {
+		t.Errorf("the message does not say what came back: %q", m.Status())
+	}
+}
+
+// TestReloadWhenTheSelectedRowIsGone covers a reload after the thing selected
+// has been removed from the server.
+func TestReloadWhenTheSelectedRowIsGone(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "j")
+
+	m = send(t, m, Reload{})
+	m = send(t, m, ArtistsLoaded(library()[:1]))
+
+	if m.Cursor() < 0 || m.Cursor() >= m.rows() {
+		t.Errorf("the cursor is on row %d of %d", m.Cursor(), m.rows())
+	}
+	if frame := m.View(); frame == "" {
+		t.Error("the screen rendered nothing after the selected row went")
+	}
+}
+
+// TestOpeningAnArtistStillStartsAtTheTop covers the navigation a reload must
+// not change. Opening something is not a reload, and starts at its first row.
+func TestOpeningAnArtistStillStartsAtTheTop(t *testing.T) {
+	m := loaded(t)
+	m = send(t, m, ArtistLoaded(library()[0]))
+	m, _ = press(t, m, "j")
+
+	// Opening the same artist again, without a reload, goes back to the top.
+	m = send(t, m, ArtistLoaded(library()[0]))
+
+	if m.Cursor() != 0 {
+		t.Errorf("opening an artist left the cursor at %d", m.Cursor())
+	}
+	if strings.Contains(m.Status(), "reloaded") {
+		t.Errorf("opening an artist reported a reload: %q", m.Status())
+	}
+}
+
+// TestOpeningAfterAReloadThatShrankTheListDoesNotPanic is the failure the
+// clamp above prevents: a cursor left past the end of a shorter list is an
+// index opening reads past.
+func TestOpeningAfterAReloadThatShrankTheListDoesNotPanic(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "end")
+
+	m = send(t, m, Reload{})
+	m = send(t, m, ArtistsLoaded(library()[:1]))
+
+	// Every key that reads the selected row.
+	for _, key := range []string{"enter", "*", "a", "A"} {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("%s after a reload that shrank the list panicked: %v", key, r)
+				}
+			}()
+			_, _ = press(t, m, key)
+		}()
+	}
+}

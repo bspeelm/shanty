@@ -26,14 +26,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ArtistsLoaded:
 		m.artists, m.loading, m.status = msg, false, ""
-		return m, nil
+		return m.reloaded(ScreenArtists, plural(len(msg), "artist")), nil
 	case ArtistLoaded:
-		m.artist, m.screen, m.loading, m.status = subsonic.Artist(msg), ScreenAlbums, false, ""
+		artist := subsonic.Artist(msg)
+		if m.keep != "" && m.screen == ScreenAlbums && artist.ID == m.artist.ID {
+			m.artist, m.loading = artist, false
+			return m.reloaded(ScreenAlbums, plural(len(artist.Albums), "album")), nil
+		}
+		m.artist, m.screen, m.loading, m.status = artist, ScreenAlbums, false, ""
 		m = m.selecting(ScreenAlbums, 0)
 		m.filter = ""
 		return m, nil
 	case AlbumLoaded:
-		m.album, m.screen, m.loading, m.status = subsonic.Album(msg), ScreenTracks, false, ""
+		album := subsonic.Album(msg)
+		if m.keep != "" && m.screen == ScreenTracks && album.ID == m.album.ID {
+			m.album, m.loading = album, false
+			return m.reloaded(ScreenTracks, plural(len(album.Songs), "track")), nil
+		}
+		m.album, m.screen, m.loading, m.status = album, ScreenTracks, false, ""
 		m = m.selecting(ScreenTracks, 0)
 		m.filter = ""
 		return m, nil
@@ -67,6 +77,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.found, m.query = flatten(msg.Results), msg.Query
 		m.screen, m.loading, m.status, m.filter = ScreenSearch, false, "", ""
 		return m.selecting(ScreenSearch, firstSelectable(m.found)), nil
+	case Reload:
+		// What was selected is remembered, so a reload leaves the cursor
+		// where it was rather than at the top of a list that mostly did not
+		// change.
+		m.keep, m.loading, m.status = m.selectedID(), true, "asking the server again"
+		if m.keep == "" {
+			m.keep = " " // nothing selected, but a reload is still under way
+		}
+		return m, nil
 	case ShowMessages:
 		m.screen, m.status, m.filter = ScreenMessages, "", ""
 		return m.selecting(ScreenMessages, 0), nil
@@ -467,4 +486,60 @@ func (m Model) page() int {
 		return n
 	}
 	return 1
+}
+
+// selectedID is what the cursor is on, for the screens a reload can refresh.
+func (m Model) selectedID() string {
+	if m.rows() == 0 {
+		return ""
+	}
+	at := m.matches()[m.cursor[m.screen]]
+	switch m.screen {
+	case ScreenArtists:
+		return m.artists[at].ID
+	case ScreenAlbums:
+		return m.artist.Albums[at].ID
+	case ScreenTracks:
+		return m.album.Songs[at].ID
+	}
+	return ""
+}
+
+// reloaded puts the cursor back on what was selected before, and says what came
+// back. A reload that returns the same thing looks exactly like one that did
+// nothing, so it has to say.
+func (m Model) reloaded(screen Screen, what string) Model {
+	if m.keep == "" {
+		return m
+	}
+	keep := m.keep
+	m.keep = ""
+	m.status = "reloaded: " + what
+
+	for row, i := range m.matches() {
+		was := m.screen
+		m.screen = screen
+		id := m.idAt(i)
+		m.screen = was
+		if id == keep {
+			return m.selecting(screen, row)
+		}
+	}
+	// What was selected is not there any more, and the list may be shorter
+	// than the cursor. Leaving it where it was is a row that cannot be drawn
+	// and an index that opening would read past the end of.
+	return m.selecting(screen, max(0, min(m.rows()-1, m.cursor[screen])))
+}
+
+// idAt is the identifier of row i of the current screen.
+func (m Model) idAt(i int) string {
+	switch m.screen {
+	case ScreenArtists:
+		return m.artists[i].ID
+	case ScreenAlbums:
+		return m.artist.Albums[i].ID
+	case ScreenTracks:
+		return m.album.Songs[i].ID
+	}
+	return ""
 }

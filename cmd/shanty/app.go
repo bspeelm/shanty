@@ -125,6 +125,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.search(string(msg))
 	case tui.Resume:
 		return a, a.resumeSaved()
+	case tui.Reload:
+		// The interface remembers what was selected; this fetches what the
+		// screen is showing.
+		next, _ := a.forward(msg)
+		return next, a.reload()
 	case savedQueue:
 		return a.offerSaved(subsonic.PlayQueue(msg))
 	case tui.ToggleStar:
@@ -539,6 +544,25 @@ func trackFrom(album subsonic.Album, s subsonic.Song) queue.Track {
 		ID: s.ID, Title: s.Title, Album: album.Name, Artist: s.Artist,
 		Duration: time.Duration(s.Duration) * time.Second,
 	}
+}
+
+// reload asks the server again for what the screen is showing.
+//
+// Only that screen, rather than the whole library: on a large one, fetching
+// everything to see a new album is slow, and the screens above are refetched
+// when they are next opened anyway.
+func (a app) reload() tea.Cmd {
+	switch a.ui.Screen() {
+	case tui.ScreenArtists:
+		return a.fetchArtists()
+	case tui.ScreenAlbums:
+		return a.fetchArtist(a.ui.Artist().ID)
+	case tui.ScreenTracks:
+		return a.fetchAlbum(a.ui.Album().ID)
+	case tui.ScreenStarred:
+		return a.fetchStarred()
+	}
+	return emit(tui.Failed{Message: "there is nothing here to fetch again"})
 }
 
 // fetchSaved asks the server what queue it is holding.

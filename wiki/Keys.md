@@ -27,6 +27,21 @@ it. This prevents you from quitting the player by pressing back once too often.
 Each screen remembers which row you had selected. If you open an album and then
 go back, the album you opened is still highlighted.
 
+## Seeing music you have just added
+
+shanty asks the server for a list once and then keeps it, so an album copied
+onto the server after you started shanty is not there.
+
+`:reload` asks again for whatever screen you are on: the artist list, one
+artist's albums, one album's tracks, or the starred list. It says what came
+back, because a reload that returns the same thing looks exactly like one that
+did nothing.
+
+The cursor stays on what you had selected, if it is still there. It reloads
+only the screen you are on rather than the whole library, which on a large one
+would take a while to see one new album; the screens above are asked for again
+when you next open them.
+
 ## What shanty said earlier
 
 The last row shows one message until the next replaces it, so something that
@@ -162,6 +177,7 @@ line.
 | `:search slipway` | Find artists, albums and tracks on the server |
 | `:resume` | Carry on from the queue saved on your server |
 | `:messages` | Show what shanty has said this session |
+| `:reload` | Ask the server for what is on screen again |
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.

@@ -56,6 +56,8 @@ type (
 	Search string
 	// Resume asks for the queue the server is holding to be taken up.
 	Resume struct{}
+	// Reload asks for what is on screen to be fetched from the server again.
+	Reload struct{}
 	// ShowMessages asks for what shanty has said this session. It is handled
 	// by the interface itself, which is the only thing that has it.
 	ShowMessages struct{}
