@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -138,11 +139,22 @@ func TestQueueProperties(t *testing.T) {
 		size := rng.IntN(6)
 		start := New(tracks(size)...)
 		q := start
+		// want is every track the queue should hold, in no particular order.
+		want := map[string]int{}
+		for _, t := range start.Tracks() {
+			want[t.ID]++
+		}
 		var history []string
+		inserted := 0
 
 		for range steps {
 			var op string
-			switch rng.IntN(4) {
+			// playing is what should still be playing after the step. An
+			// insertion must not change it; a movement is the only thing that
+			// may, and then only to another track already in the queue.
+			playing, wasPlaying := q.Current()
+
+			switch rng.IntN(6) {
 			case 0:
 				op, q = "Next", q.Next()
 			case 1:
@@ -152,8 +164,19 @@ func TestQueueProperties(t *testing.T) {
 				op, q = fmt.Sprintf("Jump(%d)", i), q.Jump(i)
 			case 3:
 				op, q = "Restart", q.Restart()
+			case 4:
+				t := Track{ID: fmt.Sprintf("new-%d", inserted), Title: "Added"}
+				inserted++
+				want[t.ID]++
+				op, q = "InsertNext("+t.ID+")", q.InsertNext(t)
+			case 5:
+				t := Track{ID: fmt.Sprintf("new-%d", inserted), Title: "Added"}
+				inserted++
+				want[t.ID]++
+				op, q = "Append("+t.ID+")", q.Append(t)
 			}
 			history = append(history, op)
+			inserting := strings.HasPrefix(op, "InsertNext") || strings.HasPrefix(op, "Append")
 
 			fail := func(format string, args ...any) {
 				t.Helper()
@@ -161,11 +184,24 @@ func TestQueueProperties(t *testing.T) {
 					append([]any{seed, walk, size, history}, args...)...)
 			}
 
-			// The multiset is preserved: no operation may add, drop, reorder
-			// or duplicate a track. This is the one that catches a play-next
-			// implementation that overwrites instead of inserting.
-			if !reflect.DeepEqual(q.Tracks(), start.Tracks()) {
-				fail("the track list changed to %v", q.Tracks())
+			// The queue holds exactly what was put in it: no operation may
+			// drop or duplicate a track, and only an insertion may add one.
+			// This is what catches a play-next that overwrites rather than
+			// inserts.
+			got := map[string]int{}
+			for _, t := range q.Tracks() {
+				got[t.ID]++
+			}
+			if !reflect.DeepEqual(got, want) {
+				fail("the queue holds %v, want %v", got, want)
+			}
+			// Inserting never disturbs what is playing. A queue with nothing
+			// playing is the exception: the inserted track becomes current,
+			// which is the only sensible answer.
+			if inserting && wasPlaying {
+				if now, ok := q.Current(); !ok || now.ID != playing.ID {
+					fail("inserting changed the playing track from %s to %v", playing.ID, now.ID)
+				}
 			}
 			// The position is always addressable or exactly one past the end.
 			if q.At() < 0 || q.At() > q.Len() {
@@ -180,7 +216,7 @@ func TestQueueProperties(t *testing.T) {
 				if q.At()+1 >= q.Len() {
 					fail("Upcoming reported %s past the end", up.ID)
 				}
-				if up != start.Tracks()[q.At()+1] {
+				if up != q.Tracks()[q.At()+1] {
 					fail("Upcoming is %s, not the track after position %d", up.ID, q.At())
 				}
 			} else if q.At()+1 < q.Len() {
@@ -193,4 +229,89 @@ func TestQueueProperties(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestInsertNextPlaysAfterWhatIsPlaying covers the point of the operation. The
+// track goes after the current one rather than at the end, and whatever is
+// playing keeps playing.
+func TestInsertNextPlaysAfterWhatIsPlaying(t *testing.T) {
+	q := New(tracks(4)...).Jump(1)
+	added := Track{ID: "new", Title: "Added"}
+
+	q = q.InsertNext(added)
+
+	if current, _ := q.Current(); current.ID != "tr-1" {
+		t.Errorf("inserting moved playback to %s", current.ID)
+	}
+	if up, ok := q.Upcoming(); !ok || up.ID != "new" {
+		t.Errorf("the inserted track is not next; next is %v", up.ID)
+	}
+	if got := ids(q); !reflect.DeepEqual(got, []string{"tr-0", "tr-1", "new", "tr-2", "tr-3"}) {
+		t.Errorf("the queue is %v", got)
+	}
+}
+
+// TestAppendGoesToTheEndHowevrFarThroughTheQueueIs covers the other key, which
+// adds to the end rather than after what is playing.
+func TestAppendGoesToTheEndHowevrFarThroughTheQueueIs(t *testing.T) {
+	q := New(tracks(3)...).Jump(0).Append(Track{ID: "new"})
+
+	if got := ids(q); !reflect.DeepEqual(got, []string{"tr-0", "tr-1", "tr-2", "new"}) {
+		t.Errorf("the queue is %v", got)
+	}
+	if current, _ := q.Current(); current.ID != "tr-0" {
+		t.Errorf("appending moved playback to %s", current.ID)
+	}
+}
+
+// TestInsertingIntoAQueueWithNothingPlaying covers the two positions that have
+// nothing to insert after: an empty queue, and one that has finished. The
+// track becomes what plays, which is the only sensible answer to being asked
+// to play something next when nothing is playing.
+func TestInsertingIntoAQueueWithNothingPlaying(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		q    Queue
+		want []string
+	}{
+		{"empty", New(), []string{"new"}},
+		{"finished", New(tracks(2)...).Jump(2), []string{"tr-0", "tr-1", "new"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := tc.q.InsertNext(Track{ID: "new"})
+
+			if got := ids(q); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("the queue is %v, want %v", got, tc.want)
+			}
+			if q.Done() {
+				t.Error("the queue is still finished with a track waiting in it")
+			}
+			if current, ok := q.Current(); !ok || current.ID != "new" {
+				t.Errorf("the inserted track is not playing; %v is", current.ID)
+			}
+		})
+	}
+}
+
+// TestInsertingDoesNotDisturbTheQueueItCameFrom covers the immutability every
+// other operation here keeps.
+func TestInsertingDoesNotDisturbTheQueueItCameFrom(t *testing.T) {
+	before := New(tracks(3)...).Jump(1)
+	was := ids(before)
+
+	_ = before.InsertNext(Track{ID: "a"})
+	_ = before.Append(Track{ID: "b"})
+
+	if got := ids(before); !reflect.DeepEqual(got, was) {
+		t.Errorf("the original queue became %v, want %v", got, was)
+	}
+}
+
+// ids is the track identifiers in a queue, in order.
+func ids(q Queue) []string {
+	out := make([]string, 0, q.Len())
+	for _, t := range q.Tracks() {
+		out = append(out, t.ID)
+	}
+	return out
 }

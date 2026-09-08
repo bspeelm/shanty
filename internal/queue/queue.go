@@ -57,6 +57,29 @@ func (q Queue) Upcoming() (Track, bool) {
 // Tracks returns a copy of the track list.
 func (q Queue) Tracks() []Track { return append([]Track(nil), q.tracks...) }
 
+// InsertNext returns a queue with the track placed after the one playing, so
+// that it is what plays when the current track ends. The position does not
+// move, so whatever is playing keeps playing.
+//
+// A queue that has finished, and an empty one, have nothing to insert after,
+// and the track goes on the end.
+func (q Queue) InsertNext(t Track) Queue {
+	return q.insert(min(q.at+1, len(q.tracks)), t)
+}
+
+// Append returns a queue with the track added to the end.
+func (q Queue) Append(t Track) Queue { return q.insert(len(q.tracks), t) }
+
+// insert places a track at index i, which must be within the queue.
+func (q Queue) insert(i int, t Track) Queue {
+	tracks := make([]Track, 0, len(q.tracks)+1)
+	tracks = append(tracks, q.tracks[:i]...)
+	tracks = append(tracks, t)
+	tracks = append(tracks, q.tracks[i:]...)
+	q.tracks = tracks
+	return q
+}
+
 func (q Queue) Next() Queue    { return q.jump(q.at + 1) }
 func (q Queue) Restart() Queue { return q.jump(0) }
 
