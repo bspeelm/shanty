@@ -33,8 +33,16 @@ jobs:
             exit 1
           }
 
+          # GitHub does not create the wiki's git repository until one page
+          # exists, and there is no API for that first page -- it has to be
+          # made in the browser once. Everything after is this workflow's.
           git clone -q \
-            "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo
+            "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo || {
+            echo "::error::the wiki has no git repository yet"
+            echo "Create any page once at https://github.com/${GITHUB_REPOSITORY}/wiki"
+            echo "and re-run this workflow. The next sync overwrites whatever you typed."
+            exit 1
+          }
 
           # Mirrored rather than merged: a page deleted from wiki/ should leave
           # the wiki, or the two drift and the repository stops being the
