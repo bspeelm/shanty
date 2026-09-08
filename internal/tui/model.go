@@ -31,10 +31,11 @@ const (
 	ScreenTracks
 	ScreenQueue
 	ScreenSearch
+	ScreenStarred
 )
 
 // Screens lists every screen.
-var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue, ScreenSearch}
+var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue, ScreenSearch, ScreenStarred}
 
 func (s Screen) String() string {
 	switch s {
@@ -48,6 +49,8 @@ func (s Screen) String() string {
 		return "queue"
 	case ScreenSearch:
 		return "search"
+	case ScreenStarred:
+		return "starred"
 	}
 	return "unknown"
 }
@@ -71,6 +74,11 @@ type Model struct {
 	// heading before each group. query is what was asked for.
 	found []result
 	query string
+
+	// starredRows is what the server has starred, in the same shape, and
+	// starred says which identifiers those are so every list can mark them.
+	starredRows []result
+	starred     map[string]bool
 
 	// cursor holds the selected row for each screen, as an index into the
 	// filtered list rather than the whole one.
@@ -141,7 +149,7 @@ func (m Model) matches() []int {
 		// A search heading names a group rather than a thing in the library,
 		// so narrowing the list drops it. Otherwise typing "tracks" would
 		// leave a screen holding nothing but the word TRACKS.
-		if m.screen == ScreenSearch && !m.found[i].selectable() {
+		if m.isGrouped() && !m.grouped()[i].selectable() {
 			continue
 		}
 		if strings.Contains(strings.ToLower(m.rowName(i)), needle) {
@@ -162,8 +170,8 @@ func (m Model) allRows() int {
 		return len(m.album.Songs)
 	case ScreenQueue:
 		return len(m.queued)
-	case ScreenSearch:
-		return len(m.found)
+	case ScreenSearch, ScreenStarred:
+		return len(m.grouped())
 	}
 	return 0
 }
@@ -180,8 +188,8 @@ func (m Model) rowName(i int) string {
 		return m.album.Songs[i].Title
 	case ScreenQueue:
 		return m.queued[i].Title + " " + m.queued[i].Artist
-	case ScreenSearch:
-		return m.found[i].name
+	case ScreenSearch, ScreenStarred:
+		return m.grouped()[i].name
 	}
 	return ""
 }

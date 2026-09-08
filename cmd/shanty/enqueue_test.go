@@ -126,3 +126,80 @@ func TestTheQueueScreenFollowsTheQueue(t *testing.T) {
 		}
 	}
 }
+
+// TestStarringReachesTheServerAndComesBack covers the round trip. The screens
+// show what the server says is starred, so a star is not believed until the
+// server has been asked again.
+func TestStarringReachesTheServerAndComesBack(t *testing.T) {
+	a, _, srv := wired(t)
+	// Something on screen for the marker to appear against.
+	a, _ = step(t, a, tui.AlbumLoaded(threeTracks))
+
+	a, msgs := step(t, a, tui.ToggleStar{Kind: tui.StarSong, ID: "tr-1", Starred: true})
+
+	var loaded *starredLoaded
+	for _, m := range msgs {
+		if s, ok := m.(starredLoaded); ok {
+			loaded = &s
+		}
+	}
+	if loaded == nil {
+		t.Fatalf("starring produced %v", msgs)
+	}
+	if !loaded.ids["tr-1"] {
+		t.Errorf("the server was asked for what is starred and did not report tr-1: %v", loaded.ids)
+	}
+
+	var starred, unstarred int
+	for _, r := range srv.Requests() {
+		switch r.Endpoint {
+		case "star":
+			starred++
+		case "unstar":
+			unstarred++
+		}
+	}
+	if starred != 1 || unstarred != 0 {
+		t.Errorf("the server saw %d stars and %d unstars", starred, unstarred)
+	}
+
+	// The set reaches the interface, so every list can mark it.
+	a, _ = step(t, a, *loaded)
+	if !a.starred["tr-1"] {
+		t.Error("the app did not keep what is starred")
+	}
+	if frame := a.View(); !strings.Contains(frame, "★") {
+		t.Error("the screen shows no marker after starring")
+	}
+}
+
+// TestUnstarringSendsTheOtherCall covers the direction the interface decides.
+func TestUnstarringSendsTheOtherCall(t *testing.T) {
+	a, _, srv := wired(t)
+
+	_, _ = step(t, a, tui.ToggleStar{Kind: tui.StarSong, ID: "tr-1", Starred: false})
+
+	for _, r := range srv.Requests() {
+		if r.Endpoint == "star" {
+			t.Error("unstarring sent a star")
+		}
+	}
+}
+
+// TestWhatIsStarredIsReadAtStartup covers the marker being right before
+// anything has been starred in this session.
+func TestWhatIsStarredIsReadAtStartup(t *testing.T) {
+	a, _, srv := wired(t)
+
+	for _, msg := range runAll(a.Init()) {
+		if _, ok := msg.(starredLoaded); ok {
+			for _, r := range srv.Requests() {
+				if r.Endpoint == "getStarred2" {
+					return
+				}
+			}
+			t.Fatal("the starred list arrived without asking the server")
+		}
+	}
+	t.Fatal("starting up did not ask the server what is starred")
+}

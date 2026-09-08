@@ -114,6 +114,8 @@ func (m Model) heading() string {
 		return Sanitise(m.album.Artist) + " · " + Sanitise(m.album.Name)
 	case ScreenSearch:
 		return searchHeading(m.query, m.found)
+	case ScreenStarred:
+		return starredHeading(m.starredRows)
 	case ScreenQueue:
 		switch {
 		case len(m.queued) == 0:
@@ -161,26 +163,26 @@ func (m Model) row(i int) (string, string) {
 	switch m.screen {
 	case ScreenArtists:
 		a := m.artists[i]
-		return Sanitise(a.Name), plural(a.AlbumCount, "album")
+		return m.star(a.ID) + Sanitise(a.Name), plural(a.AlbumCount, "album")
 	case ScreenAlbums:
 		a := m.artist.Albums[i]
-		return Sanitise(a.Name), plural(a.SongCount, "track")
+		return m.star(a.ID) + Sanitise(a.Name), plural(a.SongCount, "track")
 	case ScreenTracks:
 		s := m.album.Songs[i]
-		return fmt.Sprintf("%2d. %s", s.Track, Sanitise(s.Title)), clock(time.Duration(s.Duration) * time.Second)
-	case ScreenSearch:
-		r := m.found[i]
+		return fmt.Sprintf("%s%2d. %s", m.star(s.ID), s.Track, Sanitise(s.Title)), clock(time.Duration(s.Duration) * time.Second)
+	case ScreenSearch, ScreenStarred:
+		r := m.grouped()[i]
 		if r.kind == kindHeading {
 			return faintStyle.Render(r.name), ""
 		}
-		return Sanitise(r.name), Sanitise(r.detail)
+		return m.star(r.id) + Sanitise(r.name), Sanitise(r.detail)
 	case ScreenQueue:
 		t := m.queued[i]
 		mark := "  "
 		if i == m.queuedAt {
 			mark = "▶ "
 		}
-		return mark + Sanitise(t.Title) + " · " + Sanitise(t.Artist), clock(t.Duration)
+		return mark + m.star(t.ID) + Sanitise(t.Title) + " · " + Sanitise(t.Artist), clock(t.Duration)
 	}
 	return "", ""
 }
@@ -213,6 +215,16 @@ func (m Model) progress(w int) string {
 	done = max(0, min(w, done))
 	return statusStyle.Render(strings.Repeat("━", done)) +
 		faintStyle.Render(strings.Repeat("─", w-done))
+}
+
+// star is the mark shown before something the server has starred. Everything
+// else gets a space, so the names in a list stay in one column whether
+// anything is starred or not.
+func (m Model) star(id string) string {
+	if m.starred[id] {
+		return "★"
+	}
+	return " "
 }
 
 func (m Model) viewWidth() int {

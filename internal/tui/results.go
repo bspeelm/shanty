@@ -106,6 +106,36 @@ func stepOver(rows []result, i, dir int) int {
 	return i
 }
 
+// grouped is the rows of whichever screen shows results under headings.
+func (m Model) grouped() []result {
+	switch m.screen {
+	case ScreenSearch:
+		return m.found
+	case ScreenStarred:
+		return m.starredRows
+	}
+	return nil
+}
+
+// isGrouped reports whether the screen showing has headings in it.
+func (m Model) isGrouped() bool {
+	return m.screen == ScreenSearch || m.screen == ScreenStarred
+}
+
+// starredHeading is the title bar for the starred screen.
+func starredHeading(rows []result) string {
+	found := 0
+	for _, r := range rows {
+		if r.selectable() {
+			found++
+		}
+	}
+	if found == 0 {
+		return "starred · nothing yet"
+	}
+	return fmt.Sprintf("starred · %d", found)
+}
+
 // searchHeading is the title bar for a set of results.
 func searchHeading(query string, rows []result) string {
 	found := 0

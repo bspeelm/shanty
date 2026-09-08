@@ -19,6 +19,7 @@ work on all three.
 | `/` | Filter the list you are looking at |
 | `a` | Add the selected track to the end of the queue |
 | `A` | Play the selected track after the one playing |
+| `*` | Star the selected artist, album or track, or unstar it |
 
 Pressing back on the artist list does nothing, because there is nothing above
 it. This prevents you from quitting the player by pressing back once too often.
@@ -66,8 +67,18 @@ If nothing matches, the screen says so rather than going blank.
 | `gp` | Playlists |
 | `gs` | Starred |
 
-The playlists and starred screens are not built yet. Pressing their keys says
-so.
+The playlists screen is not built yet. Pressing its key says so.
+
+## Starred
+
+`*` stars whatever is selected, and unstars it if it is starred already. It
+works on artists, albums and tracks, and on any screen that lists them.
+
+A star is kept on your server, not by shanty, so what you star here is starred
+in every other client you use.
+
+`★` before a name means it is starred. `gs` lists everything that is, grouped
+the same way search results are.
 
 ## The queue
 

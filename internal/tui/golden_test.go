@@ -56,6 +56,27 @@ func library() []subsonic.Artist {
 	}
 }
 
+// starredChanged is what the server reports starred: one of each kind, so
+// every list has a marker in it.
+func starredChanged() StarredChanged {
+	found := subsonic.Results{
+		Artists: []subsonic.Artist{{ID: "ar-1", Name: "Aoi", AlbumCount: 2}},
+		Albums:  []subsonic.Album{{ID: "al-1", Name: "Harbour", Artist: "Aoi"}},
+		Songs: []subsonic.Song{
+			{ID: "tr-2", Title: "Ballast", Album: "Harbour", Artist: "Aoi", Duration: 180},
+		},
+	}
+	return StarredChanged{Results: found, IDs: map[string]bool{"ar-1": true, "al-1": true, "tr-2": true}}
+}
+
+// onStarred presses gs, which is how the starred screen is reached.
+func onStarred(t *testing.T, m Model) Model {
+	t.Helper()
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	next, _ = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	return next.(Model)
+}
+
 // results is what a search across the library comes back with: all three
 // kinds at once, which is the shape the screen has to draw.
 func results() subsonic.Results {
@@ -126,6 +147,11 @@ func TestGoldenScreens(t *testing.T) {
 			NowPlaying{Title: "Ballast", Artist: "Aoi", Duration: 200 * time.Second},
 			Progress(45*time.Second)))},
 		{"queue-empty", onQueue(t, tracks)},
+		{"artists-starred", send(t, artists, starredChanged())},
+		{"albums-starred", send(t, albums, starredChanged())},
+		{"tracks-starred", send(t, tracks, starredChanged())},
+		{"starred", onStarred(t, send(t, tracks, starredChanged()))},
+		{"starred-nothing", onStarred(t, tracks)},
 		{"search", send(t, base, SearchLoaded{Query: "water", Results: results()})},
 		{"search-nothing", send(t, base, SearchLoaded{Query: "zzzz", Results: subsonic.Results{}})},
 		{"search-tracks-only", send(t, base, SearchLoaded{Query: "slipway",

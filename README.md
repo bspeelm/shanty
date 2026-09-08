@@ -94,7 +94,8 @@ artist or album, and `enter` on a track to play it. Press `esc` to go back a
 level, and `/` to filter the list you are looking at.
 
 `a` adds the selected track to the end of the queue and `A` plays it next.
-`gq` shows the queue.
+`gq` shows the queue. `*` stars what is selected and `gs` lists what is
+starred; stars are kept on your server, so they show up in your other clients.
 
 While a track is playing, `space` pauses and resumes, `n` and `p` move between
 tracks, `[` and `]` seek backward and forward, and `+` and `-` change the

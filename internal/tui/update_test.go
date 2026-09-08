@@ -226,8 +226,8 @@ func TestEveryScreenHasAHeadingAndRenders(t *testing.T) {
 			t.Errorf("screen %s rendered nothing", s)
 		}
 	}
-	if len(Screens) != 5 {
-		t.Errorf("Screens lists %d screens; there are five, so this is a change to the interface", len(Screens))
+	if len(Screens) != 6 {
+		t.Errorf("Screens lists %d screens; there are six, so this is a change to the interface", len(Screens))
 	}
 }
 
@@ -506,19 +506,19 @@ func TestTheGPrefix(t *testing.T) {
 		t.Errorf("gg left the cursor at %d, want 0", m.Cursor())
 	}
 
-	// gq opens a screen that exists; the other two say they do not yet.
-	n, _ := press(t, m, "g")
-	n, _ = press(t, n, "q")
-	if n.Screen() != ScreenQueue {
-		t.Errorf("gq went to %s, want the queue", n.Screen())
-	}
-
-	for key, want := range map[string]string{"p": "playlists", "s": "starred"} {
+	// gq and gs open screens that exist; playlists says it does not yet.
+	for key, want := range map[string]Screen{"q": ScreenQueue, "s": ScreenStarred} {
 		n, _ := press(t, m, "g")
 		n, _ = press(t, n, key)
-		if !strings.Contains(n.Status(), want) {
-			t.Errorf("g%s said %q, want it to mention %s", key, n.Status(), want)
+		if n.Screen() != want {
+			t.Errorf("g%s went to %s, want %s", key, n.Screen(), want)
 		}
+	}
+
+	n, _ := press(t, m, "g")
+	n, _ = press(t, n, "p")
+	if !strings.Contains(n.Status(), "playlists") {
+		t.Errorf("gp said %q, want it to mention playlists", n.Status())
 	}
 }
 
@@ -916,5 +916,116 @@ func TestAHeadingIsNeverTheLastRow(t *testing.T) {
 	}
 	if rows := flatten(subsonic.Results{}); len(rows) != 0 {
 		t.Errorf("an empty result flattened to %d rows", len(rows))
+	}
+}
+
+// TestStarringNamesTheRightKind covers the key on every list. A server takes
+// each kind under a different parameter, so the screen has to say which it is.
+func TestStarringNamesTheRightKind(t *testing.T) {
+	artists := loaded(t)
+	albums := send(t, artists, ArtistLoaded(library()[0]))
+	tracks := send(t, albums, AlbumLoaded(library()[0].Albums[0]))
+
+	for _, tc := range []struct {
+		name string
+		m    Model
+		kind Kind
+		id   string
+	}{
+		{"artists", artists, StarArtist, library()[0].ID},
+		{"albums", albums, StarAlbum, library()[0].Albums[0].ID},
+		{"tracks", tracks, StarSong, library()[0].Albums[0].Songs[0].ID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, got := press(t, tc.m, "*")
+			star, ok := got.(ToggleStar)
+			if !ok {
+				t.Fatalf("* emitted %#v", got)
+			}
+			if star.Kind != tc.kind {
+				t.Errorf("* named it a %s, want %s", star.Kind, tc.kind)
+			}
+			if star.ID != tc.id {
+				t.Errorf("* starred %q, want %q", star.ID, tc.id)
+			}
+			if !star.Starred {
+				t.Error("* on something unstarred asked to unstar it")
+			}
+		})
+	}
+}
+
+// TestStarringSomethingStarredUnstarsIt covers the other direction. The key
+// turns the state over, so it has to know what the state is.
+func TestStarringSomethingStarredUnstarsIt(t *testing.T) {
+	m := send(t, loaded(t), StarredChanged{IDs: map[string]bool{library()[0].ID: true}})
+
+	_, got := press(t, m, "*")
+	star, ok := got.(ToggleStar)
+	if !ok {
+		t.Fatalf("* emitted %#v", got)
+	}
+	if star.Starred {
+		t.Error("* on something already starred asked to star it again")
+	}
+}
+
+// TestTheStarredScreenListsWhatIsStarred covers gs, and that opening a row
+// there does the same as opening it anywhere else.
+func TestTheStarredScreenListsWhatIsStarred(t *testing.T) {
+	m := send(t, loaded(t), starredChanged())
+	m, _ = press(t, m, "g")
+	m, _ = press(t, m, "s")
+
+	if m.Screen() != ScreenStarred {
+		t.Fatalf("gs went to %s", m.Screen())
+	}
+	if m.rows() == 0 {
+		t.Fatal("the starred screen is empty with three things starred")
+	}
+	if at := m.Cursor(); m.grouped()[at].kind == kindHeading {
+		t.Errorf("gs opened on the heading %q", m.grouped()[at].name)
+	}
+
+	_, got := press(t, m, "enter")
+	if artist, ok := got.(OpenArtist); !ok || artist.ID != "ar-1" {
+		t.Errorf("enter on a starred artist emitted %#v", got)
+	}
+}
+
+// TestTheStarredScreenWithNothingStarredSaysSo covers the first run, when the
+// screen is reached before anything has been starred.
+func TestTheStarredScreenWithNothingStarredSaysSo(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "g")
+	m, _ = press(t, m, "s")
+
+	if m.Screen() != ScreenStarred {
+		t.Fatalf("gs went to %s", m.Screen())
+	}
+	if frame := m.View(); !strings.Contains(frame, "nothing yet") {
+		t.Errorf("the screen does not say nothing is starred:\n%s", frame)
+	}
+	if _, got := press(t, m, "*"); got != nil {
+		t.Errorf("* on an empty starred screen emitted %#v", got)
+	}
+}
+
+// TestEveryListMarksWhatIsStarred covers the marker the issue asks for in each
+// of the three lists.
+func TestEveryListMarksWhatIsStarred(t *testing.T) {
+	artists := send(t, loaded(t), starredChanged())
+	albums := send(t, artists, ArtistLoaded(library()[0]))
+	tracks := send(t, albums, AlbumLoaded(library()[0].Albums[0]))
+
+	for name, m := range map[string]Model{"artists": artists, "albums": albums, "tracks": tracks} {
+		if frame := m.View(); !strings.Contains(frame, "★") {
+			t.Errorf("the %s list shows no marker:\n%s", name, frame)
+		}
+	}
+
+	// And nothing is marked when nothing is starred.
+	if frame := loaded(t).View(); strings.Contains(frame, "★") {
+		t.Errorf("a list with nothing starred shows a marker:\n%s", frame)
 	}
 }

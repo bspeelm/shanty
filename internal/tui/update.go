@@ -57,6 +57,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case Notice:
 		m.status = string(msg)
 		return m, nil
+	case StarredChanged:
+		m.starredRows, m.starred = flatten(msg.Results), msg.IDs
+		if m.screen == ScreenStarred {
+			m = m.selecting(ScreenStarred, min(m.cursor[ScreenStarred], max(0, len(m.starredRows)-1))).ontoARow()
+		}
+		return m, nil
 	case SearchLoaded:
 		m.found, m.query = flatten(msg.Results), msg.Query
 		m.screen, m.loading, m.status, m.filter = ScreenSearch, false, "", ""
@@ -132,6 +138,8 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgdown":
 		return m.move(m.page() * repeat), nil
 
+	case "*":
+		return m.starSelected()
 	case "a":
 		return m.queueSelected(false)
 	case "A":
@@ -277,8 +285,8 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 		m.status = "the playlists screen is not built yet"
 		return m, nil
 	case "s":
-		m.status = "the starred screen is not built yet"
-		return m, nil
+		m.screen, m.status, m.filter = ScreenStarred, "", ""
+		return m.selecting(ScreenStarred, firstSelectable(m.starredRows)), nil
 	}
 	return m, nil
 }
@@ -301,8 +309,8 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		return m, emit(PlayFrom{Album: m.album, Index: at})
 	case ScreenQueue:
 		return m, emit(JumpTo(at))
-	case ScreenSearch:
-		r := m.found[at]
+	case ScreenSearch, ScreenStarred:
+		r := m.grouped()[at]
 		switch r.kind {
 		case kindArtist:
 			m.loading, m.status = true, "opening "+Sanitise(r.name)
@@ -340,6 +348,41 @@ func (m Model) queueSelected(next bool) (tea.Model, tea.Cmd) {
 	return m, emit(Enqueue{Album: m.album, Index: at})
 }
 
+// starSelected asks for the starred state of the selected row to be turned
+// over. Every list holds something that can be starred, so this works on all
+// of them.
+func (m Model) starSelected() (tea.Model, tea.Cmd) {
+	if m.rows() == 0 {
+		return m, nil
+	}
+	at := m.matches()[m.cursor[m.screen]]
+	kind, id := Kind(""), ""
+	switch m.screen {
+	case ScreenArtists:
+		kind, id = StarArtist, m.artists[at].ID
+	case ScreenAlbums:
+		kind, id = StarAlbum, m.artist.Albums[at].ID
+	case ScreenTracks:
+		kind, id = StarSong, m.album.Songs[at].ID
+	case ScreenQueue:
+		kind, id = StarSong, m.queued[at].ID
+	case ScreenSearch, ScreenStarred:
+		r := m.grouped()[at]
+		switch r.kind {
+		case kindArtist:
+			kind, id = StarArtist, r.id
+		case kindAlbum:
+			kind, id = StarAlbum, r.id
+		case kindSong:
+			kind, id = StarSong, r.id
+		}
+	}
+	if id == "" {
+		return m, nil
+	}
+	return m, emit(ToggleStar{Kind: kind, ID: id, Starred: !m.starred[id]})
+}
+
 // back moves up one screen. At the top it does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
 	switch m.screen {
@@ -347,7 +390,7 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		m.screen, m.status, m.filter = ScreenAlbums, "", ""
 	case ScreenAlbums:
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
-	case ScreenQueue, ScreenSearch:
+	case ScreenQueue, ScreenSearch, ScreenStarred:
 		// Both are reached from anywhere, so back leaves for the one screen
 		// that is always there rather than wherever it was opened from.
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
@@ -359,12 +402,12 @@ func (m Model) move(by int) Model {
 	next := m.moveTo(m.cursor[m.screen] + by)
 	// A heading is a row nothing can be done with, so the cursor carries on
 	// past it in the direction it was already going.
-	if m.screen == ScreenSearch && by != 0 {
+	if m.isGrouped() && by != 0 {
 		dir := 1
 		if by < 0 {
 			dir = -1
 		}
-		return next.selecting(ScreenSearch, stepOver(m.matchedResults(), next.cursor[ScreenSearch], dir))
+		return next.selecting(m.screen, stepOver(m.matchedResults(), next.cursor[m.screen], dir))
 	}
 	return next
 }
@@ -374,18 +417,19 @@ func (m Model) move(by int) Model {
 // it, so the last row is always a result. Every other screen has no headings
 // at all and is left alone.
 func (m Model) ontoARow() Model {
-	if m.screen != ScreenSearch {
+	if !m.isGrouped() {
 		return m
 	}
-	return m.selecting(ScreenSearch, stepOver(m.matchedResults(), m.cursor[ScreenSearch], 1))
+	return m.selecting(m.screen, stepOver(m.matchedResults(), m.cursor[m.screen], 1))
 }
 
 // matchedResults is the rows the search screen is showing, which is what the
 // cursor moves through once a filter has narrowed them.
 func (m Model) matchedResults() []result {
-	out := make([]result, 0, len(m.found))
+	rows := m.grouped()
+	out := make([]result, 0, len(rows))
 	for _, i := range m.matches() {
-		out = append(out, m.found[i])
+		out = append(out, rows[i])
 	}
 	return out
 }

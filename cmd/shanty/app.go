@@ -43,6 +43,8 @@ type app struct {
 	// detach starts a session that plays on without an interface. It is nil in
 	// a session, which has no interface to leave.
 	detach func(handoff) error
+	// starred is what the server has starred, by identifier.
+	starred map[string]bool
 	// headless is set in a session. It has nobody to show a message to, so it
 	// ends when there is nothing left to play.
 	headless bool
@@ -62,6 +64,12 @@ type (
 	scrobbled    struct{}
 	detached     struct{}
 	detachFailed struct{ err error }
+	// starredLoaded is what the server has starred, with the identifiers
+	// gathered so that every list can mark them.
+	starredLoaded struct {
+		results subsonic.Results
+		ids     map[string]bool
+	}
 )
 
 func newApp(ctx context.Context, client *subsonic.Client, p player) app {
@@ -69,7 +77,7 @@ func newApp(ctx context.Context, client *subsonic.Client, p player) app {
 }
 
 func (a app) Init() tea.Cmd {
-	return tea.Batch(a.fetchArtists(), a.watchPlayer(), a.observePosition())
+	return tea.Batch(a.fetchArtists(), a.watchPlayer(), a.observePosition(), a.fetchStarred())
 }
 
 // View renders the interface. A session has no terminal to render to.
@@ -93,6 +101,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.fetchAlbum(msg.ID)
 	case tui.Search:
 		return a, a.search(string(msg))
+	case tui.ToggleStar:
+		return a, a.star(msg)
+	case starredLoaded:
+		a.starred = msg.ids
+		return a.forward(tui.StarredChanged{Results: msg.results, IDs: msg.ids})
 
 	case tui.PlayFrom:
 		a.queue = queueFrom(msg.Album).Jump(msg.Index)
@@ -399,6 +412,47 @@ func (a app) prefetch() tea.Cmd {
 	}
 	p := a.player
 	return a.act(func(ctx context.Context) error { return p.Prefetch(ctx, url) })
+}
+
+// star turns the starred state of something over on the server, and reads the
+// list back so that every screen showing it agrees.
+func (a app) star(msg tui.ToggleStar) tea.Cmd {
+	client := a.client
+	kind := map[tui.Kind]subsonic.Kind{
+		tui.StarArtist: subsonic.KindArtist,
+		tui.StarAlbum:  subsonic.KindAlbum,
+		tui.StarSong:   subsonic.KindSong,
+	}[msg.Kind]
+	return func() tea.Msg {
+		if err := client.Star(a.ctx, kind, msg.ID, msg.Starred); err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return a.starredMsg()
+	}
+}
+
+// fetchStarred reads what the server has starred.
+func (a app) fetchStarred() tea.Cmd {
+	return func() tea.Msg { return a.starredMsg() }
+}
+
+// starredMsg asks the server what is starred and gathers the identifiers.
+func (a app) starredMsg() tea.Msg {
+	found, err := a.client.Starred(a.ctx)
+	if err != nil {
+		return tui.Failed{Message: err.Error()}
+	}
+	ids := map[string]bool{}
+	for _, x := range found.Artists {
+		ids[x.ID] = true
+	}
+	for _, x := range found.Albums {
+		ids[x.ID] = true
+	}
+	for _, x := range found.Songs {
+		ids[x.ID] = true
+	}
+	return starredLoaded{results: found, ids: ids}
 }
 
 // search asks the server for anything matching the query.

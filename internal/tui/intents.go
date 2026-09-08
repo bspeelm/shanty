@@ -54,6 +54,12 @@ type (
 	JumpTo int
 	// Search asks the server for anything matching the query.
 	Search string
+	// ToggleStar asks for something to be starred or unstarred on the server.
+	ToggleStar struct {
+		Kind    Kind
+		ID      string
+		Starred bool
+	}
 )
 
 // Inputs are what the caller sends back once it has done the work.
@@ -61,6 +67,12 @@ type (
 	ArtistsLoaded []subsonic.Artist
 	ArtistLoaded  subsonic.Artist
 	AlbumLoaded   subsonic.Album
+	// StarredChanged is everything the server has starred, and the set of
+	// identifiers so that every list can mark what is in it.
+	StarredChanged struct {
+		Results subsonic.Results
+		IDs     map[string]bool
+	}
 	// SearchLoaded is what a search found.
 	SearchLoaded struct {
 		Query   string
@@ -88,3 +100,14 @@ type (
 )
 
 func emit(msg tea.Msg) tea.Cmd { return func() tea.Msg { return msg } }
+
+// Kind is what a starrable thing is. It mirrors the client's own, so that the
+// interface names a kind without importing the package that talks to the
+// server.
+type Kind string
+
+const (
+	StarArtist Kind = "artist"
+	StarAlbum  Kind = "album"
+	StarSong   Kind = "song"
+)
