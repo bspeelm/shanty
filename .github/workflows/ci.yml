@@ -114,6 +114,13 @@ jobs:
           go-version: '1.24'
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mpv
       - run: mpv --version | head -1
+      # A runner has no sound card, and mpv without one fails at the speaker
+      # rather than at anything this project wrote. A null ALSA default gives
+      # it somewhere to send the samples, which keeps the test on mpv's real
+      # output path -- the alternative was an --ao option in production whose
+      # only caller would have been this job.
+      - name: give mpv somewhere to play to
+        run: printf 'pcm.!default { type null }\nctl.!default { type null }\n' > "$HOME/.asoundrc"
       - run: |
           set -o pipefail
           go test -tags=integration ./cmd/shanty/ -run Integration -v -timeout=15m | tee /tmp/integration.log

@@ -224,7 +224,13 @@ func TestIntegrationVerticalSlice(t *testing.T) {
 		defer player.Close()
 
 		// This is what §7 has never been able to prove: real mpv, given the
-		// real flags, accepting a real credential-bearing URL over IPC.
+		// real flags, accepting a real credential-bearing URL over IPC, and
+		// playing what comes back to the end.
+		//
+		// It needs somewhere to send the samples. A machine with speakers has
+		// that already; CI is given a null ALSA default, because a runner has
+		// no sound card and mpv would fail at the speaker rather than at
+		// anything this project wrote.
 		if err := player.Load(ctx, client.StreamURL(album.Songs[0].ID)); err != nil {
 			t.Fatalf("mpv refused the track: %v", err)
 		}
