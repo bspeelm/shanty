@@ -467,3 +467,108 @@ func TestAVolumeOutsideTheRangeIsReportedNotClamped(t *testing.T) {
 		}
 	}
 }
+
+// g is a prefix rather than a key. gg goes to the top, and the screens that do
+// not exist yet say so rather than doing nothing, so the prefix is whole.
+func TestTheGPrefix(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "j")
+	if m.Cursor() != 1 {
+		t.Fatalf("cursor is %d", m.Cursor())
+	}
+
+	m, _ = press(t, m, "g")
+	if m.Pending() != "g" {
+		t.Fatalf("g did not become pending: %q", m.Pending())
+	}
+	m, _ = press(t, m, "g")
+	if m.Pending() != "" {
+		t.Error("the prefix was not consumed")
+	}
+	if m.Cursor() != 0 {
+		t.Errorf("gg left the cursor at %d, want 0", m.Cursor())
+	}
+
+	for key, want := range map[string]string{"q": "queue", "p": "playlists", "s": "starred"} {
+		n, _ := press(t, m, "g")
+		n, _ = press(t, n, key)
+		if !strings.Contains(n.Status(), want) {
+			t.Errorf("g%s said %q, want it to mention %s", key, n.Status(), want)
+		}
+	}
+}
+
+// A second key the prefix does not recognise cancels it rather than acting on
+// its own, so gx is not the same as x.
+func TestAnUnknownKeyAfterThePrefixDoesNothing(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "g")
+	m, msg := press(t, m, "x")
+
+	if m.Pending() != "" {
+		t.Error("the prefix survived an unknown key")
+	}
+	if msg != nil {
+		t.Errorf("gx emitted %#v", msg)
+	}
+}
+
+// Digits before a movement repeat it, as they do in the editor these bindings
+// borrow from.
+func TestACountRepeatsAMovement(t *testing.T) {
+	m := loaded(t)
+	for _, c := range "2" {
+		m, _ = press(t, m, string(c))
+	}
+	if m.Count() != "2" {
+		t.Fatalf("the count is %q", m.Count())
+	}
+	m, _ = press(t, m, "j")
+
+	if m.Cursor() != 2 {
+		t.Errorf("2j moved to %d, want 2", m.Cursor())
+	}
+	if m.Count() != "" {
+		t.Errorf("the count survived the movement: %q", m.Count())
+	}
+}
+
+// A count is consumed by whatever follows it, used or not, so it cannot leak
+// into the next key.
+func TestACountIsConsumedByAnyKey(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "3")
+	m, _ = press(t, m, "s") // not a movement
+	if m.Count() != "" {
+		t.Errorf("the count survived an unrelated key: %q", m.Count())
+	}
+	m, _ = press(t, m, "j")
+	if m.Cursor() != 1 {
+		t.Errorf("the leaked count moved the cursor to %d, want 1", m.Cursor())
+	}
+}
+
+// {count}% seeks to that percentage, which is why the digits are counts rather
+// than being bound to positions themselves.
+func TestACountBeforePercentSeeks(t *testing.T) {
+	m := loaded(t)
+	for _, c := range "50" {
+		m, _ = press(t, m, string(c))
+	}
+	_, msg := press(t, m, "%")
+
+	if got, ok := msg.(SeekToPercent); !ok || int(got) != 50 {
+		t.Errorf("50%% emitted %#v, want SeekToPercent(50)", msg)
+	}
+}
+
+// A bare % has no percentage to seek to and says so.
+func TestPercentWithoutACountSaysWhatIsMissing(t *testing.T) {
+	m, msg := press(t, loaded(t), "%")
+	if msg != nil {
+		t.Errorf("a bare %% emitted %#v", msg)
+	}
+	if !strings.Contains(m.Status(), "percentage") {
+		t.Errorf("a bare %% said %q", m.Status())
+	}
+}

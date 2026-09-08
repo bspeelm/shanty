@@ -62,6 +62,10 @@ type Model struct {
 	mode mode
 	// filter narrows the current screen to rows containing it.
 	filter string
+	// pending holds the first key of a two-key binding.
+	pending string
+	// count holds the digits typed before a movement, as in 3j.
+	count string
 	// line is the command being typed, without its leading colon.
 	line string
 
@@ -94,6 +98,8 @@ func (m Model) Filter() string   { return m.filter }
 func (m Model) Filtering() bool  { return m.mode == modeFilter }
 func (m Model) Commanding() bool { return m.mode == modeCommand }
 func (m Model) Line() string     { return m.line }
+func (m Model) Pending() string  { return m.pending }
+func (m Model) Count() string    { return m.count }
 func (m Model) Cursor() int      { return m.cursor[m.screen] }
 func (m Model) Status() string   { return m.status }
 func (m Model) Paused() bool     { return m.paused }

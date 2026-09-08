@@ -18,6 +18,7 @@ type player interface {
 	Append(ctx context.Context, url string) error
 	SetPause(ctx context.Context, paused bool) error
 	Seek(ctx context.Context, d time.Duration) error
+	SeekTo(ctx context.Context, d time.Duration) error
 	SetVolume(ctx context.Context, percent int) error
 	Observe(ctx context.Context, property string) error
 	Events() <-chan mpv.Event
@@ -79,6 +80,13 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.playCurrent()
 	case tui.SeekBy:
 		return a, a.act(func(ctx context.Context) error { return a.player.Seek(ctx, msg.By) })
+	case tui.SeekToPercent:
+		track, playing := a.queue.Current()
+		if !playing || track.Duration == 0 {
+			return a, emit(tui.Failed{Message: "nothing is playing to seek in"})
+		}
+		to := time.Duration(float64(track.Duration) * float64(msg) / 100)
+		return a, a.act(func(ctx context.Context) error { return a.player.SeekTo(ctx, to) })
 	case tui.VolumeBy:
 		return a.setVolume(a.volume + msg.Delta)
 	case tui.VolumeSet:

@@ -10,9 +10,10 @@ work on all three.
 |---|---|
 | `↑` or `k` | Move the selection up one row |
 | `↓` or `j` | Move the selection down one row |
-| `g` or `home` | Jump to the first row |
+| `gg` or `home` | Jump to the first row |
 | `G` or `end` | Jump to the last row |
 | `pgup` or `pgdown` | Move up or down by one screenful |
+| a number before a movement | Repeat it, so `3j` moves down three |
 | `enter`, `l` or `→` | Open the selected artist or album, or play the selected track |
 | `esc`, `h`, `←` or `backspace` | Go back to the previous screen |
 | `/` | Filter the list you are looking at |
@@ -35,6 +36,20 @@ filter belongs to the list it narrowed.
 
 If nothing matches, the screen says so rather than going blank.
 
+## Going to a screen
+
+`g` begins these; press it and then the second key.
+
+| Key | What it does |
+|---|---|
+| `ga` | Artists |
+| `gq` | The queue |
+| `gp` | Playlists |
+| `gs` | Starred |
+
+The queue, playlists and starred screens are not built yet. Pressing their keys
+says so.
+
 ## Controlling playback
 
 These work on any screen, whatever you are browsing.
@@ -48,6 +63,7 @@ These work on any screen, whatever you are browsing.
 | `[` | Seek backward ten seconds |
 | `+` or `=` | Increase the volume by five percent |
 | `-` or `_` | Decrease the volume by five percent |
+| a number then `%` | Seek to that percentage, so `50%` goes to the middle |
 
 The volume ranges from 0 to 100 percent and stops at each end, so holding a key
 down cannot push it past either limit.

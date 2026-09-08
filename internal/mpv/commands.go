@@ -119,6 +119,13 @@ func (p *Player) SetPause(ctx context.Context, paused bool) error {
 	return p.setProperty(ctx, "pause", paused)
 }
 
+// SeekTo moves the position to d measured from the start of the track.
+func (p *Player) SeekTo(ctx context.Context, d time.Duration) error {
+	_, err := p.command(ctx, "seek", d.Seconds(), "absolute")
+	return err
+}
+
+// Seek moves the position by d, forwards or back.
 func (p *Player) Seek(ctx context.Context, d time.Duration) error {
 	_, err := p.command(ctx, "seek", d.Seconds(), "relative")
 	return err

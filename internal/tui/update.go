@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -58,7 +59,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+
+	// A pending prefix takes the next key, whatever it is, so an unrecognised
+	// second key cancels the prefix rather than acting on its own.
+	if m.pending == "g" {
+		m.pending = ""
+		return m.goTo(key)
+	}
+	// Digits gather into a count. A leading zero is not a count, because it
+	// would make 0 mean something different depending on what came before it.
+	if len(key) == 1 && key[0] >= '0' && key[0] <= '9' && !(key == "0" && m.count == "") {
+		m.count += key
+		return m, nil
+	}
+	// Everything below consumes the count, whether or not it uses it.
+	repeat, hadCount := m.take()
+
+	switch key {
 	case "ctrl+c":
 		return m, emit(Quit{})
 
@@ -77,18 +95,29 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode, m.line, m.status = modeCommand, "", ""
 		return m, nil
 
+	case "g":
+		m.pending = "g"
+		return m, nil
+
+	case "%":
+		if !hadCount {
+			m.status = "type a percentage first, as in 50%"
+			return m, nil
+		}
+		return m, emit(SeekToPercent(min(100, repeat)))
+
 	case "up", "k":
-		return m.move(-1), nil
+		return m.move(-repeat), nil
 	case "down", "j":
-		return m.move(1), nil
-	case "home", "g":
+		return m.move(repeat), nil
+	case "home":
 		return m.moveTo(0), nil
 	case "end", "G":
 		return m.moveTo(m.rows() - 1), nil
 	case "pgup":
-		return m.move(-m.page()), nil
+		return m.move(-m.page() * repeat), nil
 	case "pgdown":
-		return m.move(m.page()), nil
+		return m.move(m.page() * repeat), nil
 
 	case "enter", "l", "right":
 		return m.open()
@@ -196,6 +225,44 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, emit(intent)
+}
+
+// take returns the count typed before this key, defaulting to one, and clears
+// it. The second result says whether a count was actually typed, which is what
+// separates 50% from a bare %.
+func (m *Model) take() (int, bool) {
+	if m.count == "" {
+		return 1, false
+	}
+	n, err := strconv.Atoi(m.count)
+	m.count = ""
+	if err != nil || n < 1 {
+		return 1, false
+	}
+	return n, true
+}
+
+// goTo handles the key after g. The queue, playlists and starred screens are
+// bound before they exist, so the prefix is whole and says what is missing
+// rather than doing nothing.
+func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "g":
+		return m.moveTo(0), nil
+	case "a":
+		m.screen, m.status, m.filter = ScreenArtists, "", ""
+		return m, nil
+	case "q":
+		m.status = "the queue screen is not built yet"
+		return m, nil
+	case "p":
+		m.status = "the playlists screen is not built yet"
+		return m, nil
+	case "s":
+		m.status = "the starred screen is not built yet"
+		return m, nil
+	}
+	return m, nil
 }
 
 // open moves down one screen, or plays the selected track. The album travels

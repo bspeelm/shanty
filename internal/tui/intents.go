@@ -21,7 +21,10 @@ type (
 	SkipNext    struct{}
 	SkipPrev    struct{}
 	SeekBy      struct{ By time.Duration }
-	VolumeBy    struct{ Delta int }
+	// SeekToPercent is a position in the track as a percentage of its length,
+	// where SeekBy is the relative step the keys make.
+	SeekToPercent int
+	VolumeBy      struct{ Delta int }
 	// VolumeSet is an absolute volume, from the command line, where VolumeBy
 	// is the relative change the keys make.
 	VolumeSet int

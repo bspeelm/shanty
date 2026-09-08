@@ -47,6 +47,9 @@ func (r *recorder) SetPause(_ context.Context, p bool) error   { return r.note("
 func (r *recorder) Seek(_ context.Context, d time.Duration) error {
 	return r.note("seek %s", d)
 }
+func (r *recorder) SeekTo(_ context.Context, d time.Duration) error {
+	return r.note("seek to %s", d)
+}
 func (r *recorder) SetVolume(_ context.Context, v int) error { return r.note("volume %d", v) }
 func (r *recorder) Observe(_ context.Context, p string) error {
 	return r.note("observe %s", p)
@@ -302,15 +305,16 @@ func TestEveryIntentIsWiredUp(t *testing.T) {
 	album := subsonic.Album{ID: "al-1", Songs: []subsonic.Song{{ID: "tr-1"}}}
 
 	for name, msg := range map[string]tea.Msg{
-		"OpenArtist":  tui.OpenArtist{ID: "ar-1"},
-		"OpenAlbum":   tui.OpenAlbum{ID: "al-1"},
-		"PlayFrom":    tui.PlayFrom{Album: album},
-		"TogglePause": tui.TogglePause{},
-		"SkipNext":    tui.SkipNext{},
-		"SkipPrev":    tui.SkipPrev{},
-		"SeekBy":      tui.SeekBy{By: time.Second},
-		"VolumeBy":    tui.VolumeBy{Delta: 1},
-		"VolumeSet":   tui.VolumeSet(40),
+		"OpenArtist":    tui.OpenArtist{ID: "ar-1"},
+		"OpenAlbum":     tui.OpenAlbum{ID: "al-1"},
+		"PlayFrom":      tui.PlayFrom{Album: album},
+		"TogglePause":   tui.TogglePause{},
+		"SkipNext":      tui.SkipNext{},
+		"SkipPrev":      tui.SkipPrev{},
+		"SeekBy":        tui.SeekBy{By: time.Second},
+		"VolumeBy":      tui.VolumeBy{Delta: 1},
+		"VolumeSet":     tui.VolumeSet(40),
+		"SeekToPercent": tui.SeekToPercent(50),
 	} {
 		t.Run(name, func(t *testing.T) {
 			next, cmd := a.Update(msg)

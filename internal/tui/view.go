@@ -172,7 +172,7 @@ func (m Model) viewWidth() int {
 	return defaultWidth
 }
 
-const help = "↑↓ move · enter open · esc back · / filter · : command · space pause · n/p skip · [ ] seek · +/- volume · :q quit"
+const help = "↑↓ move · gg top · G end · enter open · esc back · / filter · : command · space pause · n/p skip · [ ] seek · +/- volume · :q quit"
 
 // window returns the first row to draw, scrolling only enough to keep the
 // cursor on screen.
