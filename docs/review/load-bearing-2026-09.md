@@ -143,20 +143,25 @@ git checkout internal/mpv/mpv.go
 Labelled plainly, because a packet that claims more than it checked is the
 failure it exists to prevent.
 
-- **mpv has never run.** It is not installed on the machine this was written
-  on. Every mpv test drives a stub that is the test binary re-executed. The
-  flags, the protocol and the argv hygiene are all real; whether *actual* mpv
-  accepts these flags and answers these commands is unverified until the
-  integration job exists and a person plays a track.
-- **No real server has been contacted.** Everything runs against the in-process
-  fake. Whether Navidrome's responses match the shapes decoded here is
-  unverified.
+- **mpv has now run, in CI, and audio output has not.** The integration job
+  runs mpv 0.37.0 against a real Navidrome: it accepts the flags §7 gives it,
+  opens the IPC socket, takes a credential-bearing loadfile and plays a track
+  to `end-file` with reason `eof`. What CI cannot do is make a sound — a runner
+  has no card, and it is given a null ALSA default. **That nobody has heard
+  shanty play is the largest thing still unverified.**
+- **A real server has now been contacted.** The integration job scans generated
+  WAVs with Navidrome and asserts the responses decode with ids and titles
+  intact, so the fake's wire shapes match a real server's for the endpoints
+  v0.1 uses. Other servers remain untested, per ADR-007.
 - **CI first ran on 2026-09-07** and passed all three jobs. Note that the
   `check` job skips `make standard`, because the standard lives outside this
   repository and is not published — a green check job is not evidence the
   conformance check passed.
-- **The isolation suite does not exist yet**, so "writes are confined to four
-  directories" is currently an argument from reading `Paths.All()`, not a test.
+- **The isolation suite now exists** and runs in CI with a ran-count
+  assertion. It covers the commands and the config writes; it does not cover
+  the mpv socket, because creating one needs mpv and the program that opens it
+  is a full-screen TUI that cannot run headless. The socket's directory mode is
+  `internal/mpv`'s test instead.
 - **No release has been built**, so the binary-size budget has never had an
   artifact to measure.
 
