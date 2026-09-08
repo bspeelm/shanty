@@ -460,6 +460,142 @@ The fake server's hostile-text mode carries a direction override, so this is
 checked by every screen's rendering test rather than by one function's unit
 test.
 
+## ADR-016 — Key bindings are ordered by consequence, with three modes and a command line
+
+**Status:** accepted. The bindings are implemented against this rather than
+chosen per feature.
+
+shanty has sixteen bindings for three screens. v0.2 adds filtering, server
+search, play next, append, a queue screen, a playlists screen, adding to and
+removing from playlists, creating and deleting them, starring, a starred view
+and seeking to a position: about thirty bindings in total. Assigned one feature
+at a time, each takes whatever key was free that week, and the result is a set
+nobody could have designed on purpose.
+
+Configurable keys also cannot be designed without this. A binding
+configuration binds to a named set of actions, and that set is what this record
+fixes.
+
+### The ordering principle
+
+**Keys are ordered by consequence, not by frequency alone.**
+
+Frequency puts the most-used actions on the easiest keys, which is correct as
+far as it goes and says nothing about what happens when the wrong key is
+pressed. Ordering by consequence answers both questions at once: the keys that
+are easiest to hit are the ones where hitting them by mistake costs nothing.
+
+- Bare keys do things that are reversible and local. Nothing on a bare key
+  touches the server or ends the session.
+- Going to a screen is prefixed with `g`, which already means "go".
+- Changing something on the server that shanty cannot undo asks first.
+- Everything rare is a command, so it needs no key at all.
+
+### Three modes
+
+**Normal** is the default and is where every binding below applies.
+
+**Filter**, entered with `/`, narrows the list on screen as characters are
+typed. `esc` cancels and restores the list; `enter` keeps the filter and
+returns to normal mode.
+
+**Command**, entered with `:`, takes a line and runs it. `esc` cancels; `enter`
+runs.
+
+Both text modes leave with `esc`, and neither is entered by accident.
+
+### Normal mode
+
+Movement, all reversible:
+
+| key | action |
+|---|---|
+| `k` `↑` | up |
+| `j` `↓` | down |
+| `gg` | first row |
+| `G` | last row |
+| `ctrl+d` `ctrl+u` | half a screen down, up |
+| `{count}` before a movement | repeat it |
+
+Navigation:
+
+| key | action |
+|---|---|
+| `enter` `l` `→` | open, or play when the row is a track |
+| `esc` `h` `←` | back one screen |
+
+Going to a screen:
+
+| key | action |
+|---|---|
+| `ga` | artists |
+| `gq` | queue |
+| `gp` | playlists |
+| `gs` | starred |
+
+Transport, all reversible and all local:
+
+| key | action |
+|---|---|
+| `space` | pause or resume |
+| `n` `p` | next, previous track |
+| `]` `[` | seek forward, back |
+| `+` `-` | volume |
+| `{count}%` | seek to that percentage of the track |
+
+Acting on what is selected:
+
+| key | action |
+|---|---|
+| `s` | star or unstar; pressing it again undoes it, so it needs no confirmation |
+| `a` | add to a playlist; additive and undone by removing |
+| `dd` | remove the selected track from the playlist being viewed; asks first |
+
+### Commands
+
+`:q` quits. `:help`. `:search <query>` searches the server. `:playlist new
+<name>`, `:playlist rename`, `:playlist delete` — the last asks first.
+`:volume 50`. `:seek 1:23`.
+
+The long tail lives here, so a rare action never has to claim a letter.
+
+### Quitting
+
+**`:q`.** Quitting ends the session and cannot be undone from inside shanty, so
+it is not a bare key.
+
+`ctrl+c` continues to quit, because it is what people try when a program will
+not let go, and it works at a level shanty does not control.
+
+`q` is bound to printing `type :q to quit` on the status line. Leaving it
+unbound would be silent, and someone who has learned `q` elsewhere deserves to
+be told where it went rather than pressing it repeatedly.
+
+### What was taken from vim and what was not
+
+Modes, a command line, `g` meaning go, `gg` and `G`, counts, and `{count}%`
+meaning a percentage of the whole all transfer directly, and mean here what
+they mean there.
+
+Operators applied to motions do not transfer. They work in an editor because
+text has ranges to act on. A list of tracks has rows, and inventing objects so
+that `d3j` means something would be imitating the shape of the idea without the
+thing that made it work. `dd` is kept as a single binding that reads like the
+editor's, not as an operator with a motion.
+
+### Consequences
+
+Digits are counts, so seeking to a position is `{count}%` rather than a digit
+on its own. That is the same meaning digits have in the editor, and it is why
+the progress bar issue does not get `0` to `9`.
+
+The action names in the tables above are the set that configurable keys binds
+to. A binding added later without a name here is a binding nothing can
+configure and nothing documents.
+
+A test holds the bound actions against the documented ones in both directions,
+in the same way the command list is already held against the README.
+
 ---
 
 ## Open, and assigned
