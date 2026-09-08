@@ -27,6 +27,36 @@ After that you are looking at the list of artists on your server. Use the arrow
 keys to move, press `enter` to open an artist and then an album, and `enter`
 again on a track to start playing it.
 
+## What is on the screen
+
+```
+shanty · Aoi · Slipway
+────────────────────────────────────────────────────────────────
+  1. Harbour Light                                          3:41
+> 2. Slipway                                                3:00
+  3. Low Water                                              4:12
+────────────────────────────────────────────────────────────────
+▶ Slipway · Aoi                            1:23 / 3:00   vol 80%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━───────────────────────────────────
+↑↓ move · gg top · G end · enter open · esc back · / filter · :…
+```
+
+The top line names the screen you are on. Below it is the list, one row per
+artist, album or track.
+
+Under the second rule is the player. It shows whether the track is playing or
+paused, its title and artist, how far into it you are, its length, and the
+volume. The bar beneath fills from left to right as the track plays. A track
+whose length your server did not report shows the elapsed time on its own and
+an empty bar, because there is nothing to measure the position against.
+
+Both lines appear only while something is playing. Before that the player says
+`nothing playing` and there is no bar.
+
+The last line lists the keys you are most likely to want. It is replaced by a
+message when shanty has something to tell you, and by what you are typing when
+you are filtering or entering a command.
+
 ## The four questions
 
 **Server URL.** The address you use to reach your server in a browser,

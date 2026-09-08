@@ -13,12 +13,17 @@ import (
 const chromeLines = 5
 
 // chrome is how many rows the frame uses for something other than the list.
-// Typing a command adds the row listing the ones that match.
+// The progress bar and the list of matching commands each take one when they
+// are showing.
 func (m Model) chrome() int {
-	if m.mode == modeCommand {
-		return chromeLines + 1
+	n := chromeLines
+	if m.nowPlaying != "" {
+		n++
 	}
-	return chromeLines
+	if m.mode == modeCommand {
+		n++
+	}
+	return n
 }
 
 const (
@@ -52,6 +57,9 @@ func (m Model) View() string {
 	b.WriteString(m.list(w, visible))
 	b.WriteString(rule(w) + "\n")
 	b.WriteString(fit(m.player(), w) + "\n")
+	if m.nowPlaying != "" {
+		b.WriteString(m.progress(w) + "\n")
+	}
 	if m.mode == modeCommand {
 		b.WriteString(faintStyle.Render(fit(m.completions(), w)) + "\n")
 	}
@@ -161,8 +169,25 @@ func (m Model) player() string {
 		mark = "❚❚"
 	}
 	left := fmt.Sprintf("%s %s · %s", mark, Sanitise(m.nowPlaying), Sanitise(m.nowArtist))
-	right := fmt.Sprintf("%s / %s   vol %d%%", clock(m.position), clock(m.duration), m.volume)
+	right := fmt.Sprintf("%s   vol %d%%", clock(m.position), m.volume)
+	if m.duration > 0 {
+		right = fmt.Sprintf("%s / %s   vol %d%%", clock(m.position), clock(m.duration), m.volume)
+	}
 	return columns(left, right, m.viewWidth())
+}
+
+// progress is the bar showing how far through the track playback has reached.
+// It fills the given width. A track whose length the server did not report
+// draws as empty.
+func (m Model) progress(w int) string {
+	w = max(1, w)
+	var done int
+	if m.duration > 0 {
+		done = int(int64(w) * int64(m.position) / int64(m.duration))
+	}
+	done = max(0, min(w, done))
+	return statusStyle.Render(strings.Repeat("━", done)) +
+		faintStyle.Render(strings.Repeat("─", w-done))
 }
 
 func (m Model) viewWidth() int {
