@@ -59,6 +59,11 @@ var commands = []command{
 		run:     func(string) (any, error) { return Reload{}, nil },
 	},
 	{
+		name:    "wiki",
+		summary: "explain the commands",
+		run:     func(string) (any, error) { return ShowWiki{}, nil },
+	},
+	{
 		name:    "messages",
 		summary: "show what shanty has said this session",
 		run:     func(string) (any, error) { return ShowMessages{}, nil },

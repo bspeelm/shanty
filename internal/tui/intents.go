@@ -78,6 +78,8 @@ type (
 		SongID string
 		Add    bool
 	}
+	// ShowWiki asks for the list of commands and what each does.
+	ShowWiki struct{}
 	// ShowMessages asks for what shanty has said this session. It is handled
 	// by the interface itself, which is the only thing that has it.
 	ShowMessages struct{}

@@ -1,12 +1,12 @@
-[1mshanty · artists[0m
+[1mshanty · wiki · :search[0m
 [2m────────────────────────────────────────────────────────────────[0m
-[7m>  Aoi                                                  2 albums[0m
-   The Bilge Pumps                                       1 album
-   坂本龍一                                             3 albums
+  Looks for artists, albums and tracks anywhere on your       
+  server.                                                     
 
+      :search slipway
 
+  `/` narrows the list in front of you and cannot reach what  
+  is not on it. Tracks are loaded one album at a time, so a   
 [2m────────────────────────────────────────────────────────────────[0m
 [2mnothing playing[0m
-[2m  q   search   playlist   shuffle   scan   reload   wiki[0m
-[2m  messages   resume   headless   volume[0m
-[1m:█[0m
+[2m↑↓ move · gg top · G end · enter open · esc back · / filter · :…[0m

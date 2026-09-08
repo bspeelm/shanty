@@ -37,11 +37,12 @@ const (
 	ScreenMessages
 	ScreenPlaylists
 	ScreenPlaylist
+	ScreenWiki
 )
 
 // Screens lists every screen.
 var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue,
-	ScreenSearch, ScreenStarred, ScreenMessages, ScreenPlaylists, ScreenPlaylist}
+	ScreenSearch, ScreenStarred, ScreenMessages, ScreenPlaylists, ScreenPlaylist, ScreenWiki}
 
 func (s Screen) String() string {
 	switch s {
@@ -63,6 +64,8 @@ func (s Screen) String() string {
 		return "playlists"
 	case ScreenPlaylist:
 		return "playlist"
+	case ScreenWiki:
+		return "wiki"
 	}
 	return "unknown"
 }
@@ -134,6 +137,9 @@ type Model struct {
 	// keep is what was selected when a reload was asked for, so the cursor can
 	// go back to it once the answer arrives.
 	keep string
+	// topic is the command :wiki is explaining. Empty means it is showing the
+	// list of them.
+	topic string
 	// keys is what each key does. It is nil until something replaces the
 	// default bindings.
 	keys map[string]Action
@@ -234,6 +240,11 @@ func (m Model) allRows() int {
 		return len(m.playlists)
 	case ScreenPlaylist:
 		return len(m.playlist.Songs)
+	case ScreenWiki:
+		if m.topic != "" {
+			return len(helpLines(m.topic, m.viewWidth()))
+		}
+		return len(commands)
 	}
 	return 0
 }
@@ -258,6 +269,11 @@ func (m Model) rowName(i int) string {
 		return m.playlists[i].Name
 	case ScreenPlaylist:
 		return m.playlist.Songs[i].Title
+	case ScreenWiki:
+		if m.topic != "" {
+			return helpLines(m.topic, m.viewWidth())[i]
+		}
+		return commands[i].name + " " + commands[i].summary
 	}
 	return ""
 }

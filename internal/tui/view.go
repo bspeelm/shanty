@@ -118,6 +118,9 @@ func (m Model) footer(w int) string {
 	return statusStyle.Render(fit(Sanitise(oneLine), w))
 }
 
+// reading reports whether the screen is a page of prose rather than a list.
+func (m Model) reading() bool { return m.screen == ScreenWiki && m.topic != "" }
+
 func (m Model) heading() string {
 	switch m.screen {
 	case ScreenAlbums:
@@ -135,6 +138,11 @@ func (m Model) heading() string {
 		return fmt.Sprintf("playlists · %s", plural(len(m.playlists), "playlist"))
 	case ScreenPlaylist:
 		return Sanitise(m.playlist.Name) + " · " + plural(len(m.playlist.Songs), "track")
+	case ScreenWiki:
+		if m.topic != "" {
+			return "wiki · :" + m.topic
+		}
+		return fmt.Sprintf("wiki · %s", plural(len(commands), "command"))
 	case ScreenMessages:
 		if len(m.said) == 0 {
 			return "messages · nothing said yet"
@@ -171,6 +179,12 @@ func (m Model) list(w, visible int) string {
 	var b strings.Builder
 	for i := start; i < min(rows, start+visible); i++ {
 		left, right := m.row(i)
+		// A page of prose has no row to select, so it is scrolled without a
+		// cursor sitting on a sentence.
+		if m.reading() {
+			b.WriteString(fit(left, w) + "\n")
+			continue
+		}
 		line := fit(gutter(i == m.cursor[m.screen])+columns(left, right, w-2), w)
 		if i == m.cursor[m.screen] {
 			line = selectedStyle.Render(line)
@@ -208,6 +222,16 @@ func (m Model) row(i int) (string, string) {
 		s := m.playlist.Songs[i]
 		return fmt.Sprintf("%s%2d. %s", m.star(s.ID), i+1, Sanitise(s.Title)),
 			Sanitise(s.Artist) + " · " + clock(time.Duration(s.Duration)*time.Second)
+	case ScreenWiki:
+		if m.topic != "" {
+			return helpLines(m.topic, m.viewWidth())[i], ""
+		}
+		c := commands[i]
+		name := ":" + c.name
+		if c.argument != "" {
+			name += " <" + c.argument + ">"
+		}
+		return name, c.summary
 	case ScreenMessages:
 		said := m.said[m.saidAt(i)]
 		// The message is one row, and some carry the cause on one line and
@@ -301,7 +325,13 @@ func window(cursor, rows, visible int) int {
 // long to leave room is cut, so that the right is not the part that goes: on
 // the messages screen it is the time, which is what makes a log a log.
 func columns(left, right string, w int) string {
-	if room := w - lipgloss.Width(right) - 1; room > 0 && lipgloss.Width(left) > room {
+	// A row with nothing on the right gives the whole width to the left, and
+	// only reserves a gap when there is something to keep clear of.
+	room := w
+	if right != "" {
+		room = w - lipgloss.Width(right) - 1
+	}
+	if room > 0 && lipgloss.Width(left) > room {
 		left = fit(left, room)
 	}
 	gap := w - lipgloss.Width(left) - lipgloss.Width(right)

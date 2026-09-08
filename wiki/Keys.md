@@ -55,6 +55,14 @@ Not every server offers this, and starting a scan often needs an administrator
 account. shanty says which of the two it ran into rather than reporting a
 failure of its own.
 
+## Looking a command up
+
+`:wiki` lists every command with what it does. `enter` on one explains it and
+shows how it is typed, `esc` goes back to the list, and `esc` again leaves.
+
+It is the same reference as this page, kept inside shanty so that looking
+something up does not mean finding a browser.
+
 ## What shanty said earlier
 
 The last row shows one message until the next replaces it, so something that
@@ -220,6 +228,7 @@ line.
 | `:search slipway` | Find artists, albums and tracks on the server |
 | `:resume` | Carry on from the queue saved on your server |
 | `:messages` | Show what shanty has said this session |
+| `:wiki` | Explain the commands, without leaving shanty |
 | `:reload` | Ask the server for what is on screen again |
 | `:scan` | Ask the server to look for new music |
 | `:playlist` | List your playlists |

@@ -123,6 +123,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ShowPlaylists:
 		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
 		return m.selecting(ScreenPlaylists, 0), nil
+	case ShowWiki:
+		m.screen, m.status, m.filter, m.topic = ScreenWiki, "", "", ""
+		return m.selecting(ScreenWiki, 0), nil
 	case ShowMessages:
 		m.screen, m.status, m.filter = ScreenMessages, "", ""
 		return m.selecting(ScreenMessages, 0), nil
@@ -316,6 +319,12 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		return m, emit(OpenPlaylist{ID: m.playlists[at].ID})
 	case ScreenPlaylist:
 		return m, emit(PlayFrom{Album: asAlbum(m.playlist), Index: at})
+	case ScreenWiki:
+		if m.topic != "" {
+			return m, nil
+		}
+		m.topic = commands[at].name
+		return m.selecting(ScreenWiki, 0), nil
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[at]
 		switch r.kind {
@@ -458,6 +467,14 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
 	case ScreenPlaylist:
 		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
+	case ScreenWiki:
+		// Reading about a command goes back to the list of them before it
+		// leaves the wiki altogether.
+		if m.topic != "" {
+			m.topic, m.status = "", ""
+			return m.selecting(ScreenWiki, 0), nil
+		}
+		m.screen, m.status, m.filter = ScreenArtists, "", ""
 	case ScreenQueue, ScreenSearch, ScreenStarred, ScreenMessages, ScreenPlaylists:
 		// Both are reached from anywhere, so back leaves for the one screen
 		// that is always there rather than wherever it was opened from.

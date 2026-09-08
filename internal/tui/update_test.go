@@ -227,8 +227,8 @@ func TestEveryScreenHasAHeadingAndRenders(t *testing.T) {
 			t.Errorf("screen %s rendered nothing", s)
 		}
 	}
-	if len(Screens) != 9 {
-		t.Errorf("Screens lists %d screens; there are nine, so this is a change to the interface", len(Screens))
+	if len(Screens) != 10 {
+		t.Errorf("Screens lists %d screens; there are ten, so this is a change to the interface", len(Screens))
 	}
 }
 
@@ -1240,5 +1240,91 @@ func TestOpeningAfterAReloadThatShrankTheListDoesNotPanic(t *testing.T) {
 			}()
 			_, _ = press(t, m, key)
 		}()
+	}
+}
+
+// TestTheWikiOpensACommandAndComesBack covers the whole way through: the list,
+// one command, and back to the list before leaving.
+func TestTheWikiOpensACommandAndComesBack(t *testing.T) {
+	m := send(t, loaded(t), ShowWiki{})
+
+	if m.Screen() != ScreenWiki {
+		t.Fatalf(":wiki went to %s", m.Screen())
+	}
+	if m.rows() != len(commands) {
+		t.Errorf("the wiki lists %d rows and there are %d commands", m.rows(), len(commands))
+	}
+	if frame := m.View(); !strings.Contains(frame, ":search") {
+		t.Errorf("the list does not name the commands:\n%s", frame)
+	}
+
+	// Open one.
+	m, _ = press(t, m, "j")
+	m, _ = press(t, m, "enter")
+	if m.Screen() != ScreenWiki {
+		t.Fatalf("opening a command went to %s", m.Screen())
+	}
+	frame := m.View()
+	if !strings.Contains(frame, "wiki · :search") {
+		t.Errorf("the heading reads:\n%s", frame)
+	}
+	if !strings.Contains(frame, "anywhere on your") {
+		t.Errorf("the explanation is not on screen:\n%s", frame)
+	}
+
+	// esc goes back to the list, not out of the wiki.
+	m, _ = press(t, m, "esc")
+	if m.Screen() != ScreenWiki {
+		t.Fatalf("esc left the wiki instead of going back to the list; it is on %s", m.Screen())
+	}
+	if frame := m.View(); !strings.Contains(frame, "11 commands") && !strings.Contains(frame, "commands") {
+		t.Errorf("it did not go back to the list:\n%s", frame)
+	}
+
+	// And again leaves.
+	m, _ = press(t, m, "esc")
+	if m.Screen() != ScreenArtists {
+		t.Errorf("esc from the list went to %s", m.Screen())
+	}
+}
+
+// TestReadingAPageHasNoCursorOnIt covers the rendering. A page of prose is
+// scrolled, and a highlight sitting on a sentence reads as a selection that
+// does nothing.
+func TestReadingAPageHasNoCursorOnIt(t *testing.T) {
+	m := send(t, loaded(t), ShowWiki{})
+	list := m.View()
+	m, _ = press(t, m, "enter")
+	page := m.View()
+
+	if !strings.Contains(list, "\x1b[7m") {
+		t.Error("the list of commands has no cursor on it")
+	}
+	if strings.Contains(page, "\x1b[7m") {
+		t.Errorf("the page has a cursor on a sentence:\n%s", page)
+	}
+	if strings.Contains(page, "> ") {
+		t.Errorf("the page has a selection marker on it:\n%s", page)
+	}
+}
+
+// TestAWikiPageScrolls covers a description longer than the screen, which is
+// most of them.
+func TestAWikiPageScrolls(t *testing.T) {
+	m := send(t, loaded(t), ShowWiki{})
+	m, _ = press(t, m, "j") // search, which is long
+	m, _ = press(t, m, "enter")
+
+	first := m.View()
+	for range 4 {
+		m, _ = press(t, m, "j")
+	}
+	if m.View() == first {
+		t.Error("the page did not scroll")
+	}
+	m, _ = press(t, m, "g")
+	m, _ = press(t, m, "g")
+	if m.View() != first {
+		t.Error("going back to the top did not show the beginning again")
 	}
 }

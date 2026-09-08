@@ -1,0 +1,12 @@
+[1mshanty · wiki · 11 commands[0m
+[2m────────────────────────────────────────────────────────────────[0m
+[7m> :q                                                        quit[0m
+  :search <words>  find artists, albums and tracks on the server
+  :playlist <… list them, or create, delete, edit or shuffle one
+  :shuffle       play everything on the server in a random order
+  :scan                     ask the server to look for new music
+  :reload             ask the server for what is on screen again
+  :wiki                                     explain the commands
+[2m────────────────────────────────────────────────────────────────[0m
+[2mnothing playing[0m
+[2m↑↓ move · gg top · G end · enter open · esc back · / filter · :…[0m
