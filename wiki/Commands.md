@@ -63,27 +63,34 @@ the repository rather than from a release reports `dev`.
 ## `shanty completions`
 
 Writes a completion script for `bash`, `zsh` or `fish`, named as the one
-argument. Source it and your shell completes shanty's commands, and offers
+argument. With it in place your shell completes shanty's commands, and offers
 nothing where a command takes no filename, rather than listing the directory
 you are standing in.
 
-For bash, add this to `~/.bashrc`:
+**bash** looks in a directory of its own and loads the file the first time you
+press tab. Nothing goes in `~/.bashrc`:
 
 ```sh
-source <(shanty completions bash)
+mkdir -p ~/.local/share/bash-completion/completions
+shanty completions bash > ~/.local/share/bash-completion/completions/shanty
 ```
 
-For zsh, put the script somewhere on your `fpath`:
-
-```sh
-shanty completions zsh > ~/.zsh/completions/_shanty
-```
-
-For fish:
+**fish** reads its completions directory the same way:
 
 ```sh
 shanty completions fish > ~/.config/fish/completions/shanty.fish
 ```
+
+**zsh** has no user directory it searches by default, so the file goes where
+zsh already looks, which needs root:
+
+```sh
+shanty completions zsh | sudo tee /usr/share/zsh/site-functions/_shanty
+```
+
+Open a new terminal afterwards. If you install shanty from a package rather
+than by hand, the package puts these where they belong and there is nothing to
+do.
 
 The script is written from the list of commands shanty actually has, so it
 cannot fall behind the program.

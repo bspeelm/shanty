@@ -69,11 +69,12 @@ shanty help         # list the commands
 shanty completions bash   # a completion script for bash, zsh or fish
 ```
 
-Add completion to your shell by sourcing that script. For bash, in
-`~/.bashrc`:
+For bash, write it where your shell already looks and it works from the next
+terminal on. Nothing to add to `~/.bashrc`:
 
 ```sh
-source <(shanty completions bash)
+mkdir -p ~/.local/share/bash-completion/completions
+shanty completions bash > ~/.local/share/bash-completion/completions/shanty
 ```
 
 Type `:headless` and the interface closes while the music keeps playing. These
