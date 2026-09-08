@@ -336,6 +336,40 @@ affecting none. If that changes, it is a later record, not a quiet edit here.
 The fake grows a malice mode that returns hostile titles, so this is a property
 every screen's golden test carries rather than one function's unit test.
 
+## ADR-014 — mpv has to live in the same mount namespace, which rules out a flatpak
+
+**Status:** accepted. Amends ADR-011, which decided playback is an external
+process without saying where that process has to be.
+
+The socket is the point of ADR-011: the credential goes over IPC so it is never
+in argv. A unix socket is a filesystem object, so shanty and mpv must see the
+same filesystem at the same path. That is an unstated assumption, and it is
+load-bearing.
+
+What it rules out:
+
+- **A flatpak mpv.** The sandbox gives the app its own `XDG_RUNTIME_DIR`, so
+  the socket shanty creates on the host is not there under the name shanty
+  told mpv to use. It fails in a way that looks like a permissions problem.
+- **mpv in a container shanty is not in**, and the reverse. On an
+  ostree-managed host with a Toolbx for development, that is not a hypothetical
+  arrangement — it is the normal one, and both halves have to be on the same
+  side of it.
+
+What it requires, per kind of machine: a package manager that writes to the
+root shanty runs from. On an ordinary distribution that is the usual command;
+on an rpm-ostree host it is `rpm-ostree install mpv` and a reboot; inside a
+Toolbx it is the container's own `dnf`, and shanty must run in that container
+too.
+
+`doctor` says which, because a fix line that names a command the machine cannot
+run is not a fix line -- `dnf install mpv` on a Silverblue host is advice that
+fails, and being told the wrong command is worse than being told none.
+
+The alternative was to let mpv live anywhere and pass the stream URL some other
+way, which means argv, which is the thing ADR-001 refuses. The constraint is
+the price of the property.
+
 ---
 
 ## Open, and assigned

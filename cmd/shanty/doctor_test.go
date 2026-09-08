@@ -266,3 +266,36 @@ func TestDoctorJSONIsMachineReadable(t *testing.T) {
 // subsonicToken keeps the test's credential honest without importing the
 // client's hashing into every case.
 func subsonicToken(password, salt string) string { return subsonic.Token(password, salt) }
+
+// A fix line that names a command the machine cannot run is not a fix line.
+// On an rpm-ostree root, `dnf install` cannot write /usr, and a flatpak mpv
+// cannot see the socket shanty creates because its sandbox remaps
+// XDG_RUNTIME_DIR.
+func TestTheMpvFixNamesACommandThatWorksOnThisKindOfMachine(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		immutable bool
+		want      string
+		notWant   string
+	}{
+		{name: "an ordinary root", immutable: false, want: "dnf install mpv", notWant: "rpm-ostree"},
+		{name: "an rpm-ostree root", immutable: true, want: "rpm-ostree install mpv", notWant: "dnf install mpv"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, _ := scratch(t)
+			env.LookPath = func(string) (string, error) { return "", errors.New("not found") }
+			env.ImmutableHost = tc.immutable
+
+			got := byID(diagnose(t.Context(), env))["mpv"]
+			if got.Severity != Fail {
+				t.Fatalf("mpv missing reported %s", got.Severity)
+			}
+			if !strings.Contains(got.Fix, tc.want) {
+				t.Errorf("the fix does not name %q:\n%s", tc.want, got.Fix)
+			}
+			if strings.Contains(got.Fix, tc.notWant) {
+				t.Errorf("the fix names %q, which does not work here:\n%s", tc.notWant, got.Fix)
+			}
+		})
+	}
+}

@@ -30,6 +30,11 @@ type Env struct {
 	// every machine this was written on.
 	LookPath func(string) (string, error)
 	Command  func(ctx context.Context, name string, args ...string) ([]byte, error)
+
+	// ImmutableHost says the root filesystem is managed by rpm-ostree, where
+	// `dnf install` cannot write. A fix line that names the wrong command is
+	// not a fix line.
+	ImmutableHost bool
 }
 
 // command is one subcommand. The set is closed: docs_test holds it against the
@@ -62,10 +67,11 @@ func main() {
 		os.Exit(1)
 	}
 	env := Env{
-		Paths:    paths,
-		Stdout:   os.Stdout,
-		Stderr:   os.Stderr,
-		LookPath: exec.LookPath,
+		Paths:         paths,
+		Stdout:        os.Stdout,
+		Stderr:        os.Stderr,
+		LookPath:      exec.LookPath,
+		ImmutableHost: immutableHost(),
 		Command: func(ctx context.Context, name string, args ...string) ([]byte, error) {
 			return exec.CommandContext(ctx, name, args...).Output()
 		},
@@ -91,6 +97,15 @@ func run(ctx context.Context, env Env, args []string) error {
 		}
 	}
 	return fmt.Errorf("no such command: %s\nRun `shanty help` for the list", args[0])
+}
+
+// immutableHost reports an rpm-ostree root. Inside a toolbox this is false and
+// correctly so: the container has a writable /usr and dnf is the right answer
+// there -- which is also the only place mpv can live, because shanty and mpv
+// have to share a mount namespace to share a socket.
+func immutableHost() bool {
+	_, err := os.Stat("/run/ostree-booted")
+	return err == nil
 }
 
 func runVersion(_ context.Context, env Env, _ []string) error {

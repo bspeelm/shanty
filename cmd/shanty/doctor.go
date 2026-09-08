@@ -152,10 +152,17 @@ func skipped(id, why string) Result {
 func checkMpv(env Env) Result {
 	path, err := env.LookPath("mpv")
 	if err != nil {
+		fix := "install it: apt install mpv · dnf install mpv · brew install mpv · pacman -S mpv"
+		if env.ImmutableHost {
+			// dnf cannot write /usr here, and a flatpak mpv is worse than
+			// none: its sandbox remaps XDG_RUNTIME_DIR, so the socket shanty
+			// creates is not visible at that path inside it.
+			fix = "rpm-ostree install mpv, then reboot. A flatpak mpv will not work: shanty and mpv share a unix socket, so they must share a mount namespace."
+		}
 		return Result{ID: "mpv", Severity: Fail,
 			Summary: "mpv is not on PATH",
 			Detail:  "shanty does not decode audio itself; mpv does the playing (ADR-011)",
-			Fix:     "install it: apt install mpv · dnf install mpv · brew install mpv · pacman -S mpv"}
+			Fix:     fix}
 	}
 	return Result{ID: "mpv", Severity: Pass, Summary: "mpv is at " + path}
 }
