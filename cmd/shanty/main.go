@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"os/signal"
 
+	"github.com/charmbracelet/x/term"
+
 	"github.com/bspeelm/shanty/internal/config"
 )
 
@@ -22,8 +24,14 @@ var Version = "dev"
 // can hand them a different world without a server, a player or a $HOME.
 type Env struct {
 	Paths  config.Paths
+	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
+
+	// ReadSecret asks for something that must not be echoed. Nil means there
+	// is no terminal, and setup says so rather than reading a password off a
+	// pipe into a shell history.
+	ReadSecret func(prompt string) (string, error)
 
 	// LookPath and Command are how mpv is found and asked its version. They
 	// are fields so doctor can be tested where mpv is not installed, which is
@@ -50,6 +58,7 @@ type command struct {
 // refer to a function that refers back to the slice.
 func commands() []command {
 	return []command{
+		{"setup", "ask for a server and a credential, and write both files", runSetup},
 		{"doctor", "check the setup and say what to fix", runDoctor},
 		{"uninstall", "remove every directory shanty made, and say which", runUninstall},
 		{"version", "print the version", runVersion},
@@ -68,6 +77,8 @@ func main() {
 	}
 	env := Env{
 		Paths:         paths,
+		Stdin:         os.Stdin,
+		ReadSecret:    readSecret,
 		Stdout:        os.Stdout,
 		Stderr:        os.Stderr,
 		LookPath:      exec.LookPath,
@@ -97,6 +108,23 @@ func run(ctx context.Context, env Env, args []string) error {
 		}
 	}
 	return fmt.Errorf("no such command: %s\nRun `shanty help` for the list", args[0])
+}
+
+// readSecret takes a credential without echoing it. A terminal is required:
+// reading one from a pipe would leave it wherever that pipe came from, which
+// is usually a shell history.
+func readSecret(prompt string) (string, error) {
+	fd := os.Stdin.Fd()
+	if !term.IsTerminal(fd) {
+		return "", errors.New("a credential can only be typed at a terminal")
+	}
+	fmt.Fprint(os.Stdout, prompt)
+	raw, err := term.ReadPassword(fd)
+	fmt.Fprintln(os.Stdout)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
 }
 
 // immutableHost reports an rpm-ostree root. Inside a toolbox this is false and

@@ -40,12 +40,16 @@ func TokenAuth(username, token, salt string) Authenticator {
 // the same token and a single logged URL replays nothing.
 func PasswordAuth(username, password string) Authenticator {
 	return func(q url.Values) {
-		salt := rand.Text()
+		salt := Salt()
 		q.Set("u", username)
 		q.Set("s", salt)
 		q.Set("t", Token(password, salt))
 	}
 }
+
+// Salt is a fresh salt. Exported because setup stores one: a token that has to
+// survive a restart cannot be salted afresh each request.
+func Salt() string { return rand.Text() }
 
 // Token is the Subsonic hash: md5 of password+salt. MD5 is the protocol's
 // choice, and is why §2 treats a token as replayable-here, not as protection.

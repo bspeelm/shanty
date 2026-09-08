@@ -39,8 +39,13 @@ The installer verifies the checksum always, and provenance on `--verify`. The
 checksum proves the bytes match what the release published; the attestation
 proves who published them, which a checksum cannot.
 
+On a machine with nothing configured, `shanty` asks for a server and a
+credential and writes both files itself. It takes a password once, stores the
+hash the Subsonic protocol sends, and never writes the password down.
+
 ```sh
-shanty              # browse and play
+shanty              # browse and play, asking for a server on a first run
+shanty setup        # ask again, to change server or credential
 shanty doctor       # check the setup; every failure names what to type
 shanty doctor -json # the same, for a script
 shanty uninstall    # remove the four directories, and say which
