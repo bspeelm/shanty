@@ -46,6 +46,10 @@ type app struct {
 	detach func(handoff) error
 	// starred is what the server has starred, by identifier.
 	starred map[string]bool
+	// saved is the queue the server is holding, kept until somebody asks for
+	// it. Taking it up without being asked would surprise anyone who quit
+	// deliberately.
+	saved subsonic.PlayQueue
 	// backlog is the file holding plays the server would not accept. It is
 	// empty when there is nowhere to keep them, which is how the tests that
 	// have no state directory run.
@@ -69,6 +73,8 @@ type (
 	scrobbled    struct{}
 	detached     struct{}
 	detachFailed struct{ err error }
+	// savedQueue is what the server was holding when this started.
+	savedQueue subsonic.PlayQueue
 	// starredLoaded is what the server has starred, with the identifiers
 	// gathered so that every list can mark them.
 	starredLoaded struct {
@@ -83,7 +89,7 @@ func newApp(ctx context.Context, client *subsonic.Client, p player) app {
 
 func (a app) Init() tea.Cmd {
 	return tea.Batch(a.fetchArtists(), a.watchPlayer(), a.observePosition(),
-		a.fetchStarred(), func() tea.Msg { return a.flushBacklog() })
+		a.fetchStarred(), func() tea.Msg { return a.flushBacklog() }, a.fetchSaved())
 }
 
 // View renders the interface. A session has no terminal to render to.
@@ -99,7 +105,17 @@ func (a app) View() string {
 func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tui.Quit:
-		return a, tea.Quit
+		// Where playback had reached goes to the server before this stops, so
+		// another machine can carry on from it. One command rather than two,
+		// because a batch would race the quit and the program may be gone
+		// before the save runs.
+		save := a.saveQueue()
+		return a, func() tea.Msg {
+			if save != nil {
+				save()
+			}
+			return tea.QuitMsg{}
+		}
 
 	case tui.OpenArtist:
 		return a, a.fetchArtist(msg.ID)
@@ -107,6 +123,10 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.fetchAlbum(msg.ID)
 	case tui.Search:
 		return a, a.search(string(msg))
+	case tui.Resume:
+		return a, a.resumeSaved()
+	case savedQueue:
+		return a.offerSaved(subsonic.PlayQueue(msg))
 	case tui.ToggleStar:
 		return a, a.star(msg)
 	case starredLoaded:
@@ -220,7 +240,8 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 		if a.headless && a.queue.Done() {
 			return a, tea.Batch(a.scrobble(finished.ID), tea.Quit)
 		}
-		return a, tea.Batch(next, a.scrobble(finished.ID), a.playCurrent(), a.queueChanged())
+		return a, tea.Batch(next, a.scrobble(finished.ID), a.playCurrent(),
+			a.queueChanged(), a.saveQueue())
 	}
 	return a, next
 }
@@ -517,5 +538,72 @@ func trackFrom(album subsonic.Album, s subsonic.Song) queue.Track {
 	return queue.Track{
 		ID: s.ID, Title: s.Title, Album: album.Name, Artist: s.Artist,
 		Duration: time.Duration(s.Duration) * time.Second,
+	}
+}
+
+// fetchSaved asks the server what queue it is holding.
+func (a app) fetchSaved() tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		found, err := client.PlayQueue(a.ctx)
+		if err != nil {
+			// Nothing to resume is the ordinary case, and a server that will
+			// not say is not worth interrupting anybody about.
+			return nil
+		}
+		return savedQueue(found)
+	}
+}
+
+// offerSaved keeps the queue the server is holding and says it is there. It is
+// not taken up until somebody asks, because quitting is usually deliberate.
+func (a app) offerSaved(found subsonic.PlayQueue) (tea.Model, tea.Cmd) {
+	if found.Empty() || !a.queue.Done() {
+		return a, nil
+	}
+	a.saved = found
+	where := "your server"
+	if found.ChangedBy != "" {
+		where = found.ChangedBy
+	}
+	return a.forward(tui.Notice(fmt.Sprintf(
+		"%s left %s playing — type :resume to carry on from it",
+		where, found.Songs[found.Index()].Title)))
+}
+
+// resumeSaved takes up the queue the server was holding.
+func (a app) resumeSaved() tea.Cmd {
+	if a.saved.Empty() {
+		return emit(tui.Failed{Message: "there is no queue saved on your server to carry on from"})
+	}
+	return emit(tui.PlayFrom{Album: albumOf(a.saved), Index: a.saved.Index()})
+}
+
+// albumOf gathers a saved queue into something that can be played from. The
+// tracks may come from several albums, so it is a list rather than one of
+// them.
+func albumOf(saved subsonic.PlayQueue) subsonic.Album {
+	return subsonic.Album{Songs: saved.Songs}
+}
+
+// saveQueue tells the server what is queued and where in it playback has
+// reached. A queue with nothing in it is not saved, because that would wipe
+// what another machine left.
+func (a app) saveQueue() tea.Cmd {
+	tracks := a.queue.Tracks()
+	if len(tracks) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(tracks))
+	for _, t := range tracks {
+		ids = append(ids, t.ID)
+	}
+	current, _ := a.queue.Current()
+	client, at := a.client, a.ui.Position()
+	return func() tea.Msg {
+		// A server that will not keep it is not worth stopping for, and the
+		// next track change tries again.
+		_ = client.SavePlayQueue(a.ctx, ids, current.ID, at)
+		return nil
 	}
 }

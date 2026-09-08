@@ -27,6 +27,20 @@ it. This prevents you from quitting the player by pressing back once too often.
 Each screen remembers which row you had selected. If you open an album and then
 go back, the album you opened is still highlighted.
 
+## Carrying on from another machine
+
+Your server keeps the queue and the position in it, so what you were playing on
+one machine can be picked up on another. shanty saves it when a track changes
+and when you quit.
+
+When you start shanty and your server is holding a queue, the last line says
+so and names where it came from. Type `:resume` to take it up, on the track and
+at the second the other machine left it.
+
+It is offered rather than applied, because quitting is usually deliberate and
+having the music start again by itself would be a surprise. Nothing is offered
+if something is already playing.
+
 ## Searching the server
 
 `/` narrows the list in front of you. It cannot reach what is not on it, and
@@ -128,6 +142,7 @@ line.
 | `:volume 40` | Set the volume to a number, where `+` and `-` change it by steps |
 | `:headless` | Close the interface and keep playing |
 | `:search slipway` | Find artists, albums and tracks on the server |
+| `:resume` | Carry on from the queue saved on your server |
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.

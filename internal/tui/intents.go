@@ -54,6 +54,8 @@ type (
 	JumpTo int
 	// Search asks the server for anything matching the query.
 	Search string
+	// Resume asks for the queue the server is holding to be taken up.
+	Resume struct{}
 	// ToggleStar asks for something to be starred or unstarred on the server.
 	ToggleStar struct {
 		Kind    Kind

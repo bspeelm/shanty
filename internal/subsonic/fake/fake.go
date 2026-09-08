@@ -86,6 +86,22 @@ type Server struct {
 	// scrobbles counts the play reports taken, for the server that stops
 	// taking them part way through.
 	scrobbles int
+	// queue is what savePlayQueue last stored, which getPlayQueue returns.
+	queue *playQueue
+}
+
+// SetPlayQueue puts a queue on the server as another client would have left
+// it, which is what a test needs to offer one that this machine did not save.
+func (s *Server) SetPlayQueue(ids []string, current string, position int64, by string) {
+	saved := playQueue{Current: current, Position: position, ChangedBy: by}
+	for _, id := range ids {
+		if sg, found := s.opt.Library.findSong(id); found {
+			saved.Songs = append(saved.Songs, sg)
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.queue = &saved
 }
 
 // Starred reports whether the server has the id starred. A test asserts on
@@ -230,6 +246,38 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.ok(w, response{SearchResult: &found})
+	case "savePlayQueue":
+		ids := q["id"]
+		if len(ids) == 0 {
+			s.fail(w, 10, "Required parameter id is missing")
+			return
+		}
+		saved := playQueue{Current: q.Get("current"), ChangedBy: "shanty"}
+		if n, err := strconv.ParseInt(q.Get("position"), 10, 64); err == nil {
+			saved.Position = n
+		}
+		for _, id := range ids {
+			sg, found := s.opt.Library.findSong(id)
+			if !found {
+				s.fail(w, 70, "Song not found")
+				return
+			}
+			saved.Songs = append(saved.Songs, sg)
+		}
+		s.mu.Lock()
+		s.queue = &saved
+		s.mu.Unlock()
+		s.ok(w, response{})
+	case "getPlayQueue":
+		s.mu.Lock()
+		saved := s.queue
+		s.mu.Unlock()
+		if saved == nil {
+			// A server holding no queue leaves it out altogether.
+			s.ok(w, response{})
+			return
+		}
+		s.ok(w, response{PlayQueue: saved})
 	case "star", "unstar":
 		id := firstOf(q, "id", "albumId", "artistId")
 		if id == "" {

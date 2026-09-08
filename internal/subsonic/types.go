@@ -27,6 +27,7 @@ type response struct {
 	Extensions   []Extension `json:"openSubsonicExtensions"`
 	SearchResult *Results    `json:"searchResult3"`
 	Starred      *Results    `json:"starred2"`
+	PlayQueue    *PlayQueue  `json:"playQueue"`
 }
 
 type artistList struct {
@@ -190,6 +191,65 @@ func (c *Client) Search(ctx context.Context, query string) (Results, error) {
 		return Results{}, nil
 	}
 	return *res.SearchResult, nil
+}
+
+// PlayQueue is a queue a server is holding, saved by this client or another
+// one.
+type PlayQueue struct {
+	Songs []Song `json:"entry"`
+	// Current is the identifier of the track that was playing.
+	Current string `json:"current"`
+	// Position is how far into that track playback had reached, in
+	// milliseconds, which is the unit the server keeps it in.
+	Position int64 `json:"position"`
+	// ChangedBy names the client that saved it, so somebody can be told where
+	// it came from.
+	ChangedBy string `json:"changedBy"`
+}
+
+// Empty reports whether the server is holding no queue.
+func (q PlayQueue) Empty() bool { return len(q.Songs) == 0 }
+
+// At returns how far into the current track playback had reached.
+func (q PlayQueue) At() time.Duration { return time.Duration(q.Position) * time.Millisecond }
+
+// Index is where in the queue the current track is. It is zero when the server
+// named a track the queue does not hold.
+func (q PlayQueue) Index() int {
+	for i, s := range q.Songs {
+		if s.ID == q.Current {
+			return i
+		}
+	}
+	return 0
+}
+
+// SavePlayQueue tells the server what is queued and where in it playback has
+// reached, so that another machine can carry on from the same place.
+func (c *Client) SavePlayQueue(ctx context.Context, ids []string, current string, at time.Duration) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	params := url.Values{"id": ids}
+	if current != "" {
+		params.Set("current", current)
+		params.Set("position", strconv.FormatInt(at.Milliseconds(), 10))
+	}
+	_, err := c.get(ctx, "savePlayQueue", params)
+	return err
+}
+
+// PlayQueue returns the queue the server is holding. A server holding none
+// leaves it out of its answer, which is not an error.
+func (c *Client) PlayQueue(ctx context.Context) (PlayQueue, error) {
+	res, err := c.get(ctx, "getPlayQueue", nil)
+	if err != nil {
+		return PlayQueue{}, err
+	}
+	if res.PlayQueue == nil {
+		return PlayQueue{}, nil
+	}
+	return *res.PlayQueue, nil
 }
 
 // Kind is what a starrable thing is, which decides the parameter the server

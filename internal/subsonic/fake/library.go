@@ -26,6 +26,15 @@ type response struct {
 	Extensions    []extension `json:"openSubsonicExtensions,omitempty"`
 	SearchResult  *results    `json:"searchResult3,omitempty"`
 	Starred       *results    `json:"starred2,omitempty"`
+	PlayQueue     *playQueue  `json:"playQueue,omitempty"`
+}
+
+// playQueue is what savePlayQueue stored and getPlayQueue returns.
+type playQueue struct {
+	Songs     []song `json:"entry,omitempty"`
+	Current   string `json:"current,omitempty"`
+	Position  int64  `json:"position,omitempty"`
+	ChangedBy string `json:"changedBy,omitempty"`
 }
 
 // results is what search3 returns.

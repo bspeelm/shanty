@@ -102,7 +102,7 @@ tracks, `[` and `]` seek backward and forward, and `+` and `-` change the
 volume.
 
 `:search slipway` looks across the whole server, where `/` narrows only what is
-already on screen.
+already on screen. `:resume` picks up the queue you left on another machine.
 
 Press `:` to type a command; the ones matching what you type are listed as you
 go. `:q` quits. The

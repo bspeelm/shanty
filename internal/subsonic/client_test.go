@@ -480,3 +480,100 @@ func TestStarringSomethingTheServerDoesNotHaveIsReported(t *testing.T) {
 		t.Fatal("starring something that does not exist reported success")
 	}
 }
+
+// TestAQueueSavedComesBackTheSame covers the round trip a second machine
+// depends on: what was queued, which track was playing, and how far into it.
+func TestAQueueSavedComesBackTheSame(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+
+	// Nothing saved is an answer, not a failure.
+	saved, err := c.PlayQueue(t.Context())
+	if err != nil {
+		t.Fatalf("asking for a queue with none saved failed: %v", err)
+	}
+	if !saved.Empty() {
+		t.Errorf("nothing was saved and the server returned %+v", saved)
+	}
+
+	ids := []string{"tr-1", "tr-2", "tr-3"}
+	if err := c.SavePlayQueue(t.Context(), ids, "tr-2", 83*time.Second); err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err = c.PlayQueue(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Songs) != 3 {
+		t.Fatalf("the server kept %d tracks, want 3", len(saved.Songs))
+	}
+	if saved.Current != "tr-2" {
+		t.Errorf("the server says %q was playing, want tr-2", saved.Current)
+	}
+	if saved.Index() != 1 {
+		t.Errorf("the playing track is at %d, want 1", saved.Index())
+	}
+	if got := saved.At(); got != 83*time.Second {
+		t.Errorf("the position came back as %v, want 1m23s", got)
+	}
+}
+
+// TestTheServerIsToldThePositionInMilliseconds covers the unit. A server keeps
+// it in milliseconds, so sending seconds resumes a track near its beginning
+// and reports success.
+func TestTheServerIsToldThePositionInMilliseconds(t *testing.T) {
+	c, srv := dial(t, fake.Options{User: user, Password: pass})
+
+	if err := c.SavePlayQueue(t.Context(), []string{"tr-1"}, "tr-1", 90*time.Second); err != nil {
+		t.Fatal(err)
+	}
+
+	var sent string
+	for _, r := range srv.Requests() {
+		if r.Endpoint == "savePlayQueue" {
+			sent = r.Query.Get("position")
+		}
+	}
+	if sent != "90000" {
+		t.Errorf("the server was told position %q, want 90000 milliseconds", sent)
+	}
+}
+
+// TestAQueueNamingATrackItDoesNotHoldStartsAtTheBeginning covers a server
+// answering with a current track that is not in the list it sent.
+func TestAQueueNamingATrackItDoesNotHoldStartsAtTheBeginning(t *testing.T) {
+	c, srv := dial(t, fake.Options{User: user, Password: pass})
+	srv.SetPlayQueue([]string{"tr-1", "tr-2"}, "tr-missing", 0, "another client")
+
+	saved, err := c.PlayQueue(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Index() != 0 {
+		t.Errorf("a queue naming a track it does not hold starts at %d, want 0", saved.Index())
+	}
+}
+
+// TestSavingNothingAsksTheServerNothing covers quitting with an empty queue,
+// which must not wipe what another machine saved.
+func TestSavingNothingAsksTheServerNothing(t *testing.T) {
+	c, srv := dial(t, fake.Options{User: user, Password: pass})
+	srv.SetPlayQueue([]string{"tr-1"}, "tr-1", 0, "another client")
+
+	if err := c.SavePlayQueue(t.Context(), nil, "", 0); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, r := range srv.Requests() {
+		if r.Endpoint == "savePlayQueue" {
+			t.Fatal("an empty queue was saved over one another machine left")
+		}
+	}
+	saved, err := c.PlayQueue(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Empty() {
+		t.Error("the queue another machine saved is gone")
+	}
+}

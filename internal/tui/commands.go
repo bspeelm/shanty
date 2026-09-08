@@ -38,6 +38,11 @@ var commands = []command{
 		},
 	},
 	{
+		name:    "resume",
+		summary: "carry on from the queue saved on the server",
+		run:     func(string) (any, error) { return Resume{}, nil },
+	},
+	{
 		name:    "headless",
 		summary: "leave the interface and keep playing",
 		run:     func(string) (any, error) { return Detach{}, nil },
