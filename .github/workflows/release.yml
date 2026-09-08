@@ -53,9 +53,13 @@ jobs:
       # being none (§13.1).
       - name: the ledger is not stale
         run: |
-          if grep -qE '^\| `[a-z/._-]+` \|[^|]*\| — \|' docs/reviewed.md; then
+          # Any table row whose "read at" column is still a dash. The first
+          # version of this required a backticked lowercase name and so did
+          # not see `shanty uninstall`, which has a space in it -- a gate that
+          # skips one of the surfaces it is guarding.
+          if grep -qE '^\|.*\| — \|' docs/reviewed.md; then
             echo "::error::docs/reviewed.md still has unread load-bearing surfaces:"
-            grep -nE '^\| `[a-z/._-]+` \|[^|]*\| — \|' docs/reviewed.md
+            grep -nE '^\|.*\| — \|' docs/reviewed.md
             exit 1
           fi
           echo "every load-bearing surface has a ledger entry"
