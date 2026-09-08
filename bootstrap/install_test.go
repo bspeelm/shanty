@@ -48,10 +48,10 @@ func TestTheInstallerAsksForWhatTheReleaseProduces(t *testing.T) {
 func TestTheInstallerAsksForTheRightSidecars(t *testing.T) {
 	installer := read(t, "install.sh")
 
-	sums := regexp.MustCompile(`checksums:\s*\n\s*name_template:\s*(\S+)`).
+	sums := regexp.MustCompile(`checksum:\s*\n\s*name_template:\s*(\S+)`).
 		FindStringSubmatch(read(t, "../.goreleaser.yaml"))
 	if sums == nil {
-		t.Fatal("no checksums name_template in .goreleaser.yaml")
+		t.Fatal("no checksum name_template in .goreleaser.yaml")
 	}
 	if !strings.Contains(installer, sums[1]) {
 		t.Errorf("goreleaser writes %q and install.sh does not fetch it", sums[1])
