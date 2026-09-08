@@ -1,33 +1,37 @@
 # Credentials
 
-shanty keeps its settings in two files:
+shanty stores its configuration in two files:
 
-| file | permissions | contents |
+| File | Permissions | Contents |
 |---|---|---|
-| `~/.config/shanty/config.toml` | `0644` | your server address and username |
-| `~/.config/shanty/credentials.toml` | `0600` | the secret, and nothing else |
+| `~/.config/shanty/config.toml` | `0644` | Your server's address and your username |
+| `~/.config/shanty/credentials.toml` | `0600` | The credential, and nothing else |
 
-They are separate so you can share or paste the first when asking for help
-without the second going with it.
+They are kept apart so that you can show someone your `config.toml` when asking
+for help without the credential being in it.
 
-`shanty setup` writes both. You can also edit them by hand — they are plain
-TOML.
+`shanty setup` creates both files for you. You can also write them yourself;
+they are plain TOML.
 
-## The four ways to sign in
+## The four kinds of credential
 
-shanty uses the strongest one it finds. Having more than one in the file is
-fine; it does not matter what order they appear in.
+`credentials.toml` can hold any one of four things. If more than one is
+present, shanty uses the strongest, and the order they appear in the file does
+not matter.
 
-### An API key — best
+### An API key
 
 ```toml
 api_key = "..."
 ```
 
-A single string, created in your server's web interface, that you can cancel
-there without changing your password. Navidrome supports these.
+An API key is a single string, created in your server's web interface, that
+identifies you in place of a password. It is the best option when your server
+supports it, because you can revoke a key from the server at any time without
+changing your password or affecting anything else that uses it. Navidrome
+supports API keys.
 
-`shanty doctor` tells you when your server offers them and you are using
+`shanty doctor` tells you when your server supports API keys and you are using
 something else.
 
 ### A token and salt
@@ -37,9 +41,12 @@ token = "..."
 salt  = "..."
 ```
 
-The scrambled form of your password that Subsonic servers actually accept. It
-works against that one server and is no use anywhere else. This is what
-`shanty setup` writes when you give it a password.
+Subsonic servers accept a scrambled value derived from your password, together
+with the random string used to scramble it, instead of the password. This pair
+works against that one server and is of no use anywhere else.
+
+This is what `shanty setup` writes when you give it a password rather than an
+API key.
 
 ### A password file
 
@@ -47,31 +54,36 @@ works against that one server and is no use anywhere else. This is what
 password_file = "/run/agenix/navidrome"
 ```
 
-A path to a file your own tooling manages — a secret from `agenix`, an entry
-from `pass`, anything you already trust to hold it. shanty reads it when it
-needs to sign in and does not copy it anywhere.
+The path to a file holding your password, managed by something else you already
+trust, such as `agenix` or `pass`. shanty reads the file when it needs to
+authenticate and does not copy the contents anywhere.
 
-If the path is a normal file it has to be readable only by you. A pipe is not
-checked, since its permissions are not what protects it.
+If the path points at an ordinary file, that file must not be readable by other
+users. If it points at a pipe, shanty does not check permissions, because a
+pipe's permissions are not what protects it.
 
-### A plain password — worst
+### A password
 
 ```toml
 password = "..."
 ```
 
-shanty will use this if you wrote it, but it will never write it for you. If
-this file is taken, so is any other account where you used the same password.
+Your password, stored as text. shanty will use one if you write it, but it will
+never write one itself.
 
-`shanty doctor` warns whenever it sees one and says what to use instead.
+This is the weakest option, because anyone who copies the file has your actual
+password, and can try it on every other account where you used the same one.
+`shanty doctor` warns whenever it finds one and tells you what to use instead.
 
-## The permission check
+## The permissions check
 
-If `credentials.toml` can be read by anyone else on the machine, shanty stops
-and prints the command to fix it:
+Every time it starts, shanty checks that `credentials.toml` cannot be read by
+other users of the machine. If it can, shanty stops and prints the command to
+fix it:
 
 ```
 chmod 600 /home/you/.config/shanty/credentials.toml
 ```
 
-Stricter is fine. `0400` is common for secrets managed by other tools.
+Permissions stricter than `0600` are accepted. Files created by secret managers
+are often `0400`, which is fine.

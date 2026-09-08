@@ -1,7 +1,8 @@
 # Your first run
 
-Run `shanty`. With nothing configured yet, it asks four questions and sets
-itself up.
+Run `shanty`. If it has not been configured yet, it asks you four questions,
+tests the answers against your server, and writes its configuration files
+itself. There is nothing to create by hand.
 
 ```
 shanty setup — two files, in /home/you/.config/shanty
@@ -22,32 +23,58 @@ protocol sends instead, which works against this server and nowhere else.
 next: shanty
 ```
 
-Then you are looking at your artists. Move with the arrow keys, press `enter`
-to open one, `enter` again on a track to play it.
+After that you are looking at the list of artists on your server. Use the arrow
+keys to move, press `enter` to open an artist and then an album, and `enter`
+again on a track to start playing it.
 
-## Your password is not kept
+## The four questions
 
-Subsonic servers accept a scrambled form of your password rather than the
-password itself, and that is what shanty stores. If someone takes the file they
-can play your music; they cannot sign in anywhere else with it.
+**Server URL.** The address you use to reach your server in a browser,
+including `https://`. If your server is behind a reverse proxy or is served
+from a subdirectory, use the same address you would type into a browser.
 
-If your server offers **API keys**, use one. They are a single string you can
-cancel from the server's web interface without changing your password. setup
-asks for one before it asks for a password, and `shanty doctor` will tell you
-when your server supports them and you are not using one.
+**Username.** Your account name on that server.
 
-## Nothing is written unless it works
+**API key.** If your server supports API keys, create one in its web interface
+and paste it here. An API key is a single string that identifies you, and you
+can revoke it from the server at any time without changing your password. If
+you do not have one, press enter to move on.
 
-setup tries the credential against your server before saving. A typo means the
-question comes round again, not a broken setup you discover later.
+**Password.** Your account password. It is not displayed as you type, and it is
+not saved to disk.
 
-## Changing it
+## What happens to your password
 
-Run `shanty setup` again to point at a different server or use a different
-credential. Or edit the two files yourself — they are plain text, and
-[Credentials](Credentials) describes what can go in them.
+Subsonic servers do not require the password itself to sign in. They accept a
+scrambled value derived from the password and a random string, and that pair is
+what shanty writes to its configuration.
 
-## It needs a real terminal
+The practical consequence is that if someone copies your `credentials.toml`,
+they can play music from that one server, but they cannot use the file to sign
+in to your email, or to any other service where you used the same password.
 
-setup will not take a password from a pipe, because anything piped in tends to
-end up in a shell history.
+If your server offers API keys, they are better still, because you can revoke
+one from the server without changing anything else. `shanty doctor` tells you
+when your server supports API keys and you are not using one.
+
+## Nothing is saved if the credential does not work
+
+shanty tries the credential against your server before writing either file. If
+it is rejected, shanty says so, writes nothing, and you can run `shanty setup`
+again. You will not end up with a configuration that looks correct but fails
+later.
+
+## Changing the configuration afterwards
+
+Run `shanty setup` again to point shanty at a different server or to use a
+different credential. It overwrites both files.
+
+You can also edit the files by hand. They are plain TOML and shanty does not
+mind which of you wrote them. The [Credentials](Credentials) page lists
+everything that can go in them.
+
+## Why setup requires a terminal
+
+shanty will not read a password from a pipe or a redirected file. Anything
+piped into a command tends to be recorded in a shell history file, which is not
+a safe place for a password.

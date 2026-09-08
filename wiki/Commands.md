@@ -1,46 +1,60 @@
 # Commands
 
-### `shanty`
+shanty has six commands. Running `shanty` with no arguments browses and plays;
+the rest are named.
 
-Browse and play. On a machine that has not been set up yet, it asks the setup
-questions first — see [Your first run](Your-first-run).
+## `shanty`
 
-### `shanty setup`
+Opens the browser and plays music. This is the command you will use almost all
+of the time.
 
-Ask for a server and a credential, and write the two configuration files.
+If shanty has not been configured yet, it runs the setup questions first. See
+[Your first run](Your-first-run).
 
-Use it to point at a different server, or to switch from a password to an API
-key. Nothing is written unless the server accepts what you gave it.
+## `shanty setup`
 
-### `shanty doctor`
+Asks for a server address, a username, and a credential, then writes shanty's
+two configuration files.
 
-Check the setup and report what is wrong. Every problem comes with the command
-or the change that fixes it. [The doctor](The-doctor) explains each check.
+Use it when you want to point shanty at a different server, or to replace a
+password with an API key. It overwrites both files, and it writes nothing
+unless your server accepts the credential you gave it.
+
+## `shanty doctor`
+
+Examines your setup and reports on eight things, from whether mpv is installed
+to whether your server accepts your credential. Anything that is wrong is
+listed together with the command or configuration change that fixes it. The
+[The doctor](The-doctor) page explains each check.
 
 ```sh
-shanty doctor        # readable
-shanty doctor -json  # for a script
+shanty doctor        # human-readable report
+shanty doctor -json  # the same report as JSON, for scripts
 ```
 
-It exits with an error if a check failed. Warnings do not — those are things
-worth knowing that will not stop you playing music.
+The command exits with a non-zero status if any check failed. Warnings do not
+cause a non-zero exit, because they describe things you would probably want to
+change rather than things that stop shanty working.
 
-`doctor` only looks. It does not create or change anything.
+`shanty doctor` only inspects. It does not create, change, or delete anything.
 
-### `shanty uninstall`
+## `shanty uninstall`
 
-Remove the directories shanty made, and print which ones. See
-[Where it puts things](Where-it-puts-things) for the list.
+Deletes the directories shanty created and prints which ones it removed and
+which were not present. The [Where it puts things](Where-it-puts-things) page
+lists them.
 
-It will not follow a symbolic link out of its own directories.
+If one of those paths is a symbolic link, shanty refuses to delete it and tells
+you, rather than following the link and deleting something elsewhere.
 
-It does not remove the binary itself — that is wherever you installed it,
-usually `~/.local/bin/shanty`.
+It does not delete the shanty binary itself. That is wherever you installed it,
+which is usually `~/.local/bin/shanty`.
 
-### `shanty version`
+## `shanty version`
 
-Print the version. A build made from a clone rather than a release says `dev`.
+Prints the version of the binary you are running. A build made from a clone of
+the repository rather than from a release reports `dev`.
 
-### `shanty help`
+## `shanty help`
 
-List the commands.
+Lists the commands with a one-line description of each.

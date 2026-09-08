@@ -1,37 +1,44 @@
 # Where it puts things
 
-Four directories, and nothing outside them.
+shanty writes to four directories and nowhere else.
 
-| directory | contents | if you delete it |
+| Directory | What is in it | If you delete it |
 |---|---|---|
-| `~/.config/shanty/` | your server address and credential | run `shanty setup` again |
-| `~/.local/state/shanty/` | resume position and pending scrobbles | you lose a little history *(not used yet)* |
-| `~/.cache/shanty/` | cover art | it downloads again *(not used yet)* |
-| `$XDG_RUNTIME_DIR/shanty/` | the connection to mpv while it is playing | nothing; it goes at logout |
+| `~/.config/shanty/` | Your server address, username and credential | Run `shanty setup` to recreate it |
+| `~/.local/state/shanty/` | Your position in a track and any plays not yet reported | You lose a small amount of listening history. *Not used yet.* |
+| `~/.cache/shanty/` | Downloaded cover art | It is downloaded again when needed. *Not used yet.* |
+| `$XDG_RUNTIME_DIR/shanty/` | The connection to mpv, while music is playing | Nothing. It is removed when you log out. |
 
-All four follow the `XDG_` environment variables if you set them. On a system
-without `XDG_RUNTIME_DIR`, the connection to mpv lives under the cache
-directory instead — never in a shared temporary directory, where another user
-could get there first.
+All four honour the standard `XDG_` environment variables if you have set them.
+The paths above are the defaults on Linux when you have not.
 
-## What it does not touch
+On systems that do not provide `XDG_RUNTIME_DIR`, the connection to mpv is
+placed inside the cache directory instead. It is never placed in a shared
+temporary directory such as `/tmp`, because another user of the machine could
+create a file there first under the name shanty expects.
 
-Your mpv configuration. shanty starts mpv with its own settings and ignores
-whatever is in `~/.config/mpv`, so nothing you have set up there changes and
-nothing shanty does can break it.
+## What shanty does not touch
 
-Your shell files, your other programs' configuration, and anything else on the
-machine.
+**Your mpv configuration.** shanty starts mpv with an explicit set of options
+and instructs it to ignore its own configuration file. Nothing in
+`~/.config/mpv` is read, and nothing shanty does can change it. There is also
+no way to pass extra options through to mpv.
 
-## Removing it
+**Anything else on your system.** shanty does not modify shell configuration
+files, install anything, or write outside the four directories above.
+
+## Removing shanty
 
 ```sh
 shanty uninstall
 ```
 
-It prints what it removed and what was not there. `~/.cache` and the runtime
-directory themselves stay — shanty made them on the way to its own folders but
-they belong to the system, and other programs use them.
+This deletes the four directories and prints which ones it removed and which
+were already absent.
 
-The binary is not removed. Delete it from wherever you installed it, usually
-`~/.local/bin/shanty`.
+It leaves `~/.cache` and `$XDG_RUNTIME_DIR` themselves in place. shanty created
+those on the way to its own directories, but they are shared with other
+programs and are not shanty's to remove.
+
+The shanty binary itself is not deleted. Remove it from wherever you installed
+it, usually `~/.local/bin/shanty`.

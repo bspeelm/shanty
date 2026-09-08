@@ -1,61 +1,86 @@
 # Security
 
-shanty holds a credential for your server the whole time it is running. This is
-what it does with it, and where it connects.
+shanty holds a credential for your server for as long as it is running. This
+page describes what it does with that credential, what it assumes about your
+server, and what it connects to.
 
 ## Your password
 
-`shanty setup` asks for it once and does not save it. What goes in the file is
-the scrambled form Subsonic servers accept — useful against that one server,
-useless anywhere else. If you write a plain password into the file yourself,
-shanty will use it, but it will never put one there.
+`shanty setup` asks for your password once and does not save it. What it writes
+instead is the scrambled value that Subsonic servers accept in place of a
+password, together with the random string used to produce it. That pair
+authenticates against your server and cannot be used anywhere else, so someone
+who copies the file can play your music but cannot sign in to your other
+accounts.
 
-An API key is better again: it is a single string you can cancel from your
-server without changing anything else. `shanty doctor` tells you when your
-server offers them.
+An API key is better still, because you can revoke one from your server's web
+interface without changing your password or affecting anything else. `shanty
+doctor` tells you when your server supports API keys and you are not using one.
 
-`credentials.toml` has to be readable only by you. If it is not, shanty stops
-and prints the command to fix it rather than starting anyway.
+If you write a plain password into `credentials.toml` yourself, shanty will use
+it. It will never write one there.
 
-## Other people on your machine
+## The permissions on the credential file
 
-Anyone with an account on the same computer can list the programs that are
-running and see the arguments they were started with. Music URLs from a
-Subsonic server carry your credential in them, so shanty never puts one on a
-command line: it starts mpv once and passes each track through a private
-socket, which lives in a directory only you can open.
+`credentials.toml` must not be readable by other users of the machine. shanty
+checks this every time it starts and refuses to run if the file is too
+permissive, printing the `chmod` command that fixes it. It stops rather than
+warning, because a warning printed once at startup is easy to miss.
 
-Nothing shanty stores or passes to mpv is visible to another user of the
-machine.
+## Other users of the same computer
 
-## Your server
+On a shared machine, any user can list the processes that are running and see
+the command-line arguments each was started with.
 
-shanty assumes a server can be wrong, whether it has been broken into or is
-simply misbehaving.
+Music URLs from a Subsonic server contain your credential as a parameter. shanty
+therefore never passes one as a command-line argument. It starts a single mpv
+process and sends each track to it through a socket file, which lives in a
+directory that only your user account can open. The URL exists in mpv's memory
+and is not visible to anyone else on the system.
 
-Everything it sends is checked before it is used. Replies have a size limit, so
-a server cannot exhaust the machine's memory by answering forever. Track and
-artist names have anything a terminal would act on removed before they are
-drawn — terminals treat certain character sequences as instructions rather than
-text, and a name is not allowed to become one.
+## What shanty assumes about your server
 
-Audio never passes through shanty at all. mpv fetches it directly.
+shanty treats every response from your server as untrusted, on the basis that a
+server can be compromised or simply faulty.
 
-## Connections
+Responses are read up to a fixed size limit, so a server that keeps sending
+data cannot exhaust your machine's memory. The data itself is parsed by a
+single routine that is tested against malformed and truncated input.
 
-shanty connects to your server. That is the entire list.
+Artist names, album titles and track titles are stripped of any characters that
+a terminal would interpret as an instruction before they are displayed.
+Terminals treat certain sequences of characters as commands — to move the
+cursor, clear the screen, or in some cases to send text back as though you had
+typed it — and a track title is not allowed to become one of those.
 
-No update checks, no error reporting, no telemetry, no third-party services.
-Scrobbles go to your server's own endpoint — if you want them forwarded to
-Last.fm or ListenBrainz, that is a setting on the server you already run,
-rather than another password on every machine you install this on.
+Audio never passes through shanty. mpv connects to your server and fetches it
+directly.
 
-Certificate checking cannot be turned off. There is no flag, setting, or
-environment variable for it. If you use a self-signed certificate, add it to
-your system's trust store, which is the mechanism that already exists for that.
+## What shanty connects to
 
-## Downloads
+Your server, and nothing else.
 
-Every release comes with checksums and a signature produced by the build
-itself. The installer checks the checksum every time and the signature when you
-pass `--verify`, and tells you which of the two it did.
+shanty does not check for updates, report errors or crashes, collect usage
+data, or contact any third-party service. Plays are reported to your own
+server's endpoint. If you want them forwarded to Last.fm or ListenBrainz, that
+is configured on the server you already administer, so those credentials stay
+in one place rather than being copied to every machine you install shanty on.
+
+## Certificate verification
+
+Certificate verification cannot be turned off. There is no command-line flag,
+configuration setting, or environment variable that disables it.
+
+If your server uses a self-signed certificate, add that certificate to your
+system's trust store. That is the mechanism your operating system already
+provides for this, and it applies to every program rather than only to shanty.
+
+## Verifying what you downloaded
+
+Every release is published with a file of checksums and a signature produced by
+the automated build that created it.
+
+The install script checks the download against the checksums every time. Adding
+`--verify` also checks the signature, which confirms the file came from this
+project's build process. The script tells you which of the two checks it
+performed.

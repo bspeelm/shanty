@@ -1,48 +1,57 @@
 # Keys
 
-## Moving around
+shanty has three screens: a list of artists, the albums by one artist, and the
+tracks on one album. You move down into them and back out again. The same keys
+work on all three.
 
-| key | |
+## Moving through a list
+
+| Key | What it does |
 |---|---|
-| `↑` `k` | up |
-| `↓` `j` | down |
-| `g` `home` | first item |
-| `G` `end` | last item |
-| `pgup` `pgdown` | a screenful |
-| `enter` `l` `→` | open — or play, when you are looking at tracks |
-| `esc` `h` `←` `backspace` | back |
+| `↑` or `k` | Move the selection up one row |
+| `↓` or `j` | Move the selection down one row |
+| `g` or `home` | Jump to the first row |
+| `G` or `end` | Jump to the last row |
+| `pgup` or `pgdown` | Move up or down by one screenful |
+| `enter`, `l` or `→` | Open the selected artist or album, or play the selected track |
+| `esc`, `h`, `←` or `backspace` | Go back to the previous screen |
 
-There are three levels: artists, then that artist's albums, then that album's
-tracks. Back at the top does nothing, so you cannot leave the player by
-pressing back one time too many.
+Pressing back on the artist list does nothing, because there is nothing above
+it. This prevents you from quitting the player by pressing back once too often.
 
-Each level remembers where you were, so going back puts you on the same row.
+Each screen remembers which row you had selected. If you open an album and then
+go back, the album you opened is still highlighted.
 
-## Playing
+## Controlling playback
 
-| key | |
+These work on any screen, whatever you are browsing.
+
+| Key | What it does |
 |---|---|
-| `space` | pause or resume |
-| `n` | next track |
-| `p` | previous track |
-| `]` | forward ten seconds |
-| `[` | back ten seconds |
-| `+` `=` | volume up |
-| `-` `_` | volume down |
+| `space` | Pause, or resume if already paused |
+| `n` | Skip to the next track |
+| `p` | Go back to the previous track |
+| `]` | Seek forward ten seconds |
+| `[` | Seek backward ten seconds |
+| `+` or `=` | Increase the volume by five percent |
+| `-` or `_` | Decrease the volume by five percent |
 
-Volume moves in steps of five and stops at 0 and 100.
+The volume ranges from 0 to 100 percent and stops at each end, so holding a key
+down cannot push it past either limit.
 
-Playing a track also queues the one after it, so albums play through without a
-gap between tracks.
+When you start a track, shanty also tells mpv about the track after it. mpv
+opens that file in advance, so an album plays through without a pause between
+tracks.
 
-## Leaving
+## Quitting
 
-| key | |
+| Key | What it does |
 |---|---|
-| `q` `ctrl+c` | quit |
+| `q` or `ctrl+c` | Quit shanty |
 
-Quitting stops mpv too. Nothing is left running in the background.
+Quitting also stops mpv. shanty does not leave a player running in the
+background.
 
-## Changing them
+## Changing the keys
 
-Not yet. Configurable keys are planned.
+The keys are currently fixed. Configurable key bindings are planned.

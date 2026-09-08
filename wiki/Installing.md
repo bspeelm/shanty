@@ -1,53 +1,76 @@
 # Installing
 
-shanty is a single binary. It needs **mpv**, which is what actually plays the
-audio — shanty finds the music and mpv makes the sound.
+Installing shanty takes two steps: install the shanty binary, and install mpv.
 
-## The binary
+shanty is a single executable file with no other dependencies. mpv is a media
+player that must be installed separately. shanty handles finding music on your
+server and controlling playback, while mpv decodes the audio and sends it to
+your sound card. shanty will not start without mpv.
+
+## Installing the shanty binary
+
+The simplest way is to download the latest release:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
 ```
 
-This downloads the build for your system, checks it against the checksums the
-release publishes, and puts it in `~/.local/bin`.
+The script detects your operating system and processor architecture, downloads
+the matching build, checks it against the checksums published with the release,
+and copies it to `~/.local/bin/shanty`. If `~/.local/bin` is not on your `PATH`,
+the script tells you and shows the line to add to your shell configuration.
 
-Add `--verify` to also check who built it. That needs the `gh` command line
-tool installed. The checksum tells you the file was not corrupted in transit;
-the verification tells you it came from this project's build, which a checksum
-cannot.
+To also confirm that the file was built by this project's release process and
+not substituted afterwards, add `--verify`:
 
-From a clone of the repository, with no release and no network:
+```sh
+curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh -s -- --verify
+```
+
+This requires GitHub's `gh` command-line tool to be installed. The checksum
+check that always runs confirms the download was not corrupted or truncated.
+The `--verify` check confirms who produced the file, which a checksum alone
+cannot do, because anyone able to replace the download could replace the
+checksum file alongside it.
+
+If you have cloned the repository, you can build and install it directly
+instead. This needs Go and no network access:
 
 ```sh
 make install-binary
 ```
 
-## mpv
+## Installing mpv
 
-| system | command |
+| Operating system | Command |
 |---|---|
-| Debian, Ubuntu | `apt install mpv` |
-| Fedora, RHEL | `dnf install mpv` |
-| Arch | `pacman -S mpv` |
-| macOS | `brew install mpv` |
-| Fedora Silverblue, Kinoite, Bazzite | `rpm-ostree install mpv`, then reboot |
+| Debian, Ubuntu | `sudo apt install mpv` |
+| Fedora, RHEL, CentOS | `sudo dnf install mpv` |
+| Arch Linux | `sudo pacman -S mpv` |
+| macOS with Homebrew | `brew install mpv` |
+| Fedora Silverblue, Kinoite, Bazzite | `sudo rpm-ostree install mpv`, then reboot |
 
-### mpv has to be reachable from where shanty runs
+### mpv must be installed where shanty runs
 
-shanty starts mpv and talks to it through a socket file, so both programs have
-to see the same filesystem.
+shanty controls mpv by writing to a socket file, which is a special file on
+disk. Both programs must be able to see that file at the same path, which means
+they must be installed in the same place as each other.
 
-- **A flatpak mpv will not work.** Flatpak gives it a private view of the
-  system, and it cannot see the socket shanty makes. The failure looks like a
-  permissions error.
-- **Inside a container**, install mpv in the same container you run shanty in.
-  If shanty runs on the host, mpv goes on the host.
+**Do not install mpv as a flatpak.** Flatpak deliberately gives an application
+its own private view of the filesystem, so an mpv installed that way cannot see
+the socket file shanty creates. shanty will start mpv successfully and then
+fail to communicate with it, and the error looks like a permissions problem.
 
-## Checking it
+**If you run shanty inside a container**, such as a Toolbx or distrobox
+container, install mpv inside that same container. If you run shanty directly
+on your host system, install mpv on the host.
+
+## Confirming it worked
 
 ```sh
 shanty doctor
 ```
 
-Every line either passes or tells you the command to run.
+This reports on each part of your setup. Anything that is not working is listed
+with the command or configuration change that fixes it. The
+[The doctor](The-doctor) page explains what each check looks at.

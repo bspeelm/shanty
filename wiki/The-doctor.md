@@ -1,7 +1,8 @@
 # The doctor
 
-`shanty doctor` runs eight checks and reports on each. Anything that is not
-passing comes with the command or the change that fixes it.
+`shanty doctor` examines your setup and reports on eight things. Anything that
+is not working is listed with the command or configuration change that fixes
+it.
 
 ```
 ✓ mpv            mpv is at /usr/bin/mpv
@@ -18,36 +19,59 @@ passing comes with the command or the change that fixes it.
   fix: create one in the server's web interface and put it in credentials.toml as api_key
 ```
 
-## The checks
+## What each check examines
 
-| | what it is looking at |
+**`mpv`** — whether the mpv media player is installed and can be found on your
+`PATH`. shanty cannot play anything without it. If it is missing, the fix names
+the right install command for your system, including image-based systems where
+the usual package manager cannot modify the operating system.
+
+**`mpv-version`** — which version of mpv you have. This is reported for your
+information. shanty does not currently require a minimum version.
+
+**`runtime-dir`** — the directory that will hold shanty's connection to mpv
+while music is playing. The check confirms the directory is usable and readable
+only by you. If it does not exist yet, that is normal; shanty creates it when
+you first play something.
+
+**`config`** — whether `config.toml` can be read and names a server address
+that shanty can use. This check produces a warning rather than an error if your
+server address uses `http://` instead of `https://`, because your credential
+and everything you play then cross the network unencrypted.
+
+**`credentials`** — whether a credential exists, and whether the file holding it
+can be read by other users of the machine. It warns if the credential is a
+plain password and names the better options.
+
+**`server`** — whether your server responds at all.
+
+**`auth`** — whether your server accepts your credential.
+
+**`auth-mode`** — whether your server supports a stronger kind of credential
+than the one you are using. It warns if the server offers API keys and shanty
+is authenticating with something else.
+
+## Reading the report
+
+| Symbol | Meaning |
 |---|---|
-| `mpv` | whether mpv is installed and reachable |
-| `mpv-version` | which mpv, reported for your information |
-| `runtime-dir` | the directory the connection to mpv will live in |
-| `config` | that `config.toml` reads and names a server |
-| `credentials` | that a credential exists and only you can read it |
-| `server` | whether the server answers |
-| `auth` | whether it accepts your credential |
-| `auth-mode` | whether a better kind of credential is available |
+| `✓` | Working |
+| `!` | Working, but something is worth changing |
+| `✗` | Broken, with the fix on the following line |
+| `–` | Not checked, because an earlier failure made the answer meaningless |
 
-## Reading the results
+Only `✗` makes the command exit with an error. Warnings do not, because they
+describe things that will not stop you playing music.
 
-**✓** fine. **!** works, but you would probably want to change it. **✗**
-broken, and the fix is on the next line. **–** not checked, because something
-earlier made the answer meaningless.
+`server` and `auth` are separate checks. A server that responds and then
+rejects your credential is not unreachable: `server` passes, `auth` fails, and
+the problem is your credential rather than your network.
 
-Only ✗ makes `doctor` exit with an error.
-
-`server` and `auth` are separate. A server that answers and then refuses your
-credential is not unreachable — `server` passes and `auth` fails, so the
-problem is your password rather than your network.
-
-## As data
+## JSON output
 
 ```sh
 shanty doctor -json
 ```
 
-Each check comes back with an `id`, a `severity` of `fail`, `warn`, `pass` or
-`skip`, a `summary`, and a `fix` where there is one.
+Each check is reported as an object with an `id`, a `severity` of `fail`,
+`warn`, `pass` or `skip`, a `summary`, and a `fix` where one applies.

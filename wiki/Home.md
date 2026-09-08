@@ -1,31 +1,37 @@
 # shanty
 
-A music player for your own server, in a terminal.
+shanty is a terminal application for playing music from a Subsonic or Navidrome
+server that you run yourself.
 
-shanty connects to a Subsonic or Navidrome server you run, shows you what is on
-it, and plays it. It does not download, sync, or manage a local library — the
-music stays on your server, and your play history goes back to it.
+It lists the artists on your server, then the albums by an artist you choose,
+then the tracks on an album. When you select a track, shanty plays it and
+reports the play back to your server, so your listening history stays on the
+machine you control.
 
-## Start here
+shanty does not store music on your computer, download files, or keep a local
+library. The audio is decoded and played by mpv, a separate media player that
+shanty starts and controls.
 
-- **[Installing](Installing)** — the binary, and the one program it needs
-- **[Your first run](Your-first-run)** — four questions, then music
-- **[Keys](Keys)** — every key, on one page
-- **[Commands](Commands)** — `shanty`, `setup`, `doctor`, `uninstall`
+## Getting started
 
-## How it behaves
+- **[Installing](Installing)** — how to install shanty and the mpv media player it requires
+- **[Your first run](Your-first-run)** — connecting shanty to your server for the first time
+- **[Keys](Keys)** — every keyboard shortcut, grouped by what it does
+- **[Commands](Commands)** — what each of shanty's six commands does
 
-- **[Credentials](Credentials)** — the four ways to sign in, and which to prefer
-- **[The doctor](The-doctor)** — what each check means
-- **[Where it puts things](Where-it-puts-things)** — four directories, and nothing else
-- **[Security](Security)** — what shanty does with your password, and where it connects
+## Reference
 
-## When something is wrong
+- **[Credentials](Credentials)** — the four ways to authenticate with your server, and which to prefer
+- **[The doctor](The-doctor)** — what each check in `shanty doctor` examines
+- **[Where it puts things](Where-it-puts-things)** — the four directories shanty writes to
+- **[Security](Security)** — how shanty stores your password, and what it connects to
 
-- **[Troubleshooting](Troubleshooting)** — mpv, containers, permissions, proxies
+## Problems
+
+- **[Troubleshooting](Troubleshooting)** — the errors you are most likely to see, and what to do about them
 
 ---
 
-*These pages are kept in the project's `wiki/` directory and published from
-there. An edit made here is replaced the next time they are published; send a
-pull request instead.*
+*These pages are kept in the project repository, in its `wiki/` directory, and
+published from there automatically. If you edit a page here it will be replaced
+the next time they are published, so please send a pull request instead.*

@@ -1,28 +1,39 @@
 # Troubleshooting
 
-Run `shanty doctor` first. Most of what follows is a longer version of
-something it already told you.
+Run `shanty doctor` first. It examines your setup and names the fix for
+anything that is wrong, and most of the sections below are a longer explanation
+of something it will already have told you.
 
 ## "mpv is not on PATH"
 
-mpv is what plays the audio. [Installing](Installing) has the command for your
-system.
+shanty does not decode audio itself; mpv does. The
+[Installing](Installing) page lists the install command for each system.
 
-On Fedora Silverblue, Kinoite or Bazzite, `dnf install` cannot change the
-system. Use `rpm-ostree install mpv` and reboot. If that fails while resolving
-kernel modules, `rpm-ostree update --install mpv` does the system update and
-the install together, in one reboot.
+On Fedora Silverblue, Kinoite or Bazzite, `dnf install` cannot modify the
+operating system. Use `sudo rpm-ostree install mpv` and then reboot.
 
-## mpv is installed and shanty still cannot find it
+If that fails while resolving kernel modules, it is because your installed
+kernel is older than the one the repositories now offer, and a layered package
+cannot be rebuilt against it. Running `sudo rpm-ostree update --install mpv`
+updates the system and installs mpv in a single operation, which resolves it
+with one reboot instead of two.
 
-They are probably not in the same place.
+## mpv is installed but shanty still cannot find it
 
-shanty talks to mpv through a socket file, so both have to see the same
-filesystem. If shanty is running inside a container and mpv is on the host — or
-the other way round — they cannot reach each other. Put both on the same side.
+The two are probably not installed in the same place.
 
-A **flatpak** mpv cannot work at all. Flatpak gives it a private view of the
-system, so the socket shanty makes is not there as far as mpv is concerned.
+shanty controls mpv through a socket file on disk, so both programs must be
+able to see that file at the same path. If shanty is running inside a container
+and mpv is installed on the host system, or the other way around, they cannot
+reach each other.
+
+Install mpv wherever you run shanty: inside the container if shanty runs in a
+container, or on the host if it runs on the host.
+
+An mpv installed as a **flatpak** will not work at all. Flatpak gives an
+application its own private view of the filesystem, so it cannot see the socket
+file shanty creates. shanty starts mpv successfully and then cannot communicate
+with it.
 
 ## "the credentials file is readable by other accounts"
 
@@ -30,44 +41,51 @@ system, so the socket shanty makes is not there as far as mpv is concerned.
 chmod 600 ~/.config/shanty/credentials.toml
 ```
 
-shanty stops rather than warning, so this cannot be scrolled past.
+shanty refuses to start rather than warning, so that this cannot be missed.
 
 ## "the server answered with an HTML page rather than JSON"
 
-Something is answering instead of your music server — a reverse proxy, a login
-page, a captive portal. Open the address in a browser and see what comes back.
+Something other than your music server is responding to shanty's requests. This
+is usually a reverse proxy returning an error page, a login page, or a captive
+portal on the network you are connected to.
+
+Open the same address in a browser and see what comes back.
 
 ## "the server refused the credential"
 
-The server is reachable and your credential is wrong. Check that `username` in
-`config.toml` matches the account the credential belongs to, or run
-`shanty setup` again.
+Your server is reachable and responding, but it did not accept your credential.
 
-If your account signs in through LDAP, the scrambled-password method may be
-turned off for it. Use an API key instead.
+Check that the `username` in `config.toml` is the account the credential
+belongs to, or run `shanty setup` again to enter it afresh.
 
-## The music stops between tracks
+If your account signs in through LDAP, your server may not accept the scrambled
+password that Subsonic clients normally send. Create an API key in the server's
+web interface and use that instead.
 
-If mpv has stopped, shanty says so on the status line rather than quietly
-restarting it. Restart shanty.
+## Playback stops between tracks
 
-If it keeps happening, try the same track in mpv directly and see what mpv
-says.
+If mpv has stopped running, shanty reports that on the status line rather than
+restarting it silently. Quit and start shanty again.
+
+If it keeps happening, play the same track with mpv directly and see what mpv
+reports.
 
 ## A key does nothing
 
-Check which screen you are on. Back at the top level does nothing, so you
-cannot leave the player by pressing back one time too many.
+Check which screen you are on. Pressing back on the artist list does nothing,
+because there is no screen above it.
 
-## A track name looks odd
+## A track or artist name looks wrong
 
-Anything a terminal would act on as an instruction is removed from names before
-they are drawn, so a name containing those characters appears without them.
+Characters that a terminal would interpret as an instruction are removed from
+names before they are displayed, so a name containing them appears without
+them. See [Security](Security) for why.
 
-## Removing it
+## Removing shanty
 
 ```sh
 shanty uninstall
 ```
 
-Then delete the binary from wherever you installed it.
+Then delete the binary from wherever you installed it, usually
+`~/.local/bin/shanty`.
