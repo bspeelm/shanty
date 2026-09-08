@@ -41,6 +41,7 @@ program gives it.
 | [`internal/subsonic/fake`](internal/subsonic/fake) | an in-process server for tests |
 | [`internal/mpv`](internal/mpv) | one mpv, its socket, and its lifetime |
 | [`internal/queue`](internal/queue) | what plays next; pure functions over data |
+| [`internal/control`](internal/control) | the socket a detached session is commanded through |
 | [`internal/tui`](internal/tui) | the screens; renders and emits intents, does no I/O |
 
 Three rules hold that shape, and `make budgets` enforces all three: `internal/tui`
