@@ -30,10 +30,11 @@ func streamURL() string {
 // kernel's own view is checked too, because /proc is what the standard says to
 // read and a discrepancy between the two would be worth knowing about.
 func TestChildProcessHygiene(t *testing.T) {
-	// A credential in the parent's environment, to prove the test would
-	// notice one: shanty adds nothing of its own, and this asserts the search
-	// is looking in the right place.
-	p, dir := stub(t, "SHANTY_TEST_CANARY="+fakeToken)
+	// The canary is a value no part of shanty uses, so that the credential
+	// itself stays searchable in the child's environment. Planting the token
+	// as the canary would make the one value that matters most impossible to
+	// look for.
+	p, dir := stub(t, "SHANTY_TEST_CANARY=not-a-credential")
 
 	if err := p.Load(t.Context(), streamURL()); err != nil {
 		t.Fatal(err)
@@ -49,14 +50,13 @@ func TestChildProcessHygiene(t *testing.T) {
 		}
 	}
 
-	// The canary proves the environment is genuinely being searched; shanty's
-	// own credential is what must not be in it, and it is not, because it
-	// went over the socket instead.
+	// The canary proves the environment is genuinely being searched. shanty's
+	// own credential must not be in it, because it went over the socket.
 	environ := report(t, dir, environFile)
-	if !strings.Contains(environ, "SHANTY_TEST_CANARY="+fakeToken) {
+	if !strings.Contains(environ, "SHANTY_TEST_CANARY=not-a-credential") {
 		t.Fatal("the canary is missing from the child's environment; this test is not searching anything")
 	}
-	for _, secret := range []string{fakeSalt, "stream.view"} {
+	for _, secret := range []string{fakeToken, fakeSalt, "stream.view"} {
 		if strings.Contains(environ, secret) {
 			t.Errorf("the child's environment carries %q", secret)
 		}
@@ -71,9 +71,11 @@ func TestChildProcessHygiene(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading /proc/%d/%s: %v", pid, f, err)
 		}
-		// NUL-separated; the token would survive either way.
-		if strings.Contains(string(raw), fakeSalt) || strings.Contains(string(raw), "stream.view") {
-			t.Errorf("/proc/%d/%s carries the stream URL", pid, f)
+		// NUL-separated, so a credential is still found by a substring search.
+		for _, secret := range []string{fakeToken, fakeSalt, "stream.view"} {
+			if strings.Contains(string(raw), secret) {
+				t.Errorf("/proc/%d/%s carries %q", pid, f, secret)
+			}
 		}
 	}
 }
