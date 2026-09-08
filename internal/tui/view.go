@@ -112,6 +112,8 @@ func (m Model) heading() string {
 		return Sanitise(m.artist.Name)
 	case ScreenTracks:
 		return Sanitise(m.album.Artist) + " · " + Sanitise(m.album.Name)
+	case ScreenSearch:
+		return searchHeading(m.query, m.found)
 	case ScreenQueue:
 		switch {
 		case len(m.queued) == 0:
@@ -166,6 +168,12 @@ func (m Model) row(i int) (string, string) {
 	case ScreenTracks:
 		s := m.album.Songs[i]
 		return fmt.Sprintf("%2d. %s", s.Track, Sanitise(s.Title)), clock(time.Duration(s.Duration) * time.Second)
+	case ScreenSearch:
+		r := m.found[i]
+		if r.kind == kindHeading {
+			return faintStyle.Render(r.name), ""
+		}
+		return Sanitise(r.name), Sanitise(r.detail)
 	case ScreenQueue:
 		t := m.queued[i]
 		mark := "  "

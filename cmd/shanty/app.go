@@ -91,6 +91,8 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.fetchArtist(msg.ID)
 	case tui.OpenAlbum:
 		return a, a.fetchAlbum(msg.ID)
+	case tui.Search:
+		return a, a.search(string(msg))
 
 	case tui.PlayFrom:
 		a.queue = queueFrom(msg.Album).Jump(msg.Index)
@@ -397,6 +399,18 @@ func (a app) prefetch() tea.Cmd {
 	}
 	p := a.player
 	return a.act(func(ctx context.Context) error { return p.Prefetch(ctx, url) })
+}
+
+// search asks the server for anything matching the query.
+func (a app) search(query string) tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		found, err := client.Search(a.ctx, query)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return tui.SearchLoaded{Query: query, Results: found}
+	}
 }
 
 // queueChanged sends the interface the queue to draw.

@@ -52,6 +52,8 @@ type (
 	}
 	// JumpTo asks for the queue to move to one of its own tracks.
 	JumpTo int
+	// Search asks the server for anything matching the query.
+	Search string
 )
 
 // Inputs are what the caller sends back once it has done the work.
@@ -59,7 +61,12 @@ type (
 	ArtistsLoaded []subsonic.Artist
 	ArtistLoaded  subsonic.Artist
 	AlbumLoaded   subsonic.Album
-	NowPlaying    struct {
+	// SearchLoaded is what a search found.
+	SearchLoaded struct {
+		Query   string
+		Results subsonic.Results
+	}
+	NowPlaying struct {
 		Title, Artist string
 		Duration      time.Duration
 	}

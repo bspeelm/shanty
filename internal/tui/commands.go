@@ -26,6 +26,18 @@ var commands = []command{
 		run:     func(string) (any, error) { return Quit{}, nil },
 	},
 	{
+		name:     "search",
+		summary:  "find artists, albums and tracks on the server",
+		argument: "words",
+		run: func(arg string) (any, error) {
+			arg = strings.TrimSpace(arg)
+			if arg == "" {
+				return nil, errBadArgument{"search", arg, "something to look for"}
+			}
+			return Search(arg), nil
+		},
+	},
+	{
 		name:    "headless",
 		summary: "leave the interface and keep playing",
 		run:     func(string) (any, error) { return Detach{}, nil },

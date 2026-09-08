@@ -30,10 +30,11 @@ const (
 	ScreenAlbums
 	ScreenTracks
 	ScreenQueue
+	ScreenSearch
 )
 
 // Screens lists every screen.
-var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue}
+var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue, ScreenSearch}
 
 func (s Screen) String() string {
 	switch s {
@@ -45,6 +46,8 @@ func (s Screen) String() string {
 		return "tracks"
 	case ScreenQueue:
 		return "queue"
+	case ScreenSearch:
+		return "search"
 	}
 	return "unknown"
 }
@@ -63,6 +66,11 @@ type Model struct {
 	// position in it. The caller owns the queue; this is a copy to draw.
 	queued   []queue.Track
 	queuedAt int
+
+	// found is what the last search returned, flattened into rows with a
+	// heading before each group. query is what was asked for.
+	found []result
+	query string
 
 	// cursor holds the selected row for each screen, as an index into the
 	// filtered list rather than the whole one.
@@ -126,7 +134,17 @@ func (m Model) matches() []int {
 	out := make([]int, 0, n)
 	needle := strings.ToLower(m.filter)
 	for i := range n {
-		if needle == "" || strings.Contains(strings.ToLower(m.rowName(i)), needle) {
+		if needle == "" {
+			out = append(out, i)
+			continue
+		}
+		// A search heading names a group rather than a thing in the library,
+		// so narrowing the list drops it. Otherwise typing "tracks" would
+		// leave a screen holding nothing but the word TRACKS.
+		if m.screen == ScreenSearch && !m.found[i].selectable() {
+			continue
+		}
+		if strings.Contains(strings.ToLower(m.rowName(i)), needle) {
 			out = append(out, i)
 		}
 	}
@@ -144,6 +162,8 @@ func (m Model) allRows() int {
 		return len(m.album.Songs)
 	case ScreenQueue:
 		return len(m.queued)
+	case ScreenSearch:
+		return len(m.found)
 	}
 	return 0
 }
@@ -160,6 +180,8 @@ func (m Model) rowName(i int) string {
 		return m.album.Songs[i].Title
 	case ScreenQueue:
 		return m.queued[i].Title + " " + m.queued[i].Artist
+	case ScreenSearch:
+		return m.found[i].name
 	}
 	return ""
 }

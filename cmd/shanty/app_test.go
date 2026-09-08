@@ -322,6 +322,12 @@ func TestEveryIntentIsWiredUp(t *testing.T) {
 		"VolumeBy":      tui.VolumeBy{Delta: 1},
 		"VolumeSet":     tui.VolumeSet(40),
 		"SeekToPercent": tui.SeekToPercent(50),
+		"Search":        tui.Search("water"),
+		"PlayNext":      tui.PlayNext{Album: album},
+		"Enqueue":       tui.Enqueue{Album: album},
+		"JumpTo":        tui.JumpTo(0),
+		"SetPaused":     tui.SetPaused(true),
+		"SeekTo":        tui.SeekTo(time.Minute),
 	} {
 		t.Run(name, func(t *testing.T) {
 			next, cmd := a.Update(msg)

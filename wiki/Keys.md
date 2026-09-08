@@ -26,6 +26,23 @@ it. This prevents you from quitting the player by pressing back once too often.
 Each screen remembers which row you had selected. If you open an album and then
 go back, the album you opened is still highlighted.
 
+## Searching the server
+
+`/` narrows the list in front of you. It cannot reach what is not on it, and
+tracks are loaded one album at a time, so a track on an album you have not
+opened is not there to be filtered.
+
+`:search slipway` asks the server instead. The results are artists, albums and
+tracks together, grouped under headings, with the count in the title bar.
+`enter` opens an artist or an album, or plays a track. `esc` returns to the
+artist list.
+
+The headings are not rows: moving passes over them, and filtering the results
+with `/` drops them.
+
+Searching needs the whole query before it can start, which is why it is a
+command rather than a key like `/`.
+
 ## Filtering a list
 
 Press `/` and type. The list narrows to rows containing what you typed,
@@ -99,6 +116,7 @@ line.
 | `:q` | Quit |
 | `:volume 40` | Set the volume to a number, where `+` and `-` change it by steps |
 | `:headless` | Close the interface and keep playing |
+| `:search slipway` | Find artists, albums and tracks on the server |
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.

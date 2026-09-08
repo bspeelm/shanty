@@ -57,6 +57,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case Notice:
 		m.status = string(msg)
 		return m, nil
+	case SearchLoaded:
+		m.found, m.query = flatten(msg.Results), msg.Query
+		m.screen, m.loading, m.status, m.filter = ScreenSearch, false, "", ""
+		return m.selecting(ScreenSearch, firstSelectable(m.found)), nil
 	case QueueChanged:
 		m.queued, m.queuedAt = msg.Tracks, msg.At
 		if m.screen == ScreenQueue {
@@ -120,7 +124,7 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		return m.move(repeat), nil
 	case "home":
-		return m.moveTo(0), nil
+		return m.moveTo(0).ontoARow(), nil
 	case "end", "G":
 		return m.moveTo(m.rows() - 1), nil
 	case "pgup":
@@ -262,7 +266,7 @@ func (m *Model) take() (int, bool) {
 func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "g":
-		return m.moveTo(0), nil
+		return m.moveTo(0).ontoARow(), nil
 	case "a":
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
 		return m, nil
@@ -297,6 +301,19 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		return m, emit(PlayFrom{Album: m.album, Index: at})
 	case ScreenQueue:
 		return m, emit(JumpTo(at))
+	case ScreenSearch:
+		r := m.found[at]
+		switch r.kind {
+		case kindArtist:
+			m.loading, m.status = true, "opening "+Sanitise(r.name)
+			return m, emit(OpenArtist{ID: r.id})
+		case kindAlbum:
+			m.loading, m.status = true, "opening "+Sanitise(r.name)
+			return m, emit(OpenAlbum{ID: r.id})
+		case kindSong:
+			return m, emit(PlayFrom{Album: r.album, Index: 0})
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -330,15 +347,48 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		m.screen, m.status, m.filter = ScreenAlbums, "", ""
 	case ScreenAlbums:
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
-	case ScreenQueue:
-		// The queue is reached from anywhere, so back leaves for the one
-		// screen that is always there rather than wherever it was opened from.
+	case ScreenQueue, ScreenSearch:
+		// Both are reached from anywhere, so back leaves for the one screen
+		// that is always there rather than wherever it was opened from.
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
 	}
 	return m, nil
 }
 
-func (m Model) move(by int) Model { return m.moveTo(m.cursor[m.screen] + by) }
+func (m Model) move(by int) Model {
+	next := m.moveTo(m.cursor[m.screen] + by)
+	// A heading is a row nothing can be done with, so the cursor carries on
+	// past it in the direction it was already going.
+	if m.screen == ScreenSearch && by != 0 {
+		dir := 1
+		if by < 0 {
+			dir = -1
+		}
+		return next.selecting(ScreenSearch, stepOver(m.matchedResults(), next.cursor[ScreenSearch], dir))
+	}
+	return next
+}
+
+// ontoARow moves the cursor forward off a heading. Only the top of a search
+// screen can be one: a heading is written only when its group has something in
+// it, so the last row is always a result. Every other screen has no headings
+// at all and is left alone.
+func (m Model) ontoARow() Model {
+	if m.screen != ScreenSearch {
+		return m
+	}
+	return m.selecting(ScreenSearch, stepOver(m.matchedResults(), m.cursor[ScreenSearch], 1))
+}
+
+// matchedResults is the rows the search screen is showing, which is what the
+// cursor moves through once a filter has narrowed them.
+func (m Model) matchedResults() []result {
+	out := make([]result, 0, len(m.found))
+	for _, i := range m.matches() {
+		out = append(out, m.found[i])
+	}
+	return out
+}
 
 // moveTo selects row to, clamped to the list.
 func (m Model) moveTo(to int) Model {

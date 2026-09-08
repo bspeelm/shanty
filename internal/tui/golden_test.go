@@ -56,6 +56,22 @@ func library() []subsonic.Artist {
 	}
 }
 
+// results is what a search across the library comes back with: all three
+// kinds at once, which is the shape the screen has to draw.
+func results() subsonic.Results {
+	return subsonic.Results{
+		Artists: []subsonic.Artist{{ID: "ar-1", Name: "Aoi", AlbumCount: 2}},
+		Albums: []subsonic.Album{
+			{ID: "al-2", Name: "Low Water", Artist: "Aoi"},
+			{ID: "al-9", Name: "Deep Water", Artist: "The Bilge Pumps"},
+		},
+		Songs: []subsonic.Song{
+			{ID: "tr-1", Title: "Slipway", Album: "Harbour", AlbumID: "al-1", Artist: "Aoi", Duration: 180},
+			{ID: "tr-7", Title: "Watermark", Album: "Bail", AlbumID: "al-3", Artist: "The Bilge Pumps", Duration: 245},
+		},
+	}
+}
+
 // queued is a queue with a track from more than one album in it, which is
 // what a queue looks like once anything has been added to one.
 // onQueue presses gq, which is how the queue screen is reached.
@@ -110,6 +126,10 @@ func TestGoldenScreens(t *testing.T) {
 			NowPlaying{Title: "Ballast", Artist: "Aoi", Duration: 200 * time.Second},
 			Progress(45*time.Second)))},
 		{"queue-empty", onQueue(t, tracks)},
+		{"search", send(t, base, SearchLoaded{Query: "water", Results: results()})},
+		{"search-nothing", send(t, base, SearchLoaded{Query: "zzzz", Results: subsonic.Results{}})},
+		{"search-tracks-only", send(t, base, SearchLoaded{Query: "slipway",
+			Results: subsonic.Results{Songs: results().Songs}})},
 		{"queue-finished", onQueue(t, send(t, tracks,
 			QueueChanged{Tracks: queued(), At: 3}))},
 		{"tracks-playing", send(t, tracks,

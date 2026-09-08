@@ -100,6 +100,9 @@ While a track is playing, `space` pauses and resumes, `n` and `p` move between
 tracks, `[` and `]` seek backward and forward, and `+` and `-` change the
 volume.
 
+`:search slipway` looks across the whole server, where `/` narrows only what is
+already on screen.
+
 Press `:` to type a command; the ones matching what you type are listed as you
 go. `:q` quits. The
 [Keys](https://github.com/bspeelm/shanty/wiki/Keys) page lists everything.

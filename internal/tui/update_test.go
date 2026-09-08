@@ -8,15 +8,30 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/queue"
+	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
+// namedKeys are the keys the model reads by name rather than by character.
+var namedKeys = map[string]tea.KeyType{
+	"esc": tea.KeyEsc, "enter": tea.KeyEnter, "tab": tea.KeyTab,
+	"backspace": tea.KeyBackspace, "space": tea.KeySpace,
+	"up": tea.KeyUp, "down": tea.KeyDown, "left": tea.KeyLeft, "right": tea.KeyRight,
+	"home": tea.KeyHome, "end": tea.KeyEnd, "pgup": tea.KeyPgUp, "pgdown": tea.KeyPgDown,
+}
+
 // press returns the model after a key, and whatever intent it emitted.
+//
+// A key with a name rather than a character is sent as that key. Sending it as
+// runes works in normal mode, where the model reads the key's name, but in the
+// filter and the command line it is typed in as text: press(m, "esc") put the
+// letters e, s and c into the filter instead of leaving it.
 func press(t *testing.T, m Model, key string) (Model, tea.Msg) {
 	t.Helper()
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
-	if key == "enter" {
-		next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
+	if named, ok := namedKeys[key]; ok {
+		msg = tea.KeyMsg{Type: named}
 	}
+	next, cmd := m.Update(msg)
 	var out tea.Msg
 	if cmd != nil {
 		out = cmd()
@@ -211,8 +226,8 @@ func TestEveryScreenHasAHeadingAndRenders(t *testing.T) {
 			t.Errorf("screen %s rendered nothing", s)
 		}
 	}
-	if len(Screens) != 4 {
-		t.Errorf("Screens lists %d screens; there are four, so this is a change to the interface", len(Screens))
+	if len(Screens) != 5 {
+		t.Errorf("Screens lists %d screens; there are five, so this is a change to the interface", len(Screens))
 	}
 }
 
@@ -692,5 +707,214 @@ func TestQueueingSomewhereWithNoTrackSaysSo(t *testing.T) {
 		if !strings.Contains(m.Status(), "open an album") {
 			t.Errorf("%s said %q", key, m.Status())
 		}
+	}
+}
+
+// searched is the model showing a set of results across all three kinds.
+func searched(t *testing.T) Model {
+	t.Helper()
+	return send(t, loaded(t), SearchLoaded{Query: "water", Results: subsonic.Results{
+		Artists: []subsonic.Artist{{ID: "ar-1", Name: "Aoi", AlbumCount: 2}},
+		Albums:  []subsonic.Album{{ID: "al-2", Name: "Low Water", Artist: "Aoi"}},
+		Songs: []subsonic.Song{
+			{ID: "tr-1", Title: "Watermark", Album: "Bail", AlbumID: "al-3", Artist: "Aoi", Duration: 245},
+		},
+	}})
+}
+
+// TestTheCursorNeverRestsOnAHeading covers the one row a search screen has
+// that nothing can be done with. Moving through the results steps over the
+// group names rather than stopping on them.
+func TestTheCursorNeverRestsOnAHeading(t *testing.T) {
+	m := searched(t)
+
+	// Every way of moving, including the ones that jump rather than step.
+	for _, key := range []string{
+		"j", "j", "j", "j", "k", "k", "k", "k",
+		"down", "down", "up",
+		"G", "gg", "home", "end", "pgdown", "pgup",
+	} {
+		switch key {
+		case "gg":
+			m, _ = press(t, m, "g")
+			m, _ = press(t, m, "g")
+		default:
+			m, _ = press(t, m, key)
+		}
+		if at := m.Cursor(); m.found[at].kind == kindHeading {
+			t.Fatalf("after %q the cursor is on the heading %q", key, m.found[at].name)
+		}
+	}
+}
+
+// TestASearchOpensOnTheFirstResult covers where the cursor starts. The first
+// row is a heading, so it cannot be there.
+func TestASearchOpensOnTheFirstResult(t *testing.T) {
+	m := searched(t)
+
+	if m.Screen() != ScreenSearch {
+		t.Fatalf("a search left the interface on %s", m.Screen())
+	}
+	if at := m.Cursor(); m.found[at].kind == kindHeading {
+		t.Errorf("a search opened on the heading %q", m.found[at].name)
+	}
+	if m.found[m.Cursor()].name != "Aoi" {
+		t.Errorf("a search opened on %q, want the first result", m.found[m.Cursor()].name)
+	}
+}
+
+// TestOpeningEachKindOfResultAsksForTheRightThing covers what enter does. The
+// three kinds are in one list, so the row decides.
+func TestOpeningEachKindOfResultAsksForTheRightThing(t *testing.T) {
+	m := searched(t)
+
+	_, got := press(t, m, "enter")
+	if artist, ok := got.(OpenArtist); !ok || artist.ID != "ar-1" {
+		t.Errorf("enter on an artist emitted %#v", got)
+	}
+
+	m, _ = press(t, m, "j") // past the ALBUMS heading, onto the album
+	_, got = press(t, m, "enter")
+	if album, ok := got.(OpenAlbum); !ok || album.ID != "al-2" {
+		t.Errorf("enter on an album emitted %#v", got)
+	}
+
+	m, _ = press(t, m, "j") // past the TRACKS heading, onto the track
+	_, got = press(t, m, "enter")
+	play, ok := got.(PlayFrom)
+	if !ok {
+		t.Fatalf("enter on a track emitted %#v", got)
+	}
+	// A track found by searching is on no album the interface has loaded, so
+	// it has to bring one with it.
+	if len(play.Album.Songs) != 1 || play.Album.Songs[0].ID != "tr-1" {
+		t.Errorf("the track was played from %+v", play.Album)
+	}
+	if play.Index != 0 {
+		t.Errorf("the track was played at index %d", play.Index)
+	}
+}
+
+// TestASearchThatFindsNothingSaysSoAndDoesNotMove covers the common case of a
+// typo. There is nothing to select, and enter must not act on a row that is
+// not there.
+func TestASearchThatFindsNothingSaysSoAndDoesNotMove(t *testing.T) {
+	m := send(t, loaded(t), SearchLoaded{Query: "zzzz", Results: subsonic.Results{}})
+
+	if m.Screen() != ScreenSearch {
+		t.Fatalf("a search that found nothing left the interface on %s", m.Screen())
+	}
+	if frame := m.View(); !strings.Contains(frame, "nothing matches") {
+		t.Errorf("the screen does not say nothing matched:\n%s", frame)
+	}
+	if _, got := press(t, m, "enter"); got != nil {
+		t.Errorf("enter on an empty result emitted %#v", got)
+	}
+	for _, key := range []string{"j", "k", "G"} {
+		if n, _ := press(t, m, key); n.Cursor() != 0 {
+			t.Errorf("%s moved to row %d in an empty result", key, n.Cursor())
+		}
+	}
+}
+
+// TestTheSearchCommandNeedsSomethingToLookFor covers the command with no
+// argument, which would otherwise ask the server for everything.
+func TestTheSearchCommandNeedsSomethingToLookFor(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, ":")
+	for _, c := range "search" {
+		m, _ = press(t, m, string(c))
+	}
+	m, got := press(t, m, "enter")
+
+	if got != nil {
+		t.Errorf(":search with nothing after it emitted %#v", got)
+	}
+	if !strings.Contains(m.Status(), "something to look for") {
+		t.Errorf("it said %q", m.Status())
+	}
+}
+
+// TestMovingThroughResultsLandsOnTheNextOne covers the direction the cursor
+// steps over a heading in. Stepping the wrong way would leave a key looking
+// dead: pressing k on the first track would step forward onto the track again
+// rather than back to the album above it.
+func TestMovingThroughResultsLandsOnTheNextOne(t *testing.T) {
+	m := searched(t)
+
+	// ARTISTS, Aoi, ALBUMS, Low Water, TRACKS, Watermark
+	want := []string{"Aoi", "Low Water", "Watermark"}
+	for i, name := range want {
+		if got := m.found[m.Cursor()].name; got != name {
+			t.Fatalf("moving down %d times reached %q, want %q", i, got, name)
+		}
+		if i < len(want)-1 {
+			m, _ = press(t, m, "j")
+		}
+	}
+	for i := len(want) - 1; i >= 0; i-- {
+		if got := m.found[m.Cursor()].name; got != want[i] {
+			t.Fatalf("moving back up reached %q, want %q", got, want[i])
+		}
+		if i > 0 {
+			m, _ = press(t, m, "k")
+		}
+	}
+}
+
+// TestFilteringResultsDropsTheHeadings covers a filter that matches a group
+// name. A heading is not a thing in the library, so narrowing the list must
+// not leave one behind on its own.
+func TestFilteringResultsDropsTheHeadings(t *testing.T) {
+	m := searched(t)
+
+	m, _ = press(t, m, "/")
+	for _, c := range "tracks" {
+		m, _ = press(t, m, string(c))
+	}
+
+	if m.rows() != 0 {
+		t.Errorf("filtering for a group name left %d rows", m.rows())
+	}
+	if frame := m.View(); !strings.Contains(frame, "nothing matches") {
+		t.Errorf("the screen does not say nothing matched:\n%s", frame)
+	}
+
+	// A filter matching a real result keeps it, without its heading.
+	m, _ = press(t, m, "esc")
+	m, _ = press(t, m, "/")
+	for _, c := range "water" {
+		m, _ = press(t, m, string(c))
+	}
+	if m.rows() != 2 {
+		t.Fatalf("filtering for water left %d rows, want the album and the track", m.rows())
+	}
+	for _, i := range m.matches() {
+		if m.found[i].kind == kindHeading {
+			t.Errorf("a heading survived the filter: %q", m.found[i].name)
+		}
+	}
+}
+
+// TestAHeadingIsNeverTheLastRow is the invariant that lets end skip the
+// step-over the other jumps need: a heading is written only when its group has
+// something in it.
+func TestAHeadingIsNeverTheLastRow(t *testing.T) {
+	for _, found := range []subsonic.Results{
+		{Artists: []subsonic.Artist{{Name: "Aoi"}}},
+		{Albums: []subsonic.Album{{Name: "Harbour"}}},
+		{Songs: []subsonic.Song{{Title: "Slipway"}}},
+		{Artists: []subsonic.Artist{{Name: "Aoi"}}, Songs: []subsonic.Song{{Title: "Slipway"}}},
+	} {
+		rows := flatten(found)
+		if len(rows) == 0 {
+			t.Fatalf("%+v flattened to nothing", found)
+		}
+		if !rows[len(rows)-1].selectable() {
+			t.Errorf("%+v ends with the heading %q", found, rows[len(rows)-1].name)
+		}
+	}
+	if rows := flatten(subsonic.Results{}); len(rows) != 0 {
+		t.Errorf("an empty result flattened to %d rows", len(rows))
 	}
 }
