@@ -596,6 +596,74 @@ configure and nothing documents.
 A test holds the bound actions against the documented ones in both directions,
 in the same way the command list is already held against the README.
 
+## ADR-017 — The command line shows what exists, and holds only what keys cannot
+
+**Status:** accepted. Extends ADR-016, which established that `:` exists for
+the long tail without saying what it contains or how it is entered.
+
+### The argument against having one at all
+
+`:` is a text-entry surface in a program driven by arrow keys and a space bar.
+A user may type a command no times in a session. Quitting is the only thing
+that truly needs it, and a single key would do that. It costs line editing,
+parsing, error reporting and somewhere to list what exists. Worst of all it
+invites scope: once a command line exists, a feature request becomes "add a
+command for it" rather than being refused, and the non-goals are the fence that
+keeps this program small.
+
+### Why it survives
+
+**The text-entry widget is being built regardless.** Filtering needs it.
+Naming a new playlist needs it. Searching the server needs it. Given that, `:`
+is a second use of something already written, plus a command word and a table.
+
+**And the commands are things keys cannot express.** A command takes an
+argument or is rare. Nothing that could be a key becomes a command instead, so
+`:` is not a second way to do what the keyboard already does. This is the
+distinction that keeps it from being a duplicate interface, and it is also the
+rule that decides membership.
+
+### Entering a command shows what exists
+
+`:` opens a line. Typing filters a list of matching command names, shown above
+it. Tab completes the longest common prefix.
+
+The list is the reason to prefer this over a bare prompt. A blank line tells a
+new user nothing and requires documentation to be useful; a list that appears
+as soon as they press `:` makes the command set learnable from inside the
+program. It is also why there is no separate help command listing them: `:` on
+its own already shows everything.
+
+### What is in it
+
+Taking an argument, so they cannot be keys:
+
+`:playlist new <name>`, `:playlist rename <name>`, `:playlist delete`,
+`:search <query>`, `:seek 1:23`, `:volume 50`, `:server <name>`.
+
+Rare enough not to deserve a key:
+
+`:q`, `:version`, `:reload`, `:scan`, `:messages`.
+
+`:seek` and `:volume` take an absolute value where the keys are relative, so
+they are not duplicates of `[`, `]`, `+` and `-`.
+
+### The rule, restated because it is the whole point
+
+A command exists because it takes an argument, or because it is rare. Something
+that is neither gets a key, or does not exist. `:` is not a route around the
+non-goals, and a request that does not fit a key does not automatically fit
+here.
+
+### Consequences
+
+Keys bind to named actions and commands are a separate, smaller table. These
+are two lists rather than one, and each is held against its documentation by a
+test.
+
+`:reload`, `:scan` and `:messages` name things shanty cannot currently do, and
+are tracked as their own work rather than as part of building the command line.
+
 ---
 
 ## Open, and assigned
