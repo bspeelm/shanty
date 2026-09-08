@@ -15,6 +15,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case tea.KeyMsg:
+		if m.mode == modeFilter {
+			return m.filterKey(msg)
+		}
 		return m.key(msg)
 
 	case ArtistsLoaded:
@@ -22,10 +25,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ArtistLoaded:
 		m.artist, m.screen, m.loading, m.status = subsonic.Artist(msg), ScreenAlbums, false, ""
+		m.filter = ""
 		m.cursor[ScreenAlbums] = 0
 		return m, nil
 	case AlbumLoaded:
 		m.album, m.screen, m.loading, m.status = subsonic.Album(msg), ScreenTracks, false, ""
+		m.filter = ""
 		m.cursor[ScreenTracks] = 0
 		return m, nil
 
@@ -53,6 +58,10 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, emit(Quit{})
+
+	case "/":
+		m.mode, m.filter = modeFilter, ""
+		return m.moveTo(0), nil
 
 	case "up", "k":
 		return m.move(-1), nil
@@ -90,13 +99,47 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// filterKey handles a keystroke while the filter is being typed. The list
+// narrows as characters arrive. esc abandons the filter and restores the list;
+// enter keeps it and returns to normal mode.
+func (m Model) filterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.mode, m.filter = modeNormal, ""
+		return m.moveTo(0), nil
+	case tea.KeyEnter:
+		m.mode = modeNormal
+		return m, nil
+	case tea.KeyBackspace:
+		if m.filter != "" {
+			m.filter = m.filter[:len(m.filter)-1]
+		}
+		return m.moveTo(0), nil
+	case tea.KeyRunes, tea.KeySpace:
+		m.filter += string(msg.Runes)
+		if msg.Type == tea.KeySpace {
+			m.filter += " "
+		}
+		return m.moveTo(0), nil
+	}
+	// Movement still works while typing, so a filter can be narrowed and a row
+	// chosen without leaving the mode.
+	switch msg.String() {
+	case "up":
+		return m.move(-1), nil
+	case "down":
+		return m.move(1), nil
+	}
+	return m, nil
+}
+
 // open moves down one screen, or plays the selected track. The album travels
 // with the intent.
 func (m Model) open() (tea.Model, tea.Cmd) {
 	if m.rows() == 0 {
 		return m, nil
 	}
-	at := m.cursor[m.screen]
+	at := m.matches()[m.cursor[m.screen]]
 	switch m.screen {
 	case ScreenArtists:
 		m.loading, m.status = true, "opening "+Sanitise(m.artists[at].Name)
@@ -114,9 +157,9 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 func (m Model) back() (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case ScreenTracks:
-		m.screen, m.status = ScreenAlbums, ""
+		m.screen, m.status, m.filter = ScreenAlbums, "", ""
 	case ScreenAlbums:
-		m.screen, m.status = ScreenArtists, ""
+		m.screen, m.status, m.filter = ScreenArtists, "", ""
 	}
 	return m, nil
 }

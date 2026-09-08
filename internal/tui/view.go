@@ -55,6 +55,9 @@ func (m Model) View() string {
 // footer is one row, so the breaks become separators before Sanitise removes
 // them and runs the two halves together.
 func (m Model) footer(w int) string {
+	if m.mode == modeFilter {
+		return statusStyle.Render(fit("/"+m.filter+"\u2588", w))
+	}
 	if m.status == "" {
 		return faintStyle.Render(fit(help, w))
 	}
@@ -76,8 +79,11 @@ func (m Model) list(w, visible int) string {
 	rows := m.rows()
 	if rows == 0 {
 		body := "nothing here"
-		if m.loading {
+		switch {
+		case m.loading:
 			body = "loading…"
+		case m.filter != "":
+			body = "nothing matches " + Sanitise(m.filter)
 		}
 		return pad(faintStyle.Render(fit("  "+body, w)), visible)
 	}
@@ -98,6 +104,7 @@ func (m Model) list(w, visible int) string {
 // row returns the two halves of one list line: what it is, and its count or
 // duration.
 func (m Model) row(i int) (string, string) {
+	i = m.matches()[i]
 	switch m.screen {
 	case ScreenArtists:
 		a := m.artists[i]
@@ -132,7 +139,7 @@ func (m Model) viewWidth() int {
 	return defaultWidth
 }
 
-const help = "↑↓ move · enter open · esc back · space pause · n/p skip · [ ] seek · +/- volume · q quit"
+const help = "↑↓ move · enter open · esc back · / filter · space pause · n/p skip · [ ] seek · +/- volume · q quit"
 
 // window returns the first row to draw, scrolling only enough to keep the
 // cursor on screen.

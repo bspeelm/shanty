@@ -1,11 +1,22 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/subsonic"
+)
+
+// mode is the kind of input the interface is taking.
+type mode int
+
+const (
+	// modeNormal is the default: keys act rather than being typed.
+	modeNormal mode = iota
+	// modeFilter narrows the list on screen as characters are typed.
+	modeFilter
 )
 
 // Screen identifies one of the three views.
@@ -42,8 +53,13 @@ type Model struct {
 	artist  subsonic.Artist
 	album   subsonic.Album
 
-	// cursor holds the selected row for each screen.
+	// cursor holds the selected row for each screen, as an index into the
+	// filtered list rather than the whole one.
 	cursor map[Screen]int
+
+	mode mode
+	// filter narrows the current screen to rows containing it.
+	filter string
 
 	nowPlaying string
 	nowArtist  string
@@ -69,13 +85,32 @@ func New() Model {
 func (m Model) Init() tea.Cmd { return nil }
 
 // Screen, Cursor, Status and Paused report the model’s state.
-func (m Model) Screen() Screen { return m.screen }
-func (m Model) Cursor() int    { return m.cursor[m.screen] }
-func (m Model) Status() string { return m.status }
-func (m Model) Paused() bool   { return m.paused }
+func (m Model) Screen() Screen  { return m.screen }
+func (m Model) Filter() string  { return m.filter }
+func (m Model) Filtering() bool { return m.mode == modeFilter }
+func (m Model) Cursor() int     { return m.cursor[m.screen] }
+func (m Model) Status() string  { return m.status }
+func (m Model) Paused() bool    { return m.paused }
 
-// rows is the number of items on the current screen.
-func (m Model) rows() int {
+// rows is the number of items the current screen shows, after filtering.
+func (m Model) rows() int { return len(m.matches()) }
+
+// matches returns the indexes into the current screen's full list of the rows
+// the filter selects, in order. Without a filter it is every row.
+func (m Model) matches() []int {
+	n := m.allRows()
+	out := make([]int, 0, n)
+	needle := strings.ToLower(m.filter)
+	for i := range n {
+		if needle == "" || strings.Contains(strings.ToLower(m.rowName(i)), needle) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// allRows is how many items the current screen has before filtering.
+func (m Model) allRows() int {
 	switch m.screen {
 	case ScreenArtists:
 		return len(m.artists)
@@ -85,4 +120,18 @@ func (m Model) rows() int {
 		return len(m.album.Songs)
 	}
 	return 0
+}
+
+// rowName is the text the filter matches against, for row i of the unfiltered
+// list.
+func (m Model) rowName(i int) string {
+	switch m.screen {
+	case ScreenArtists:
+		return m.artists[i].Name
+	case ScreenAlbums:
+		return m.artist.Albums[i].Name
+	case ScreenTracks:
+		return m.album.Songs[i].Title
+	}
+	return ""
 }

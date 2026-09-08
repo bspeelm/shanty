@@ -92,6 +92,24 @@ func TestGoldenScreens(t *testing.T) {
 			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
 			Progress(83*time.Second),
 			PausedChanged(true))},
+		{"filtering", func() Model {
+			f, _ := artists.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+			m := f.(Model)
+			for _, c := range "bilge" {
+				n, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{c}})
+				m = n.(Model)
+			}
+			return m
+		}()},
+		{"filtering-no-match", func() Model {
+			f, _ := artists.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+			m := f.(Model)
+			for _, c := range "zzz" {
+				n, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{c}})
+				m = n.(Model)
+			}
+			return m
+		}()},
 		{"failed", send(t, base, Failed{Message: "the server refused; check credentials.toml"})},
 		// The case that had no coverage: a failure while a list is on screen,
 		// which is when most failures happen.

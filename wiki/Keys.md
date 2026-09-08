@@ -15,12 +15,25 @@ work on all three.
 | `pgup` or `pgdown` | Move up or down by one screenful |
 | `enter`, `l` or `→` | Open the selected artist or album, or play the selected track |
 | `esc`, `h`, `←` or `backspace` | Go back to the previous screen |
+| `/` | Filter the list you are looking at |
 
 Pressing back on the artist list does nothing, because there is nothing above
 it. This prevents you from quitting the player by pressing back once too often.
 
 Each screen remembers which row you had selected. If you open an album and then
 go back, the album you opened is still highlighted.
+
+## Filtering a list
+
+Press `/` and type. The list narrows to rows containing what you typed,
+matching anywhere in the name and ignoring case. The arrow keys still move
+while you are typing.
+
+`enter` keeps the filter and returns you to normal movement. `esc` abandons it
+and restores the whole list. Opening an artist or album clears it, because a
+filter belongs to the list it narrowed.
+
+If nothing matches, the screen says so rather than going blank.
 
 ## Controlling playback
 

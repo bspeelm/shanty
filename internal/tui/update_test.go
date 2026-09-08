@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -211,5 +212,109 @@ func TestEveryScreenHasAHeadingAndRenders(t *testing.T) {
 	}
 	if len(Screens) != 3 {
 		t.Errorf("Screens lists %d screens; v0.1 has three, so this is a change to the interface", len(Screens))
+	}
+}
+
+// Typing / narrows the list on screen. The filter matches anywhere in the
+// name, not only at the start, and ignores case.
+func TestFilterNarrowsTheList(t *testing.T) {
+	m := loaded(t)
+	if m.rows() != 3 {
+		t.Fatalf("started with %d rows, want 3", m.rows())
+	}
+
+	m, _ = press(t, m, "/")
+	if !m.Filtering() {
+		t.Fatal("pressing / did not enter the filter")
+	}
+	for _, c := range "bilge" {
+		m, _ = press(t, m, string(c))
+	}
+	if m.rows() != 1 {
+		t.Fatalf("filtering by %q left %d rows, want 1", m.Filter(), m.rows())
+	}
+	if got := m.View(); !strings.Contains(got, "The Bilge Pumps") {
+		t.Errorf("the matching row is not on screen:\n%s", got)
+	}
+}
+
+// The filter selects a row out of the full list, so opening one has to open
+// what is on screen rather than the row at that index of the unfiltered list.
+func TestOpeningAFilteredRowOpensWhatIsOnScreen(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "/")
+	for _, c := range "bilge" {
+		m, _ = press(t, m, string(c))
+	}
+
+	// The first enter accepts the filter and leaves the mode; the second opens
+	// the row that is showing.
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+
+	_, msg := press(t, m, "enter")
+	open, ok := msg.(OpenArtist)
+	if !ok {
+		t.Fatalf("enter emitted %T, want OpenArtist", msg)
+	}
+	if open.ID != "ar-2" {
+		t.Errorf("opened %q, want ar-2, the artist that was showing", open.ID)
+	}
+}
+
+func TestEscapeAbandonsTheFilter(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "/")
+	for _, c := range "bilge" {
+		m, _ = press(t, m, string(c))
+	}
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+	if m.Filtering() {
+		t.Error("esc did not leave the filter")
+	}
+	if m.Filter() != "" {
+		t.Errorf("esc left the filter %q applied", m.Filter())
+	}
+	if m.rows() != 3 {
+		t.Errorf("esc left %d rows, want the whole list back", m.rows())
+	}
+}
+
+// A filter matching nothing says so, rather than showing an empty screen with
+// no explanation.
+func TestAFilterMatchingNothingSaysSo(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "/")
+	for _, c := range "zzz" {
+		m, _ = press(t, m, string(c))
+	}
+
+	if m.rows() != 0 {
+		t.Fatalf("a filter of zzz left %d rows", m.rows())
+	}
+	if got := m.View(); !strings.Contains(got, "nothing matches") {
+		t.Errorf("the screen does not explain the empty list:\n%s", got)
+	}
+}
+
+// A filter belongs to the list it narrowed. Going to another screen leaves it
+// behind rather than narrowing the new one by a word chosen for the old.
+func TestTheFilterDoesNotFollowYouToAnotherScreen(t *testing.T) {
+	m := loaded(t)
+	m, _ = press(t, m, "/")
+	for _, c := range "aoi" {
+		m, _ = press(t, m, string(c))
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+
+	m = send(t, m, ArtistLoaded(library()[0]))
+	if m.Filter() != "" {
+		t.Errorf("the filter %q followed into the albums screen", m.Filter())
+	}
+	if m.rows() != 2 {
+		t.Errorf("the albums screen shows %d rows, want 2", m.rows())
 	}
 }
