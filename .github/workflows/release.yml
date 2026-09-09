@@ -36,6 +36,18 @@ jobs:
       # needs are stated at the top of the packet, by whoever prepared it,
       # rather than left as blanks for them to fill in. Issues found in a
       # review are issues on GitHub, where the rest of the work already lives.
+      # The spec is the one place a version is written; the tag is derived from
+      # it by `make release-tag`. A tag made by hand can disagree, and then
+      # goreleaser stamps the binary and the deb from the tag while Copr reads
+      # the spec -- two published versions of one release. The same expression
+      # release-tag, copr and .copr/Makefile already share.
+      - name: the tag matches the spec
+        run: |
+          v=$(sed -n 's/^Version:[[:space:]]*//p' packaging/shanty.spec)
+          test "v$v" = "${GITHUB_REF_NAME}" || {
+            echo "::error::tag ${GITHUB_REF_NAME} but the spec says $v"; exit 1; }
+          echo "the tag and the spec both say $v"
+
       - name: the release has a review packet
         run: |
           packet="docs/review/${GITHUB_REF_NAME}.md"
@@ -51,6 +63,11 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The tap publishes to another repository, which GITHUB_TOKEN cannot
+          # reach: it is scoped to this one. It is read as an .Env value, so it
+          # must be set here even when empty -- a name goreleaser cannot
+          # resolve fails the release after the tag has been pushed.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       # Everything the release page offers, not only the archives. Attesting
       # the tarballs alone would leave checksums.txt -- the file the default
@@ -61,6 +78,8 @@ jobs:
         with:
           subject-path: |
             dist/shanty_*.tar.gz
+            dist/shanty-*-source.tar.gz
+            dist/*.deb
             dist/checksums.txt
 
       # Published beside the artifacts so that verifying needs no GitHub

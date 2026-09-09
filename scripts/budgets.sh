@@ -46,10 +46,19 @@ fi
 # --- go.sum is the lockfile --------------------------------------------------
 # A second pinning mechanism is a second answer to "what version is this",
 # and the two drift silently.
-for f in vendor/modules.txt Gopkg.lock glide.lock; do
+#
+# vendor/ is not one. It is derived from go.mod, and the toolchain refuses to
+# build when the two disagree rather than choosing between them; CI proves it
+# is in step by regenerating it. The tools below pin independently, with no
+# such check.
+for f in Gopkg.lock glide.lock; do
 	[ -e "$f" ] && over "$f exists; go.sum is the only lockfile (§0)."
 done
-printf 'lockfile:      go.sum only\n'
+if [ -d vendor ]; then
+	printf 'lockfile:      go.sum, with vendor/ derived from it\n'
+else
+	printf 'lockfile:      go.sum only\n'
+fi
 
 # --- source counts -----------------------------------------------------------
 gofiles=$(find . -name '*.go' -not -path './vendor/*' -not -path './dist/*' 2>/dev/null | wc -l)

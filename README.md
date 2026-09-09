@@ -32,19 +32,34 @@ such as Fedora Silverblue.
 
 ## Installing
 
-Download and install the latest release:
+From your package manager, which installs mpv with it:
+
+| | |
+|---|---|
+| **Fedora** | `sudo dnf copr enable bspeelman/shanty && sudo dnf install shanty` |
+| **Debian, Ubuntu, Mint** | download the `.deb` from the [latest release](https://github.com/bspeelm/shanty/releases/latest), then `sudo apt install ./shanty_*.deb` |
+| **macOS** | `brew install --cask bspeelm/shanty/shanty` |
+| **you already have Go** | `go install github.com/bspeelm/shanty/cmd/shanty@latest` |
+
+shanty plays through mpv and decodes no audio itself, so every line above but
+the last installs mpv too. After `go install`, run `shanty doctor`: it names
+the command for your system.
+
+On an image-based system, or anywhere you would rather not involve a package
+manager:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
 ```
 
-This puts the `shanty` binary in `~/.local/bin`. 
-
-You can also build it from a clone of this repository:
+That puts the binary in `~/.local/bin` and sets up tab completion. You can also
+build it from a clone:
 
 ```sh
 make install-binary
 ```
+
+[All the ways in, and what checks what](https://github.com/bspeelm/shanty/wiki/Installing).
 
 ## Using it
 

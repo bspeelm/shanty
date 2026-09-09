@@ -36,7 +36,7 @@ code. Numbers may start generous and tighten; they may not silently grow.
 | code lines | 6,000 | `cmd` and `internal`, non-test, comments and blanks excluded |
 | comment lines : code lines | 25% | the one **hard** ceiling: over budget removes a comment |
 | live prose | 4,500 lines | every `.md` outside `docs/history/` and `docs/review/` |
-| lockfile-equivalent | go.sum only | no second pinning mechanism; CI builds with `-mod=readonly` |
+| lockfile-equivalent | go.sum, and `vendor/` derived from it | no second *independent* pinning mechanism; CI regenerates `vendor/` and fails on a difference |
 
 Two of these behave differently from the rest.
 
@@ -48,6 +48,14 @@ more prose about the code instead of writing less code.
 this project writes its plan before its code. A ratio would report a project
 that planned first as worse than one that did not. 4,500 is 75% of the code
 cap.
+
+**The lockfile row** was `go.sum only` until the rpm needed building from
+source. A Copr build root has no network, so the dependencies are vendored.
+`vendor/` is not a second answer to "what version is this": it is generated
+from `go.mod`, and the toolchain refuses to build when the two disagree rather
+than picking one. CI regenerates it and fails on any difference. The tools the
+original row was written against -- `Gopkg.lock`, `glide.lock` -- pin
+independently and have no such check; they are still refused.
 
 The dependency budget exists because a terminal interface in Go honestly costs
 15 to 25 modules, and the difference between 25 and 250 is entirely a matter of

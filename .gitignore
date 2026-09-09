@@ -1,2 +1,5 @@
 /shanty
 /dist/
+
+# Written by the binary at build time, not checked in.
+/completions/

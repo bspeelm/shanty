@@ -28,6 +28,87 @@ jobs:
       # passed. Publishing it is what would close that gap.
       - run: make check
 
+      # vendor/ is what a Copr build root uses in place of a network, so it has
+      # to match go.mod exactly. The toolchain refuses to build when they
+      # disagree; this says so on a pull request rather than in a build nobody
+      # is watching.
+      - name: vendor is in step with go.mod
+        run: |
+          go mod vendor
+          git diff --exit-code --stat vendor/ || {
+            echo "::error::vendor/ is out of step with go.mod; run go mod vendor"; exit 1; }
+
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      # The release configuration is only otherwise read after a tag is pushed,
+      # which is the one step that cannot be taken back.
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: check
+
+      - name: build every artifact the release would
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --snapshot --clean --skip=publish
+        env:
+          HOMEBREW_TAP_TOKEN: ''
+
+      # Installing it is the only way to know the package works. Everything
+      # asserted here has been wrong in a released package of some project or
+      # other: a missing dependency, an unstripped build path, a binary
+      # somewhere other than where the other package puts it.
+      - name: install the deb and take it apart
+        run: |
+          deb=$(ls dist/shanty_*_amd64.deb)
+          dpkg-deb --info "$deb"
+          dpkg-deb --contents "$deb"
+
+          # mpv is the whole reason this package declares anything.
+          test "$(dpkg-deb -f "$deb" Depends)" = mpv || {
+            echo "::error::the deb does not require mpv"; exit 1; }
+
+          sudo apt-get install -y "./$deb"
+          test "$(command -v shanty)" = /usr/bin/shanty
+          shanty version
+
+          # The completions the package placed are the ones this binary writes.
+          diff <(shanty completions bash) /usr/share/bash-completion/completions/shanty
+          diff <(shanty completions zsh) /usr/share/zsh/site-functions/_shanty
+          diff <(shanty completions fish) /usr/share/fish/vendor_completions.d/shanty.fish
+
+          if grep -qa "$GITHUB_WORKSPACE/vendor/" /usr/bin/shanty; then
+            echo "::error::the packaged binary embeds build paths; -trimpath is not taking"; exit 1; fi
+
+          sudo apt-get remove -y shanty
+          test ! -e /usr/bin/shanty
+
+      # The spec is built by Copr, which nothing here can reach. Parsing it is
+      # what catches a version, a macro or a file list that will not build,
+      # before the tag rather than after.
+      - name: the rpm spec parses and its files agree with the deb
+        run: |
+          sudo apt-get install -y rpm
+          rpmspec -q --srpm packaging/shanty.spec
+          v=$(sed -n 's/^Version:[[:space:]]*//p' packaging/shanty.spec)
+          test -n "$v" || { echo "::error::no Version: in the spec"; exit 1; }
+
+          # Both packages put the binary in the same place, or a machine that
+          # has had both ends up with two shantys.
+          grep -q '%{_bindir}/%{name}' packaging/shanty.spec || {
+            echo "::error::the spec does not install to the same bindir as the deb"; exit 1; }
+          grep -q '^Requires:.*mpv' packaging/shanty.spec || {
+            echo "::error::the spec does not require mpv"; exit 1; }
+
   crossbuild:
     runs-on: ubuntu-latest
     steps:

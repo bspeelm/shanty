@@ -7,9 +7,36 @@ player that must be installed separately. shanty handles finding music on your
 server and controlling playback, while mpv decodes the audio and sends it to
 your sound card. shanty will not start without mpv.
 
-## Installing the shanty binary
+## From your package manager
 
-The simplest way is to download the latest release:
+The best way, where there is one: your package manager installs mpv with
+shanty, and shanty does not play anything without it.
+
+| | |
+|---|---|
+| **Fedora** | `sudo dnf copr enable bspeelman/shanty && sudo dnf install shanty` |
+| **Debian, Ubuntu, Mint** | download the `.deb` from the [latest release](https://github.com/bspeelm/shanty/releases/latest), then `sudo apt install ./shanty_*.deb` |
+| **macOS** | `brew install --cask bspeelm/shanty/shanty` |
+| **you already have Go** | `go install github.com/bspeelm/shanty/cmd/shanty@latest` |
+
+Two of those need a word of explanation.
+
+The `.deb` is a file on the release page, not a repository you add. There is no
+apt source and no signing key, so **`apt upgrade` will never bring you a new
+shanty** — you come back for the next one. A repository is something that has
+to be served and re-signed for as long as anyone has it in their sources, and
+this project does not promise that.
+
+`go install` builds from source and installs nothing else, so mpv is yours to
+install. `shanty doctor` names the command for your system.
+
+These also place the shell completions, so pressing tab after `shanty` offers
+its commands. Nothing is added to your shell's startup files.
+
+## Installing the shanty binary yourself
+
+On an image-based system, where `dnf` means `rpm-ostree` and a reboot, or
+anywhere you would rather not involve a package manager:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh

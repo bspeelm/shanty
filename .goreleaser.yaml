@@ -10,6 +10,12 @@ version: 2
 before:
   hooks:
     - go mod tidy
+    # Written by the binary rather than checked in, so what the packages
+    # install is what this version completes.
+    - mkdir -p completions
+    - sh -c 'go run ./cmd/shanty completions bash > completions/shanty.bash'
+    - sh -c 'go run ./cmd/shanty completions zsh  > completions/_shanty'
+    - sh -c 'go run ./cmd/shanty completions fish > completions/shanty.fish' 
 
 builds:
   - id: shanty
@@ -37,6 +43,93 @@ archives:
       - LICENSE
       - README.md
 
+# The rpm is built from source by Copr out of packaging/shanty.spec, so this
+# makes the deb and nothing else. Adding "rpm" here would publish a second
+# package called shanty, built a different way from a different input, and
+# which one a machine ended up with would be luck.
+nfpms:
+  - id: shanty
+    ids: [shanty]
+    package_name: shanty
+    formats: [deb]
+
+    maintainer: Bryan Speelman <bryspeelm@gmail.com>
+    homepage: https://github.com/bspeelm/shanty
+    license: MIT
+    section: sound
+    priority: optional
+    description: |-
+      A terminal client for Navidrome and other Subsonic servers
+
+      shanty lists the artists on your server, then the albums by one, then the
+      tracks on one, and plays what you choose. It reports the play back to
+      your server so your listening history stays on the machine you control.
+      Audio is decoded by mpv, a separate player shanty starts and controls.
+
+    # shanty_0.2.0_amd64.deb, which is what Debian expects and is not what
+    # goreleaser picks on its own: its default puts the operating system in
+    # the middle.
+    file_name_template: "{{ .ConventionalFileName }}"
+
+    # Matching the spec's %{_bindir}. The two packages must agree, or a machine
+    # that has had both ends up with two shantys.
+    bindir: /usr/bin
+
+    # mpv is required rather than suggested, for the reason the spec gives: a
+    # shanty without one is a music player that cannot play music.
+    dependencies:
+      - mpv
+
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/shanty/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/shanty/README.md
+      # apt writes these, not shanty, which is the same division as the spec's
+      # %files.
+      - src: completions/shanty.bash
+        dst: /usr/share/bash-completion/completions/shanty
+      - src: completions/_shanty
+        dst: /usr/share/zsh/site-functions/_shanty
+      - src: completions/shanty.fish
+        dst: /usr/share/fish/vendor_completions.d/shanty.fish
+
+# Copr builds the rpm from source, so it needs a source tarball in the release
+# rather than the binary archives.
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}-{{ .Version }}-source"
+
+# Published from the tag, so the version is derived rather than hand-bumped.
+# It needs a credential in the release environment and is skipped without one:
+# HOMEBREW_TAP_TOKEN, a fine-grained token with Contents: write on
+# bspeelm/homebrew-shanty and nothing else.
+homebrew_casks:
+  - name: shanty
+    ids: [shanty]
+    repository:
+      owner: bspeelm
+      name: homebrew-shanty
+      # .Env rather than envOrDefault: the latter is not a function in the
+      # goreleaser the action installs, and a template that cannot compile is
+      # only found at release time, after the tag is pushed.
+      token: '{{ .Env.HOMEBREW_TAP_TOKEN }}'
+    homepage: https://github.com/bspeelm/shanty
+    description: A terminal client for Navidrome and other Subsonic servers
+    # The one dependency shanty genuinely has. Homebrew can install it; the
+    # other two package managers are told the same thing.
+    dependencies:
+      - formula: mpv
+    # Homebrew removed --no-quarantine in 4.7, so the user cannot opt out and
+    # the cask has to do it. Without this the binary installs and Gatekeeper
+    # refuses to run it, unsigned. ADR-012 owes the answer to signing it.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/shanty"]
+          end
+
 checksum:
   name_template: checksums.txt
 
@@ -52,6 +145,29 @@ changelog:
 
 release:
   footer: |
+    ## Install
+
+    | | |
+    |---|---|
+    | **Fedora** | `sudo dnf copr enable bspeelman/shanty && sudo dnf install shanty` |
+    | **Debian, Ubuntu, Mint** | download the `.deb` below, then `sudo apt install ./shanty_*.deb` |
+    | **macOS** | `brew install --cask bspeelm/shanty/shanty` |
+    | **you already have Go** | `go install github.com/bspeelm/shanty/cmd/shanty@latest` |
+
+    Each of these installs **mpv** with shanty, which shanty plays through and
+    does not decode audio without (ADR-011). The `go install` line does not:
+    install mpv yourself, or run `shanty doctor`, which names the command.
+
+    On an image-based system where `dnf` means `rpm-ostree` and a reboot, there
+    is a script that needs no root and layers nothing onto the host:
+
+    ```sh
+    curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
+    ```
+
+    It is fetched over HTTPS and run unsigned, before shanty exists to verify
+    anything — the same trade as any `curl | sh`.
+
     ---
     Verify what you downloaded:
 

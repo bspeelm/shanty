@@ -8,6 +8,7 @@
 package shanty
 
 import (
+	"github.com/bspeelm/shanty/internal/mpv"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -144,6 +145,96 @@ func TestTheStatusTableNamesEveryPackage(t *testing.T) {
 	for _, m := range regexp.MustCompile(`internal/[a-z/]+`).FindAllString(readme, -1) {
 		if _, err := os.Stat(m); err != nil {
 			t.Errorf("CONTRIBUTING.md names %s, which is not a package in the tree", m)
+		}
+	}
+}
+
+// TestVersionStaysStampable covers the one way the release build reports "dev"
+// without anything failing.
+//
+// `-X main.Version=…` silently does nothing to a variable initialised by a
+// function call: no error, no warning, and four builders stamp the same flag.
+func TestVersionStaysStampable(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("cmd", "shanty", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?m)^var Version = "[^"]*"$`).Match(src) {
+		t.Error(`Version is not a plain string literal; -X will quietly stop working`)
+	}
+}
+
+// TestEveryBuilderStampsTheSameFlag covers the four places a version is
+// written into the binary. Two channels reporting different versions for one
+// release is the drift that makes a version meaningless.
+func TestEveryBuilderStampsTheSameFlag(t *testing.T) {
+	for _, where := range []struct{ file, want string }{
+		{"Makefile", "-X main.Version=$(VERSION)"},
+		{".goreleaser.yaml", "-X main.Version={{ .Version }}"},
+		{filepath.Join("packaging", "shanty.spec"), "-X main.Version=%{version}"},
+	} {
+		body, err := os.ReadFile(where.file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), where.want) {
+			t.Errorf("%s does not stamp the version with %q", where.file, where.want)
+		}
+		if !strings.Contains(string(body), "-trimpath") {
+			t.Errorf("%s builds without -trimpath, so the binary carries the build machine's paths", where.file)
+		}
+	}
+}
+
+// TestThePackagesAgreeOnMpv covers the dependency that is the reason to have
+// packages at all. shanty decodes no audio itself.
+func TestThePackagesAgreeOnMpv(t *testing.T) {
+	for _, where := range []struct{ file, want string }{
+		{filepath.Join("packaging", "shanty.spec"), "Requires:       mpv"},
+		{".goreleaser.yaml", "- mpv"},
+	} {
+		body, err := os.ReadFile(where.file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), where.want) {
+			t.Errorf("%s does not require mpv", where.file)
+		}
+	}
+
+	// The spec names the same minimum the doctor holds mpv to.
+	spec, err := os.ReadFile(filepath.Join("packaging", "shanty.spec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(spec), "mpv >= "+mpv.Minimum) {
+		t.Errorf("the spec does not require mpv >= %s, which is what doctor holds it to", mpv.Minimum)
+	}
+}
+
+// TestOnlyOneBuilderMakesEachPackage covers the split. Copr builds the rpm from
+// source; goreleaser builds the deb from the binary. Both making an rpm would
+// publish two packages called shanty, built differently, and which one a
+// machine ended up with would be luck.
+func TestOnlyOneBuilderMakesEachPackage(t *testing.T) {
+	body, err := os.ReadFile(".goreleaser.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the formats line, not the prose around it: the comment there
+	// explains why there is no rpm, and would match a looser check.
+	var formats []string
+	for _, line := range strings.Split(string(body), "\n") {
+		if trimmed := strings.TrimSpace(line); strings.HasPrefix(trimmed, "formats:") {
+			formats = append(formats, trimmed)
+		}
+	}
+	if len(formats) == 0 {
+		t.Fatal("the release configuration names no package formats")
+	}
+	for _, line := range formats {
+		if strings.Contains(line, "rpm") {
+			t.Errorf("%q builds an rpm; Copr builds that one from source", line)
 		}
 	}
 }
