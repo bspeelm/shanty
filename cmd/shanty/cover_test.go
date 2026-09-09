@@ -18,7 +18,7 @@ func withCovers(t *testing.T) (app, *fake.Server) {
 	t.Helper()
 	a, srv := withPlaylists(t, nil)
 	a.covers = cover.NewCache(t.TempDir())
-	a.art = cover.Text
+	a.art = cover.Kitty
 
 	// Tall enough that a cover still leaves a track list worth reading. The
 	// default 24 rows is not, which is the point of minTracksBesideArt.
@@ -83,8 +83,8 @@ func TestOpeningAnAlbumFetchesItsCover(t *testing.T) {
 	if !asked {
 		t.Fatal("opening an album asked for no cover art")
 	}
-	if !strings.Contains(a.View(), "╭") {
-		t.Errorf("the screen shows no cover:\n%s", a.View())
+	if !strings.Contains(a.View(), "f=100") {
+		t.Errorf("the screen shows no cover:\n%s", visible(a.View()))
 	}
 }
 
@@ -165,8 +165,8 @@ func TestOpeningASecondAlbumDropsTheFirstCover(t *testing.T) {
 	next, _ := a.ui.Update(tui.AlbumLoaded(subsonic.Album{ID: "al-2", Name: "Other"}))
 	a.ui = next.(tui.Model)
 
-	if strings.Contains(a.View(), "╭") {
-		t.Errorf("the first album's cover is still on screen:\n%s", a.View())
+	if strings.Contains(a.View(), "f=100") {
+		t.Errorf("the first album's cover is still on screen:\n%s", visible(a.View()))
 	}
 }
 
@@ -199,16 +199,26 @@ func TestLeavingAnAlbumTakesThePictureWithIt(t *testing.T) {
 	}
 }
 
-// TestATerminalThatDrawsIntoTheScreenIsSentNothingExtra covers the other
-// direction. A sequence on every frame of every screen is a cost paid by
-// terminals that never needed it.
-func TestATerminalThatDrawsIntoTheScreenIsSentNothingExtra(t *testing.T) {
-	a, _ := withCovers(t)
-	a = openAlbum(t, a, "al-1")
-	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
+// TestATerminalThatDrawsNoPicturesAsksForNoneAndIsSentNone covers what a
+// terminal without graphics costs: nothing. No request, no rows held, and no
+// escape sequence it would not understand.
+func TestATerminalThatDrawsNoPicturesAsksForNoneAndIsSentNone(t *testing.T) {
+	a, srv := withCovers(t)
+	a.art = cover.None
 
-	if strings.Contains(a.View(), "\x1b_G") {
-		t.Error("a terminal drawing text placeholders was sent a graphics sequence")
+	a = openAlbum(t, a, "al-1")
+
+	for _, r := range srv.Requests() {
+		if r.Endpoint == "getCoverArt" {
+			t.Error("a cover was fetched for a terminal that cannot show one")
+		}
+	}
+	frame := a.View()
+	if strings.Contains(frame, "\x1b_G") || strings.Contains(frame, "\x1b]1337") {
+		t.Error("a graphics sequence was sent to a terminal that draws none")
+	}
+	if !strings.Contains(frame, "Slipway") {
+		t.Errorf("the track list is not on screen:\n%s", visible(frame))
 	}
 }
 
@@ -358,6 +368,21 @@ func TestArtWithNothingToShowSaysSo(t *testing.T) {
 
 		if !strings.Contains(a.ui.Status(), "no cover") {
 			t.Errorf("it said %q", a.ui.Status())
+		}
+	})
+
+	t.Run("the terminal draws no pictures", func(t *testing.T) {
+		a, _ := withCovers(t)
+		a.art = cover.None
+		a = openAlbum(t, a, "al-1")
+
+		a = runCommand(t, a, "art")
+
+		if !strings.Contains(a.ui.Status(), "does not draw pictures") {
+			t.Errorf("it said %q", a.ui.Status())
+		}
+		if strings.Contains(a.View(), "\x1b_G") {
+			t.Error("a picture was sent to a terminal that draws none")
 		}
 	})
 

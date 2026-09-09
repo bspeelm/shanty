@@ -27,9 +27,10 @@ const MaxPixels = 4 << 20
 type Protocol int
 
 const (
-	// Text is a placeholder drawn with characters. It works everywhere and is
-	// what an unrecognised terminal gets.
-	Text Protocol = iota
+	// None is a terminal that draws no pictures. Nothing is fetched for one
+	// and nothing is drawn: a box where a cover would have been is a row of
+	// the screen spent saying that a picture is missing.
+	None Protocol = iota
 	// Kitty is the kitty graphics protocol.
 	Kitty
 	// ITerm2 is the iTerm2 inline image protocol.
@@ -43,7 +44,7 @@ func (p Protocol) String() string {
 	case ITerm2:
 		return "iterm2"
 	}
-	return "text"
+	return "none"
 }
 
 // Detect says how a terminal can be sent a picture.
@@ -56,11 +57,11 @@ func (p Protocol) String() string {
 // being uncertain is safe.
 func Detect(env func(string) string) Protocol {
 	if env == nil {
-		return Text
+		return None
 	}
 	term, program := env("TERM"), env("TERM_PROGRAM")
 	if term == "" || term == "dumb" {
-		return Text
+		return None
 	}
 	// TERM is what a terminal always sets, and several of these set nothing
 	// else. TERM_PROGRAM is checked as well because the same terminal sets it
@@ -75,15 +76,15 @@ func Detect(env func(string) string) Protocol {
 	case program == "iTerm.app", env("LC_TERMINAL") == "iTerm2":
 		return ITerm2
 	}
-	return Text
+	return None
 }
 
 // Render turns the bytes of an image into what a terminal is sent to show it
 // in a box that many columns wide and rows tall.
 //
-// Anything that cannot be shown as a picture is shown as the text placeholder
-// rather than as an error. A missing cover is not a reason to interrupt
-// somebody's music.
+// Anything that cannot be drawn is nothing rather than an error. A cover is
+// not worth interrupting somebody's music for, and a placeholder in its place
+// is a row of the screen spent on a picture that is not there.
 func Render(p Protocol, data []byte, cols, rows int) string {
 	if cols < 1 || rows < 1 {
 		return ""
@@ -92,20 +93,20 @@ func Render(p Protocol, data []byte, cols, rows int) string {
 	case Kitty:
 		img, err := decode(data)
 		if err != nil {
-			return textBox(cols, rows)
+			return ""
 		}
 		var png bytes.Buffer
 		if err := encodePNG(&png, img); err != nil {
-			return textBox(cols, rows)
+			return ""
 		}
 		return kitty(png.Bytes(), cols, rows)
 	case ITerm2:
 		if err := check(data); err != nil {
-			return textBox(cols, rows)
+			return ""
 		}
 		return iterm2(data, cols, rows)
 	}
-	return textBox(cols, rows)
+	return ""
 }
 
 // check reads an image's header and reports whether it is one this will
@@ -179,22 +180,6 @@ func iterm2(data []byte, cols, rows int) string {
 		len(data), cols, rows, base64.StdEncoding.EncodeToString(data))
 }
 
-// textBox is the placeholder for a terminal that shows no pictures. It holds
-// the space the art would have taken, so a screen does not change shape with
-// the terminal it is on.
-func textBox(cols, rows int) string {
-	if cols < 2 || rows < 2 {
-		return strings.TrimRight(strings.Repeat(strings.Repeat(" ", cols)+"\n", rows), "\n")
-	}
-	middle := "│" + strings.Repeat(" ", cols-2) + "│"
-	lines := make([]string, 0, rows)
-	lines = append(lines, "╭"+strings.Repeat("─", cols-2)+"╮")
-	for range rows - 2 {
-		lines = append(lines, middle)
-	}
-	return strings.Join(append(lines, "╰"+strings.Repeat("─", cols-2)+"╯"), "\n")
-}
-
 // cellAspect is how many times taller a terminal cell is than it is wide. It
 // is not asked of the terminal: the answer varies by a little between fonts
 // and by nothing that matters at the size a cover is drawn.
@@ -249,12 +234,8 @@ func Block(p Protocol, data []byte, cols, rows int) []string {
 		return nil
 	}
 	out := Render(p, data, cols, rows)
-	if p == Text || out == "" {
-		lines := strings.Split(out, "\n")
-		for len(lines) < rows {
-			lines = append(lines, strings.Repeat(" ", cols))
-		}
-		return lines[:rows]
+	if out == "" {
+		return nil
 	}
 	lines := make([]string, rows)
 	lines[0] = out

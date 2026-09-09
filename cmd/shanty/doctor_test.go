@@ -417,8 +417,8 @@ func TestDoctorSaysWhetherThisTerminalDrawsPictures(t *testing.T) {
 	}{
 		{"ghostty", map[string]string{"TERM": "xterm-ghostty"}, Pass, "kitty"},
 		{"iterm2", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app"}, Pass, "iterm2"},
-		{"a terminal with no pictures", map[string]string{"TERM": "xterm-256color"}, Warn, "empty box"},
-		{"no environment at all", map[string]string{}, Warn, "empty box"},
+		{"a terminal with no pictures", map[string]string{"TERM": "xterm-256color"}, Warn, "no album art"},
+		{"no environment at all", map[string]string{}, Warn, "no album art"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := checkCoverArt(Env{Getenv: func(k string) string { return tc.env[k] }})

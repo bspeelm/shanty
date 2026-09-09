@@ -85,8 +85,9 @@ Above the track list a cover takes twelve rows, and it is not drawn at all when
 that would leave eight tracks or fewer on screen. This is how to see the whole
 thing on a short terminal, and how to look at it properly on any terminal.
 
-It needs an album open, and a terminal that draws pictures. `shanty doctor`
-says whether yours does under `cover-art`.
+It needs an album open, and a terminal that draws pictures. One that does not
+shows no covers anywhere and says so here. `shanty doctor` names what it found
+under `cover-art`.
 
 ## messages
 
