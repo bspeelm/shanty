@@ -155,7 +155,7 @@ jobs:
       - name: build the rpm from source the way Copr does, then install it
         run: |
           docker run --rm -v "$PWD":/src:ro -w /src fedora:latest sh -c '
-            set -e
+            set -ex
             dnf install -y --setopt=install_weak_deps=False                 golang git-core rpm-build make >/dev/null
 
             # Exactly what Copr invokes.
@@ -170,19 +170,30 @@ jobs:
               echo "::error::the rpm does not require mpv"; exit 1; }
 
             # Installing it pulls mpv in, which is the claim the packaging makes.
-            dnf install -y "$rpm" >/dev/null
-            test "$(command -v shanty)" = /usr/bin/shanty
-            shanty version
-            command -v mpv >/dev/null || {
+            dnf install -y "$rpm"
+            rpm -ql shanty
+            test -x /usr/bin/shanty || {
+              echo "::error::the package did not put a binary at /usr/bin/shanty"; exit 1; }
+            /usr/bin/shanty version
+            command -v mpv || {
               echo "::error::installing shanty did not bring mpv"; exit 1; }
 
             # The completions the package placed are the ones this binary writes.
-            diff <(shanty completions bash) /usr/share/bash-completion/completions/shanty
-            diff <(shanty completions zsh) /usr/share/zsh/site-functions/_shanty
-            diff <(shanty completions fish) /usr/share/fish/vendor_completions.d/shanty.fish
+            for shell in bash zsh fish; do
+              case $shell in
+                bash) shipped=/usr/share/bash-completion/completions/shanty ;;
+                zsh)  shipped=/usr/share/zsh/site-functions/_shanty ;;
+                fish) shipped=/usr/share/fish/vendor_completions.d/shanty.fish ;;
+              esac
+              /usr/bin/shanty completions $shell >/tmp/$shell.expected
+              diff /tmp/$shell.expected "$shipped" || {
+                echo "::error::the $shell completion the package ships is not the one the binary writes"
+                exit 1; }
+            done
 
             dnf remove -y shanty >/dev/null
-            test ! -e /usr/bin/shanty
+            test ! -e /usr/bin/shanty || {
+              echo "::error::removing the package left the binary behind"; exit 1; }
           '
 
   crossbuild:
