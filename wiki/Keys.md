@@ -138,6 +138,22 @@ If nothing matches, the screen says so rather than going blank.
 
 The playlists screen is not built yet. Pressing its key says so.
 
+## Cover art
+
+Opening an album shows its cover above the track list, if your terminal can
+draw pictures. shanty works out which from the environment: kitty, Ghostty and
+WezTerm get the kitty graphics protocol, and iTerm2 gets its own.
+
+**Every other terminal gets an empty box the same size.** That is deliberate
+rather than a failure — the screen keeps its shape whether or not there is a
+picture in it, so nothing moves when you open an album over ssh.
+
+Covers are kept in `~/.cache/shanty/covers/` and fetched once. Deleting that
+directory costs one download each and nothing else.
+
+A server that has no cover for an album, or sends something that is not a
+picture, gets the same empty box. Nothing about a cover interrupts the music.
+
 ## Playlists
 
 `gp` lists your playlists, and `enter` opens one to see its tracks. `enter` on

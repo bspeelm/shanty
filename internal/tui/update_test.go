@@ -1328,3 +1328,41 @@ func TestAWikiPageScrolls(t *testing.T) {
 		t.Error("going back to the top did not show the beginning again")
 	}
 }
+
+// TestAFrameWithCoverArtStillFitsTheTerminal covers the rows the art takes.
+//
+// The list is given whatever height is left after everything that is not the
+// list, so art that is drawn but not counted makes the frame taller than the
+// terminal and the top of it scrolls away.
+func TestAFrameWithCoverArtStillFitsTheTerminal(t *testing.T) {
+	for _, size := range [][2]int{{64, 24}, {64, 16}, {80, 40}} {
+		w, h := size[0], size[1]
+
+		m := New()
+		next, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+		m = next.(Model)
+		next, _ = m.Update(AlbumLoaded(subsonic.Album{
+			ID: "al-1", Name: "Harbour", Artist: "Aoi",
+			Songs: []subsonic.Song{{ID: "tr-1", Title: "Slipway"}, {ID: "tr-2", Title: "Ballast"}},
+		}))
+		m = next.(Model)
+
+		bare := strings.Count(m.View(), "\n") + 1
+
+		art := make([]string, 6)
+		for i := range art {
+			art[i] = strings.Repeat(" ", 12)
+		}
+		next, _ = m.Update(CoverArt{AlbumID: "al-1", Lines: art})
+		m = next.(Model)
+
+		withArt := strings.Count(m.View(), "\n") + 1
+		if withArt != bare {
+			t.Errorf("%dx%d: the frame is %d rows with art and %d without; art must take rows from the list",
+				w, h, withArt, bare)
+		}
+		if withArt > h {
+			t.Errorf("%dx%d: the frame is %d rows, which is taller than the terminal", w, h, withArt)
+		}
+	}
+}

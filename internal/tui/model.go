@@ -79,6 +79,8 @@ type Model struct {
 	artists []subsonic.Artist
 	artist  subsonic.Artist
 	album   subsonic.Album
+	// art is the cover for album, already rendered, one string per row.
+	art []string
 
 	// queued is what is playing and what follows it, and queuedAt is the
 	// position in it. The caller owns the queue; this is a copy to draw.
