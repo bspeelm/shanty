@@ -8,7 +8,11 @@
 
 <h1 align="center">shanty</h1>
 
-<p align="center"><em>a music player for your own server</em></p>
+<p align="center"><em>a music player for your own Navidrome or Subsonic server</em></p>
+
+<p align="center">
+  <img alt="An album open in shanty: the cover on the left, the album, artist, year and running time beside it, the track list below with the playing track marked, and the keys along the bottom" src="docs/images/shanty_screenshot.png" width="820">
+</p>
 
 shanty is a terminal application for playing music from a Subsonic or Navidrome
 server that you run yourself. It lists the artists on your server, then the

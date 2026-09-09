@@ -1,6 +1,6 @@
 # PLAN.md — shanty
 
-*a music player for your own server*
+*a music player for your own Navidrome or Subsonic server*
 
 > **shanty** *(n.)* — a rough hut, and a song sung by people working.
 
