@@ -10,7 +10,9 @@ shanty writes to four directories and nowhere else.
 | `$XDG_RUNTIME_DIR/shanty/` | The connection to mpv, and the one a session left by `:headless` is commanded through | Nothing. It is removed when you log out. |
 
 All four honour the standard `XDG_` environment variables if you have set them.
-The paths above are the defaults on Linux when you have not.
+The paths above are the defaults when you have not, on every system shanty runs
+on. macOS is included: shanty puts its files in `~/.config` and `~/.cache` there
+too, rather than under `~/Library`.
 
 On systems that do not provide `XDG_RUNTIME_DIR`, the connection to mpv is
 placed inside the cache directory instead. It is never placed in a shared

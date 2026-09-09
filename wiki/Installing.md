@@ -139,13 +139,20 @@ Signing it properly is an open question
 
 ## What gets installed
 
-From a package manager:
+From dnf or apt:
 
 | | |
 |---|---|
 | `/usr/bin/shanty` | the binary |
 | `/usr/share/bash-completion/completions/shanty` | and the zsh and fish equivalents |
 | `/usr/share/doc/shanty/` | the licence and the README |
+
+From Homebrew, under whatever `brew --prefix` reports:
+
+| | |
+|---|---|
+| `bin/shanty` | the binary |
+| Homebrew's own completion directories | one file each for bash, zsh and fish |
 
 From the script, or `make install-binary`:
 
@@ -162,9 +169,12 @@ Either way, shanty's own files go in the four directories on the
 Every route but `go install` sets this up. Press tab after `shanty` and it
 offers the commands rather than listing the directory you are standing in.
 
-Nothing is added to `~/.bashrc` or any other startup file: bash and fish each
-read completions from a directory of their own, and the file goes there. Open a
-new terminal afterwards.
+Nothing is added to `~/.bashrc` or any other startup file: each shell reads
+completions from a directory of its own, and the file goes there. Open a new
+terminal afterwards.
+
+dnf, apt and Homebrew place all three, for bash, zsh and fish. The script and
+`make install-binary` place bash and fish.
 
 If you installed with `go install`, or want to place them yourself:
 
@@ -172,8 +182,9 @@ If you installed with `go install`, or want to place them yourself:
 shanty completions install
 ```
 
-zsh reads completions only from a root-owned directory, so that one is placed
-by hand:
+That writes the bash and fish files, for whichever of the two shells is on your
+machine. zsh reads completions only from a root-owned directory, so on Linux
+that one is placed by hand:
 
 ```sh
 shanty completions zsh | sudo tee /usr/share/zsh/site-functions/_shanty

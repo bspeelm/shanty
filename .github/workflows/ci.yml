@@ -92,6 +92,30 @@ jobs:
           sudo apt-get remove -y shanty
           test ! -e /usr/bin/shanty
 
+      # Nothing here can run brew, so what the cask declares is asserted
+      # instead, along with the archive it installs those files out of.
+      - name: the cask ships the binary and all three completions
+        run: |
+          cask=dist/homebrew/Casks/shanty.rb
+          cat "$cask"
+          for stanza in 'binary "shanty"' \
+                        'bash_completion "completions/shanty.bash"' \
+                        'zsh_completion "completions/_shanty"' \
+                        'fish_completion "completions/shanty.fish"'; do
+            grep -qF "$stanza" "$cask" || {
+              echo "::error::the cask does not declare: $stanza"; exit 1; }
+          done
+
+          # A cask naming a file the archive does not carry fails on the user's
+          # machine and nowhere earlier.
+          for arch in darwin_amd64 darwin_arm64; do
+            tar -tzf "dist/shanty_$arch.tar.gz" > /tmp/$arch.list
+            for f in shanty completions/shanty.bash completions/_shanty completions/shanty.fish; do
+              grep -qx "$f" /tmp/$arch.list || {
+                echo "::error::shanty_$arch.tar.gz does not contain $f"; exit 1; }
+            done
+          done
+
       # The spec is built by Copr, which nothing here can reach. Parsing it is
       # what catches a version, a macro or a file list that will not build,
       # before the tag rather than after.
