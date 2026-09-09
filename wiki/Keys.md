@@ -144,6 +144,10 @@ Opening an album shows its cover above the track list, if your terminal can
 draw pictures. shanty works out which from the environment: kitty, Ghostty and
 WezTerm get the kitty graphics protocol, and iTerm2 gets its own.
 
+**`:art` shows the cover on its own**, as large as the screen allows, and `esc`
+puts it away. It needs no request: the picture above the track list already
+fetched it.
+
 **A cover gives way to the music.** If showing it would leave eight tracks or
 fewer on screen, it is not drawn at all — on a short terminal the track list is
 what you opened the album for. Make the window taller and the cover comes back.
@@ -255,6 +259,7 @@ line.
 | `:wiki` | Explain the commands, without leaving shanty |
 | `:reload` | Ask the server for what is on screen again |
 | `:scan` | Ask the server to look for new music |
+| `:art` | Show the cover of the album you are looking at, filling the screen |
 | `:playlist` | List your playlists |
 | `:playlist create <name>` | Make an empty playlist |
 | `:playlist edit <name>` | Add tracks to it, and take them out |

@@ -64,6 +64,11 @@ var commands = []command{
 		run:     func(string) (any, error) { return ShowWiki{}, nil },
 	},
 	{
+		name:    "art",
+		summary: "show the cover of the album you are looking at, filling the screen",
+		run:     func(string) (any, error) { return ShowArt{}, nil },
+	},
+	{
 		name:    "messages",
 		summary: "show what shanty has said this session",
 		run:     func(string) (any, error) { return ShowMessages{}, nil },

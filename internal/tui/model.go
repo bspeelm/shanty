@@ -81,6 +81,9 @@ type Model struct {
 	album   subsonic.Album
 	// art is the cover for album, already rendered, one string per row.
 	art []string
+	// bigArt is a cover filling the screen. While it is set it is all there is
+	// to see, and any key takes it away.
+	bigArt []string
 	// artBlank is an empty block the shape of a cover. The rows are held from
 	// the moment an album with a cover opens, so that the list does not move
 	// when the picture arrives a moment later.

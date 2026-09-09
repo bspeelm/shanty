@@ -37,7 +37,9 @@ type (
 	// is the relative change the keys make.
 	VolumeSet int
 	GoBack    struct{}
-	Quit      struct{}
+	// ShowArt asks for the cover of the album on screen, as large as it fits.
+	ShowArt struct{}
+	Quit    struct{}
 	// Detach asks for the interface to end while playback carries on.
 	Detach struct{}
 	// PlayNext asks for the selected track to play after the current one, and
@@ -96,6 +98,9 @@ type (
 	ArtistsLoaded []subsonic.Artist
 	ArtistLoaded  subsonic.Artist
 	AlbumLoaded   subsonic.Album
+	// FullArt is a cover rendered to fill the screen, in answer to ShowArt.
+	// It is shown over everything until a key takes it away.
+	FullArt []string
 	// CoverArt is an album's art, already rendered for this terminal. The
 	// interface is handed lines rather than an image, because deciding what a
 	// terminal can show and fetching the picture are both I/O.
