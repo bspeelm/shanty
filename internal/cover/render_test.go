@@ -280,3 +280,42 @@ func TestOnlyAnOverlayNeedsTakingAway(t *testing.T) {
 		}
 	}
 }
+
+// TestABoxKeepsThePicturesShape covers the stretching. Handing a terminal a
+// width and a height makes it fill both, so the box has to be the right shape
+// before the picture is sent.
+func TestABoxKeepsThePicturesShape(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		w, h             int
+		maxCols, maxRows int
+		cols, rows       int
+	}{
+		// A cell is twice as tall as it is wide, so a square picture wants
+		// twice as many columns as rows.
+		{"square, room to spare", 500, 500, 80, 20, 40, 20},
+		{"square, too wide for the box", 500, 500, 24, 40, 24, 12},
+		{"wide picture", 1000, 500, 80, 20, 80, 20},
+		{"tall picture", 500, 1000, 80, 20, 20, 20},
+		{"no room", 500, 500, 0, 10, 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cols, rows := Fit(pngOf(t, tc.w, tc.h), tc.maxCols, tc.maxRows)
+			if cols != tc.cols || rows != tc.rows {
+				t.Errorf("got %dx%d cells, want %dx%d", cols, rows, tc.cols, tc.rows)
+			}
+			if cols > tc.maxCols || rows > tc.maxRows {
+				t.Errorf("%dx%d does not fit in %dx%d", cols, rows, tc.maxCols, tc.maxRows)
+			}
+		})
+	}
+}
+
+// TestSomethingThatIsNotAPictureFillsTheBoxAsked covers Fit having nothing to
+// measure. The placeholder is drawn to the box it was given.
+func TestSomethingThatIsNotAPictureFillsTheBoxAsked(t *testing.T) {
+	cols, rows := Fit([]byte("<html>not a picture</html>"), 30, 10)
+	if cols != 30 || rows != 10 {
+		t.Errorf("got %dx%d, want the box asked for", cols, rows)
+	}
+}
