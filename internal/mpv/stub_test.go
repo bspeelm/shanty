@@ -117,12 +117,31 @@ func stubMain() {
 	}
 }
 
+// shortDir is a directory whose path is short enough to hold a socket.
+//
+// A unix socket path is limited to around a hundred bytes. A directory from
+// t.TempDir is named after the test and sits under whatever TMPDIR holds,
+// which on macOS exceeds the limit before a socket name is added.
+func shortDir(t *testing.T) string {
+	t.Helper()
+	base := "/tmp"
+	if _, err := os.Stat(base); err != nil {
+		t.Skip("no short path to put a socket in")
+	}
+	dir, err := os.MkdirTemp(base, "sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 // stub starts a player backed by the re-executed test binary and returns the
 // directory it reports into.
 func stub(t *testing.T, extraEnv ...string) (*Player, string) {
 	t.Helper()
 	report := t.TempDir()
-	socket := filepath.Join(t.TempDir(), "run", "mpv.sock")
+	socket := filepath.Join(shortDir(t), "run", "mpv.sock")
 
 	self, err := os.Executable()
 	if err != nil {
