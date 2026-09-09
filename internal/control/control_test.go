@@ -11,11 +11,30 @@ import (
 	"time"
 )
 
+// shortDir is a directory whose path is short enough to hold a socket.
+//
+// A unix socket path is limited to around a hundred bytes. A directory from
+// t.TempDir is named after the test and sits under whatever TMPDIR holds,
+// which on macOS exceeds the limit before a socket name is added.
+func shortDir(t *testing.T) string {
+	t.Helper()
+	base := "/tmp"
+	if _, err := os.Stat(base); err != nil {
+		t.Skip("no short path to put a socket in")
+	}
+	dir, err := os.MkdirTemp(base, "sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 // serve runs a handler on a socket in a temporary directory and returns its
 // path. The listener is closed when the test ends.
 func serve(t *testing.T, h Handler) string {
 	t.Helper()
-	socket := filepath.Join(t.TempDir(), "control.sock")
+	socket := filepath.Join(shortDir(t), "control.sock")
 	l, err := Listen(socket)
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +188,7 @@ func TestNoSessionIsDistinctFromAFailure(t *testing.T) {
 // killed outright leaves its socket behind, and the next command must not
 // mistake the file for something that is listening.
 func TestASocketLeftByADeadSessionIsCleanedUp(t *testing.T) {
-	dir := t.TempDir()
+	dir := shortDir(t)
 	socket := filepath.Join(dir, "control.sock")
 
 	l, err := Listen(socket)

@@ -122,7 +122,7 @@ func TestTheSocketDirectoryIs0700(t *testing.T) {
 // a permissions problem, which is a bad hour for someone whose machine just
 // lost power.
 func TestAStaleSocketDoesNotBlockStartup(t *testing.T) {
-	dir := t.TempDir()
+	dir := shortDir(t)
 	socket := filepath.Join(dir, "mpv.sock")
 	if err := os.WriteFile(socket, []byte("left by a crash"), 0o600); err != nil {
 		t.Fatal(err)
@@ -245,7 +245,7 @@ func TestADeadPlayerIsReportedAndNotRestarted(t *testing.T) {
 func TestAMissingBinarySaysWhatToDo(t *testing.T) {
 	_, err := Start(t.Context(), Options{
 		Binary: filepath.Join(t.TempDir(), "not-mpv"),
-		Socket: filepath.Join(t.TempDir(), "mpv.sock"),
+		Socket: filepath.Join(shortDir(t), "mpv.sock"),
 	})
 	if err == nil {
 		t.Fatal("starting a binary that does not exist succeeded")
@@ -392,7 +392,7 @@ func TestClosingAnAttachedPlayerStopsIt(t *testing.T) {
 // and Close is what ends it.
 func TestCancellingTheContextDoesNotStopThePlayer(t *testing.T) {
 	report := t.TempDir()
-	socket := filepath.Join(t.TempDir(), "run", "mpv.sock")
+	socket := filepath.Join(shortDir(t), "run", "mpv.sock")
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
