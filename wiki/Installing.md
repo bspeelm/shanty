@@ -196,7 +196,7 @@ shanty completions zsh | sudo tee /usr/share/zsh/site-functions/_shanty
 shanty doctor
 ```
 
-It reports on ten things, from whether mpv is installed and new enough to
+It reports on eleven things, from whether mpv is installed and new enough to
 whether your server accepts your credential. Anything wrong is listed with the
 command or the configuration change that fixes it. The
 [The doctor](The-doctor) page explains each check.

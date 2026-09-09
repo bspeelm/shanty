@@ -403,3 +403,52 @@ func TestBadBindingsAreSaidOnTheScreenRatherThanRefusingToStart(t *testing.T) {
 		t.Errorf("the configured key emitted %#v, want SkipNext", cmd())
 	}
 }
+
+// TestDoctorSaysWhetherThisTerminalDrawsPictures covers the check that exists
+// because its answer is otherwise invisible: an empty box means either that
+// the terminal shows no pictures or that the album has no cover, and the two
+// look identical.
+func TestDoctorSaysWhetherThisTerminalDrawsPictures(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		env      map[string]string
+		severity Severity
+		says     string
+	}{
+		{"ghostty", map[string]string{"TERM": "xterm-ghostty"}, Pass, "kitty"},
+		{"iterm2", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app"}, Pass, "iterm2"},
+		{"a terminal with no pictures", map[string]string{"TERM": "xterm-256color"}, Warn, "empty box"},
+		{"no environment at all", map[string]string{}, Warn, "empty box"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := checkCoverArt(Env{Getenv: func(k string) string { return tc.env[k] }})
+
+			if got.ID != "cover-art" {
+				t.Errorf("the check reported as %q", got.ID)
+			}
+			if got.Severity != tc.severity {
+				t.Errorf("severity is %v, want %v: %s", got.Severity, tc.severity, got.Summary)
+			}
+			if !strings.Contains(got.Summary, tc.says) {
+				t.Errorf("it said %q, which does not mention %q", got.Summary, tc.says)
+			}
+			// The value it decided from, or nobody can tell why it decided.
+			want := tc.env["TERM"]
+			if want == "" {
+				want = "unset"
+			}
+			if !strings.Contains(got.Detail, want) {
+				t.Errorf("the detail is %q and does not name TERM as %q", got.Detail, want)
+			}
+		})
+	}
+}
+
+// TestDoctorWithNoWayToReadTheEnvironmentDoesNotPanic covers the seam being
+// unset, which is how every test that builds an Env by hand arrives.
+func TestDoctorWithNoWayToReadTheEnvironmentDoesNotPanic(t *testing.T) {
+	got := checkCoverArt(Env{})
+	if got.Severity != Warn {
+		t.Errorf("severity is %v with no environment to read", got.Severity)
+	}
+}

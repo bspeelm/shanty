@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/bspeelm/shanty/internal/config"
+	"github.com/bspeelm/shanty/internal/cover"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/tui"
@@ -54,7 +55,7 @@ func (r Report) OK() bool {
 // report to each other.
 var checkIDs = []string{
 	"mpv", "mpv-version", "runtime-dir", "session", "config", "keys",
-	"credentials", "server", "auth", "auth-mode",
+	"cover-art", "credentials", "server", "auth", "auth-mode",
 }
 
 func runDoctor(ctx context.Context, env Env, args []string) error {
@@ -108,6 +109,7 @@ func diagnose(ctx context.Context, env Env) Report {
 	cfg, cfgResult := checkConfig(env)
 	add(cfgResult)
 	add(checkKeys(cfg))
+	add(checkCoverArt(env))
 	creds, credResult := checkCredentials(env)
 	add(credResult)
 
@@ -210,6 +212,31 @@ func checkKeys(cfg config.Config) Result {
 	}
 	return Result{ID: "keys", Severity: Pass,
 		Summary: fmt.Sprintf("%d actions bound in config.toml", len(cfg.Keys))}
+}
+
+// checkCoverArt says how this terminal is sent pictures, because the answer is
+// otherwise invisible: a terminal shanty does not recognise gets an empty box,
+// and so does one whose server has no cover, and they look the same.
+func checkCoverArt(env Env) Result {
+	get := env.Getenv
+	if get == nil {
+		get = func(string) string { return "" }
+	}
+	term := get("TERM")
+	if term == "" {
+		term = "unset"
+	}
+	switch p := cover.Detect(get); p {
+	case cover.Text:
+		return Result{ID: "cover-art", Severity: Warn,
+			Summary: "this terminal is not one shanty draws pictures in, so album art is an empty box",
+			Detail:  "TERM is " + term,
+			Fix:     "run shanty in kitty, Ghostty, WezTerm or iTerm2 for album art"}
+	default:
+		return Result{ID: "cover-art", Severity: Pass,
+			Summary: "album art is drawn with the " + p.String() + " protocol",
+			Detail:  "TERM is " + term}
+	}
 }
 
 func checkRuntimeDir(env Env) Result {
