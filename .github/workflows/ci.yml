@@ -109,6 +109,82 @@ jobs:
           grep -q '^Requires:.*mpv' packaging/shanty.spec || {
             echo "::error::the spec does not require mpv"; exit 1; }
 
+  macos:
+    # ADR-012: the README has listed macOS since v0.1.0 and nothing has ever
+    # run there. crossbuild proves it compiles, which is not the same claim.
+    #
+    # The suite is the test: it drives the fake server, a stub mpv, both
+    # sockets, a detached session and the isolation write set, and none of it
+    # has ever been exercised anywhere but Linux.
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: make build
+
+      - name: the suite passes on macOS
+        run: go test ./... -timeout 15m
+
+      - name: the binary runs and the doctor reports every check
+        run: |
+          ./shanty version
+          # doctor exits non-zero when something is wrong, and on a runner with
+          # no server almost everything is. What is asserted is that it ran and
+          # reported the whole closed set.
+          ./shanty doctor -json > doctor.json || true
+          for id in mpv mpv-version runtime-dir session config keys credentials server auth auth-mode; do
+            grep -q "\"id\": \"$id\"" doctor.json || {
+              echo "::error::the doctor did not report $id on macOS"; exit 1; }
+          done
+          echo "the doctor reported every check"
+
+  rpm:
+    # The rpm is built by Copr, which only runs after the tag. Building and
+    # installing it here is the difference between finding a broken spec on a
+    # pull request and finding it in the one step that cannot be taken back.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: build the rpm from source the way Copr does, then install it
+        run: |
+          docker run --rm -v "$PWD":/src:ro -w /src fedora:latest sh -c '
+            set -e
+            dnf install -y --setopt=install_weak_deps=False                 golang git-core rpm-build make >/dev/null
+
+            # Exactly what Copr invokes.
+            make -f .copr/Makefile srpm outdir=/tmp/out
+
+            rpmbuild --rebuild --nodeps /tmp/out/shanty-*.src.rpm
+            rpm=$(find ~/rpmbuild/RPMS -name "shanty-*.rpm" | head -1)
+            test -n "$rpm" || { echo "::error::no rpm was built"; exit 1; }
+
+            # mpv is the whole reason this package declares anything.
+            rpm -qp --requires "$rpm" | grep -q "^mpv" || {
+              echo "::error::the rpm does not require mpv"; exit 1; }
+
+            # Installing it pulls mpv in, which is the claim the packaging makes.
+            dnf install -y "$rpm" >/dev/null
+            test "$(command -v shanty)" = /usr/bin/shanty
+            shanty version
+            command -v mpv >/dev/null || {
+              echo "::error::installing shanty did not bring mpv"; exit 1; }
+
+            # The completions the package placed are the ones this binary writes.
+            diff <(shanty completions bash) /usr/share/bash-completion/completions/shanty
+            diff <(shanty completions zsh) /usr/share/zsh/site-functions/_shanty
+            diff <(shanty completions fish) /usr/share/fish/vendor_completions.d/shanty.fish
+
+            dnf remove -y shanty >/dev/null
+            test ! -e /usr/bin/shanty
+          '
+
   crossbuild:
     runs-on: ubuntu-latest
     steps:
