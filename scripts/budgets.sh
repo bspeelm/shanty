@@ -18,9 +18,9 @@ MAX_DIRECT_DEPS=10
 MAX_MODULES=30
 MAX_PANICS=0
 MAX_HTTP_PACKAGES=2
-MAX_CODE_LINES=6000
+MAX_CODE_LINES=6500          # ADR-021
 MAX_COMMENT_RATIO=25        # hard ceiling: over budget retires prose, never raises this
-MAX_DOC_LINES=4500          # 75% of the code cap
+MAX_DOC_LINES=4500          # unchanged by ADR-021; prose needs none of it
 MAX_BINARY_BYTES=15728640   # 15 MiB, linux_amd64, stripped
 MIN_TEST_RATIO=3            # at least one test line per three code lines
 

@@ -708,7 +708,7 @@ including when it is settled the way the plan expects.
 
 | # | Question |
 |---|---|
-| ADR-006 | Whether to support MPRIS, and whether D-Bus fits the module budget. Belongs to v0.3. |
+| ADR-006 | Whether to support MPRIS. The budget half is answered: a D-Bus library costs one or two modules against 28 of 30. What is left is whether it is wanted. In the backlog, not a milestone. |
 | ADR-010 | The measured module cost of the interface libraries chosen in ADR-003. |
 | ADR-012 | The macOS form of the filesystem and process decisions, described above. To be answered before a release claims macOS support. |
 
@@ -908,3 +908,54 @@ It starts anyway. A typo in `config.toml` is not a reason to withhold somebody's
 music, and the alternative -- refusing to run until the file is right -- makes
 the mistake worse than it is.
 
+## ADR-021 — The code budget is 6,500, and v0.3 is one feature
+
+**Status:** accepted. Amends PLAN.md §0, which capped code at 6,000, and §12,
+which listed four features in v0.3.
+
+The cap was reached. 5,971 lines of 6,000 with the milestone not started, and
+the first slice of its first feature — one endpoint with a size limit — larger
+than the 29 lines left.
+
+### Why the number moved rather than the work
+
+Both were tried. v0.3 was four features: cover art, synchronised lyrics,
+palette themes, and MPRIS. Three are now in the backlog, because nobody has
+asked for them and a milestone is for what is being built. That is the larger
+change, and it came first.
+
+What is left is cover art, estimated at 350 to 450 lines against this
+repository's own rates: roughly 60 lines per endpoint across the twenty in
+`internal/subsonic`, and 1,677 lines for the whole of `internal/tui` today.
+6,500 covers that with 80 to 180 lines to spare.
+
+So the cap moved by 500 for a milestone that was cut by three quarters. A cap
+that is raised to fit whatever is planned is not a constraint, and the evidence
+that this one is still doing work is that it removed three features before it
+gained a line.
+
+### What was refused
+
+**Rounding to 7,000.** It is a nicer number and it is not measured. The
+estimate says 6,421 at worst; a cap 579 above the worst case would stop
+reporting anything until well past the point where a look was warranted.
+
+**Counting the graphics protocols separately.** Cover art carries three
+renderers, and putting them outside the budget would leave the number intact
+and meaningless. A renderer is code, and the reason to know how much code there
+is does not stop applying to code that is easy to justify.
+
+**Raising the prose budget with it.** §0 derived 4,500 from 75% of the code
+cap. Prose stands at 3,340 and needs nothing, so the number stays and the
+derivation goes. A budget that grows because another one grew is a budget
+nobody is measuring.
+
+### The number to watch
+
+Sixel is the term that could break the estimate. The kitty and iTerm2 protocols
+are a base64 payload inside an escape sequence; sixel needs colour
+quantisation, and it is plausibly 200 lines by itself or a dependency against
+the same module budget. If cover art passes 450 lines, the estimate was wrong,
+and that is the moment to stop and look rather than to raise the cap again.
+
+---
