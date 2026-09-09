@@ -383,10 +383,27 @@ replacing. Search. Playlists, read and edited. Starring. Play reporting with an
 offline backlog, flushed on reconnect. Resume across devices with
 `savePlayQueue` and `getPlayQueue`. Configurable keys.
 
+Three things shipped in it that this list did not plan for. `:headless` closes
+the interface and leaves the music playing, commanded from any shell, which
+ADR-018 records as a session rather than the daemon §3 refuses. `:wiki`
+explains the commands without leaving shanty. And the packages moved here from
+v0.4: dnf, apt and Homebrew each install shanty and mpv together, and CI builds
+and installs every one of them.
+
 **v0.3 — the comforts.** Cover art, using the kitty graphics protocol first
 with sixel and iTerm2 behind the same interface and always a text fallback.
 Synchronised lyrics where the server provides them. Themes as palette files.
 MPRIS, if ADR-006 finds room for D-Bus inside the §0 budget.
+
+None of it fits the §0 code budget as it stands, which is a decision to take
+before the milestone starts rather than partway through its first feature.
+
+**v0.4 — distribution.** What is left after v0.2 shipped the packages. A signed
+and notarised macOS build, which needs ADR-012 answered first, since signing a
+build whose filesystem behaviour is undecided proves only that it was signed. A
+manual page, which the rpm and the deb were both specified to install and
+neither does. A job that installs from the Homebrew tap rather than reading the
+cask it generated. Whether there is an Arch package at all.
 
 Deferred indefinitely, per §3: local files, a visualiser, downloads, and
 multiple simultaneous servers. Profiles that switch between servers are fine;
