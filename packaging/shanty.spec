@@ -86,4 +86,7 @@ go test ./...
 
 %changelog
 * Tue Sep 08 2026 Bryan Speelman <bryspeelm@gmail.com> - 0.2.0-1
+- See https://github.com/bspeelm/shanty/releases/tag/v0.2.0
+
+* Tue Sep 08 2026 Bryan Speelman <bryspeelm@gmail.com> - 0.2.0-1
 - Initial Copr package.
