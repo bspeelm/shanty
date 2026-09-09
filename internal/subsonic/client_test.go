@@ -826,3 +826,100 @@ func TestPlaylistsComeBackSortedByName(t *testing.T) {
 		}
 	}
 }
+
+// TestCoverArtReturnsTheBytesAndNothingElse covers the happy path: what comes
+// back is the image the server sent, unaltered and undecoded.
+func TestCoverArtReturnsTheBytesAndNothingElse(t *testing.T) {
+	c, srv := dial(t, fake.Options{})
+
+	got, err := c.CoverArt(context.Background(), "mf-al-1", 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 {
+		t.Fatal("no bytes came back")
+	}
+	// A PNG signature, so this is an image rather than an error page that
+	// happened to have a length.
+	if !strings.HasPrefix(string(got), "\x89PNG\r\n\x1a\n") {
+		t.Errorf("the bytes are not a PNG: %q", got[:min(8, len(got))])
+	}
+
+	// The size asked for reaches the server, or every image arrives at
+	// whatever the server keeps and the terminal scales it badly.
+	var asked bool
+	for _, r := range srv.Requests() {
+		if r.Endpoint == "getCoverArt" {
+			asked = true
+			if r.Query.Get("size") != "300" {
+				t.Errorf("the request asked for size %q", r.Query.Get("size"))
+			}
+			if r.Query.Get("id") != "mf-al-1" {
+				t.Errorf("the request asked for id %q", r.Query.Get("id"))
+			}
+		}
+	}
+	if !asked {
+		t.Error("no getCoverArt request reached the server")
+	}
+}
+
+// TestCoverArtTheServerDoesNotHaveIsReportedAsTheServerSaidIt covers the case a
+// status code does not carry: Subsonic answers a missing image with 200 and a
+// JSON error, so a client that trusts the status returns an error page as an
+// image.
+func TestCoverArtTheServerDoesNotHaveIsReportedAsTheServerSaidIt(t *testing.T) {
+	c, _ := dial(t, fake.Options{})
+
+	_, err := c.CoverArt(context.Background(), fake.NoArt, 300)
+	if err == nil {
+		t.Fatal("a missing image came back without an error")
+	}
+	if !strings.Contains(err.Error(), "Cover art not found") {
+		t.Errorf("the error is %q, and the server said why", err)
+	}
+}
+
+// TestCoverArtThatIsNotAnImageIsRefused covers something in front of the
+// server answering instead of it.
+func TestCoverArtThatIsNotAnImageIsRefused(t *testing.T) {
+	c, _ := dial(t, fake.Options{Malice: fake.Malice{WrongContentType: true}})
+
+	_, err := c.CoverArt(context.Background(), "mf-al-1", 300)
+	if err == nil {
+		t.Fatal("an HTML page was accepted as cover art")
+	}
+	if !strings.Contains(err.Error(), "not an image") {
+		t.Errorf("the error is %q", err)
+	}
+}
+
+// TestCoverArtLargerThanTheCapIsRefusedBeforeItIsDecoded covers the limit the
+// issue asks for: the size of the picture is the server's choice, so the cap
+// is on the bytes off the wire rather than on the decoded image.
+func TestCoverArtLargerThanTheCapIsRefusedBeforeItIsDecoded(t *testing.T) {
+	c, _ := dial(t, fake.Options{Malice: fake.Malice{OversizeBody: true}})
+
+	_, err := c.CoverArt(context.Background(), "mf-al-1", 300)
+	if err == nil {
+		t.Fatal("an oversized body was accepted")
+	}
+	if !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("the error is %q, and it should say the cap was reached", err)
+	}
+}
+
+// TestCoverArtWithNoIDAsksNothing covers the caller that has no art id. An
+// album without cover art must not become a request for an empty one.
+func TestCoverArtWithNoIDAsksNothing(t *testing.T) {
+	c, srv := dial(t, fake.Options{})
+
+	if _, err := c.CoverArt(context.Background(), "", 300); err == nil {
+		t.Fatal("an empty id was sent to the server")
+	}
+	for _, r := range srv.Requests() {
+		if r.Endpoint == "getCoverArt" {
+			t.Error("a request was made for an empty id")
+		}
+	}
+}

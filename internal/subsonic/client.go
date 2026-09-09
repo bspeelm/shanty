@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,12 +26,18 @@ const (
 // maxMetadataBytes is the most of a metadata response that will be read.
 const maxMetadataBytes = 16 << 20
 
+// maxArtBytes is the most of a cover art response that will be read. The
+// limit is applied to the bytes off the wire, before anything decodes them,
+// because the size of an image is chosen by the server.
+const maxArtBytes = 8 << 20
+
 // Client talks to one Subsonic server.
 type Client struct {
 	base *url.URL
 	auth Authenticator
 
 	metadata *http.Client
+	art      *http.Client
 
 	agent string
 	log   *slog.Logger
@@ -65,6 +72,7 @@ func New(server string, auth Authenticator, opt Options) (*Client, error) {
 		base:     base,
 		auth:     auth,
 		metadata: &http.Client{Timeout: MetadataTimeout},
+		art:      &http.Client{Timeout: ArtTimeout},
 		agent:    agent,
 		log:      opt.Logger,
 	}, nil
@@ -162,4 +170,61 @@ func unwrapURLError(err error) error {
 		return uerr.Err
 	}
 	return err
+}
+
+// CoverArt returns the bytes of a cover image. The size is the longest edge
+// asked of the server in pixels; a server that does not resize answers with
+// what it has.
+//
+// The bytes are not decoded here. They are read under a cap and checked to be
+// an image, and what turns them into pixels is somewhere with no network.
+func (c *Client) CoverArt(ctx context.Context, id string, size int) ([]byte, error) {
+	if id == "" {
+		return nil, errors.New("no cover art id was given")
+	}
+	params := url.Values{"id": {id}}
+	if size > 0 {
+		params.Set("size", strconv.Itoa(size))
+	}
+	u := c.URL("getCoverArt", params)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", c.agent)
+	if c.log != nil {
+		c.log.Debug("subsonic request", "url", Redact(u))
+	}
+
+	resp, err := c.art.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", Redact(u), unwrapURLError(err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s answered %s", Redact(u), resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxArtBytes))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) == maxArtBytes {
+		return nil, fmt.Errorf("the cover art is larger than the %d bytes it is read under", maxArtBytes)
+	}
+
+	// A server reports a missing image as an error envelope with a 200 status,
+	// so the answer has to be read before it is believed to be a picture. Only
+	// the server's own error is worth passing on: anything else that is not an
+	// image is something in front of the server answering instead of it.
+	if kind := http.DetectContentType(body); !strings.HasPrefix(kind, "image/") {
+		var said *Error
+		if _, err := decode(body); errors.As(err, &said) {
+			return nil, said
+		}
+		return nil, fmt.Errorf("%s answered with %s, which is not an image", Redact(u), kind)
+	}
+	return body, nil
 }
