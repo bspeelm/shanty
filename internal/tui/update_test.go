@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1364,5 +1365,40 @@ func TestAFrameWithCoverArtStillFitsTheTerminal(t *testing.T) {
 		if withArt > h {
 			t.Errorf("%dx%d: the frame is %d rows, which is taller than the terminal", w, h, withArt)
 		}
+	}
+}
+
+// TestTheBigCoverComingAndGoingRepaints covers what a frame comparison cannot.
+//
+// The renderer writes only the rows that changed. A cover filling the screen
+// and the one above the track list belong to the same album, so the title row
+// is identical between them and is not written again -- and that row is the one
+// carrying the sequence that takes the previous picture away. Both pictures end
+// up on screen, which is what a screenshot showed and what View() alone cannot
+// see.
+func TestTheBigCoverComingAndGoingRepaints(t *testing.T) {
+	repaints := func(cmd tea.Cmd) bool {
+		return cmd != nil && reflect.DeepEqual(cmd(), tea.ClearScreen())
+	}
+
+	m := New()
+	next, cmd := m.Update(FullArt{"a picture filling the screen"})
+	m = next.(Model)
+	if !repaints(cmd) {
+		t.Error("showing a cover full screen did not ask for a repaint")
+	}
+
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if !repaints(cmd) {
+		t.Error("leaving a full screen cover did not ask for a repaint")
+	}
+	if len(next.(Model).bigArt) != 0 {
+		t.Error("esc did not put the cover away")
+	}
+
+	// And esc with no cover up is ordinary navigation, not a repaint.
+	m = New()
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc}); repaints(cmd) {
+		t.Error("esc repaints the screen when there is no cover to take away")
 	}
 }
