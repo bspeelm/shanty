@@ -131,6 +131,10 @@ release:
 	    echo "v$(VERSION) is already tagged"; exit 1; } || true
 	@test -f docs/review/v$(VERSION).md || { \
 	    echo "no review packet at docs/review/v$(VERSION).md; the release will refuse to build"; exit 1; }
+	@v=$$(sed -n 's/^Version:[[:space:]]*//p' packaging/$(BINARY).spec); \
+	test "$$v" != "$(VERSION)" || { \
+	    echo "the spec already says $(VERSION); bumping again would add a second changelog entry for it."; \
+	    echo "if the bump is already on main, this release only needs: make release-tag"; exit 1; }
 	@command -v gh >/dev/null || { echo "gh is not installed"; exit 1; }
 	$(MAKE) check
 	git switch -c release/$(VERSION)
