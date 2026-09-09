@@ -19,12 +19,18 @@ type command struct {
 // commands is every command, in the order the completion list shows them.
 // ADR-017: a command exists because it takes an argument or because it is
 // rare. Anything that is neither is a key.
+// commands is every command, in the order the completion list shows them and
+// the order the wiki lists them. The three used to disagree, because each new
+// command was appended wherever it was written.
+//
+// They are grouped by what somebody is doing rather than ranked: finding and
+// playing, then what the screen shows, then the server, then the program
+// itself. Thirteen names in a row is a list nobody reads; four short groups is
+// one somebody can scan.
+//
+// ADR-017: a command exists because it takes an argument or because it is
+// rare. Anything that is neither is a key.
 var commands = []command{
-	{
-		name:    "q",
-		summary: "quit",
-		run:     func(string) (any, error) { return Quit{}, nil },
-	},
 	{
 		name:     "search",
 		summary:  "find artists, albums and tracks on the server",
@@ -49,19 +55,14 @@ var commands = []command{
 		run:     func(string) (any, error) { return Shuffle{}, nil },
 	},
 	{
-		name:    "scan",
-		summary: "ask the server to look for new music",
-		run:     func(string) (any, error) { return Scan{}, nil },
+		name:    "resume",
+		summary: "carry on from the queue saved on the server",
+		run:     func(string) (any, error) { return Resume{}, nil },
 	},
 	{
-		name:    "reload",
-		summary: "ask the server for what is on screen again",
-		run:     func(string) (any, error) { return Reload{}, nil },
-	},
-	{
-		name:    "wiki",
-		summary: "explain the commands",
-		run:     func(string) (any, error) { return ShowWiki{}, nil },
+		name:    "art",
+		summary: "show the cover of the album you are looking at, filling the screen",
+		run:     func(string) (any, error) { return ShowArt{}, nil },
 	},
 	{
 		name:     "auto-vol",
@@ -80,9 +81,9 @@ var commands = []command{
 		},
 	},
 	{
-		name:    "art",
-		summary: "show the cover of the album you are looking at, filling the screen",
-		run:     func(string) (any, error) { return ShowArt{}, nil },
+		name:    "wiki",
+		summary: "explain the commands",
+		run:     func(string) (any, error) { return ShowWiki{}, nil },
 	},
 	{
 		name:    "messages",
@@ -90,14 +91,14 @@ var commands = []command{
 		run:     func(string) (any, error) { return ShowMessages{}, nil },
 	},
 	{
-		name:    "resume",
-		summary: "carry on from the queue saved on the server",
-		run:     func(string) (any, error) { return Resume{}, nil },
+		name:    "scan",
+		summary: "ask the server to look for new music",
+		run:     func(string) (any, error) { return Scan{}, nil },
 	},
 	{
-		name:    "headless",
-		summary: "leave the interface and keep playing",
-		run:     func(string) (any, error) { return Detach{}, nil },
+		name:    "reload",
+		summary: "ask the server for what is on screen again",
+		run:     func(string) (any, error) { return Reload{}, nil },
 	},
 	{
 		name:     "volume",
@@ -113,6 +114,16 @@ var commands = []command{
 			}
 			return VolumeSet(n), nil
 		},
+	},
+	{
+		name:    "headless",
+		summary: "leave the interface and keep playing",
+		run:     func(string) (any, error) { return Detach{}, nil },
+	},
+	{
+		name:    "q",
+		summary: "quit",
+		run:     func(string) (any, error) { return Quit{}, nil },
 	},
 }
 

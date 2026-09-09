@@ -1,12 +1,12 @@
-[1mshanty · wiki · :search[0m
+[1mshanty · wiki · :playlist[0m
 [2m────────────────────────────────────────────────────────────────[0m
-  Looks for artists, albums and tracks anywhere on your       
-  server.                                                     
+  Lists your playlists, or does one thing to one of them.     
 
-      :search slipway
-
-  `/` narrows the list in front of you and cannot reach what  
-  is not on it. Tracks are loaded one album at a time, so a   
+      :playlist
+      :playlist create Evening
+      :playlist edit Evening
+      :playlist delete Evening
+      :playlist shuffle Evening
 [2m────────────────────────────────────────────────────────────────[0m
 [2mnothing playing[0m
 [2m↑↓ move · gg top · G end · enter open · esc back · / filter · :…[0m

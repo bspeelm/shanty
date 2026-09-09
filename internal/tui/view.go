@@ -118,21 +118,34 @@ func (m Model) completions(w int) []string {
 	if len(found) == 0 {
 		return []string{"  no command starts with that"}
 	}
-	if len(found) == 1 && found[0].argument != "" {
-		c := found[0]
-		return []string{"  " + c.name + " <" + c.argument + ">   " + c.summary}
+	// Narrowed to one, it says what the command does. This used to depend on
+	// the command taking an argument, so the ones that take none -- `art`,
+	// `wiki`, `resume` -- never explained themselves at any point.
+	if len(found) == 1 {
+		return []string{"  " + spelled(found[0]) + "   " + found[0].summary}
 	}
 
 	var rows []string
 	row := "  "
 	for _, c := range found {
-		if lipgloss.Width(row)+lipgloss.Width(c.name)+3 > w && row != "  " {
+		name := spelled(c)
+		if lipgloss.Width(row)+lipgloss.Width(name)+3 > w && row != "  " {
 			rows = append(rows, strings.TrimRight(row, " "))
 			row = "  "
 		}
-		row += c.name + "   "
+		row += name + "   "
 	}
 	return append(rows, strings.TrimRight(row, " "))
+}
+
+// spelled is a command as the completion list writes it, with what follows it
+// where there is something. A list of bare words says nothing about which of
+// them need typing after.
+func spelled(c command) string {
+	if c.argument == "" {
+		return c.name
+	}
+	return c.name + " <" + c.argument + ">"
 }
 
 func (m Model) footer(w int) string {

@@ -1259,18 +1259,22 @@ func TestTheWikiOpensACommandAndComesBack(t *testing.T) {
 		t.Errorf("the list does not name the commands:\n%s", frame)
 	}
 
-	// Open one.
-	m, _ = press(t, m, "j")
+	// Open the one the cursor starts on, whichever that is. Naming a command
+	// here would tie the test to the order of the list, and the order is a
+	// decision that is allowed to change.
+	first := commands[0]
 	m, _ = press(t, m, "enter")
 	if m.Screen() != ScreenWiki {
 		t.Fatalf("opening a command went to %s", m.Screen())
 	}
 	frame := m.View()
-	if !strings.Contains(frame, "wiki · :search") {
-		t.Errorf("the heading reads:\n%s", frame)
+	if !strings.Contains(frame, "wiki · :"+first.name) {
+		t.Errorf("the heading does not name %s:\n%s", first.name, frame)
 	}
-	if !strings.Contains(frame, "anywhere on your") {
-		t.Errorf("the explanation is not on screen:\n%s", frame)
+	// Something from its own page, rather than from the summary, so that a
+	// page which is only its summary repeated does not pass.
+	if !strings.Contains(frame, helpFor(first.name)[:20]) {
+		t.Errorf("the explanation of %s is not on screen:\n%s", first.name, frame)
 	}
 
 	// esc goes back to the list, not out of the wiki.
@@ -1452,6 +1456,59 @@ func TestTheCoverBlockIsLaidOut(t *testing.T) {
 		}
 		if at := strings.Index(row, want); at < len(artIndent)+24 {
 			t.Errorf("%q starts at column %d, which is over the cover", want, at)
+		}
+	}
+}
+
+// TestNarrowingToOneCommandSaysWhatItDoes covers the completion explaining
+// itself. It used to do so only for commands that take an argument, so `art`,
+// `wiki`, `resume`, `shuffle`, `messages`, `headless` and `q` were each a bare
+// word that never said what it was.
+func TestNarrowingToOneCommandSaysWhatItDoes(t *testing.T) {
+	for _, c := range commands {
+		m := New()
+		next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+		m = next.(Model)
+		for _, r := range ":" + c.name {
+			next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+			m = next.(Model)
+		}
+
+		rows := m.completions(100)
+		// Typing a whole name can still match a longer one, and then a list is
+		// the right answer rather than a summary.
+		if len(matching(m.line)) != 1 {
+			continue
+		}
+		if len(rows) != 1 {
+			t.Errorf(":%s gave %d rows for one match", c.name, len(rows))
+			continue
+		}
+		if !strings.Contains(rows[0], c.summary) {
+			t.Errorf(":%s does not say what it does: %q", c.name, rows[0])
+		}
+		if c.argument != "" && !strings.Contains(rows[0], "<"+c.argument+">") {
+			t.Errorf(":%s does not say it takes %s: %q", c.name, c.argument, rows[0])
+		}
+	}
+}
+
+// TestTheCommandListMarksWhatTakesAnArgument covers the other half: a list of
+// bare words says nothing about which of them need typing after.
+func TestTheCommandListMarksWhatTakesAnArgument(t *testing.T) {
+	m := New()
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = next.(Model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+	m = next.(Model)
+
+	all := strings.Join(m.completions(120), " ")
+	for _, c := range commands {
+		if c.argument == "" {
+			continue
+		}
+		if !strings.Contains(all, c.name+" <"+c.argument+">") {
+			t.Errorf("the list does not show that :%s takes <%s>:\n%s", c.name, c.argument, all)
 		}
 	}
 }
