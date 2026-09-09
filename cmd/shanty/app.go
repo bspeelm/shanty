@@ -983,7 +983,9 @@ func (a app) shuffler() *rand.Rand {
 // Nothing here fails loudly. A cover that cannot be had is a screen without
 // one, and the placeholder holds its place.
 func (a app) fetchArt(album subsonic.Album) tea.Cmd {
-	if album.CoverArt == "" || a.headless {
+	// A terminal that draws no pictures is not asked for one. Fetching a cover
+	// nothing can show is a request made for nobody.
+	if album.CoverArt == "" || a.headless || a.art == cover.None {
 		return nil
 	}
 	client, art, covers := a.client, a.art, a.covers
@@ -1015,6 +1017,11 @@ func (a app) fetchArt(album subsonic.Album) tea.Cmd {
 // not been fetched is one nobody has seen, and there is nothing to enlarge.
 func (a app) fullArt() tea.Cmd {
 	album := a.ui.Album()
+	if a.art == cover.None {
+		return func() tea.Msg {
+			return tui.Failed{Message: "this terminal does not draw pictures\n\nRun `shanty doctor` for what it found"}
+		}
+	}
 	cols, rows := a.size.Width, a.size.Height-artChrome
 	if album.CoverArt == "" || cols < 1 || rows < 1 {
 		return func() tea.Msg { return tui.Failed{Message: "there is no cover to show here"} }

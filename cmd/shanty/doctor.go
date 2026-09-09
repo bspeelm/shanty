@@ -227,9 +227,9 @@ func checkCoverArt(env Env) Result {
 		term = "unset"
 	}
 	switch p := cover.Detect(get); p {
-	case cover.Text:
+	case cover.None:
 		return Result{ID: "cover-art", Severity: Warn,
-			Summary: "this terminal is not one shanty draws pictures in, so album art is an empty box",
+			Summary: "this terminal is not one shanty draws pictures in, so no album art is fetched or shown",
 			Detail:  "TERM is " + term,
 			Fix:     "run shanty in kitty, Ghostty, WezTerm or iTerm2 for album art"}
 	default:

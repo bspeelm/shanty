@@ -72,10 +72,10 @@ func TestTheTerminalDecidesTheProtocol(t *testing.T) {
 		{"wezterm naming itself", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "WezTerm"}, Kitty},
 		{"iterm2", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app"}, ITerm2},
 		{"iterm2 over ssh", map[string]string{"TERM": "xterm-256color", "LC_TERMINAL": "iTerm2"}, ITerm2},
-		{"plain xterm", map[string]string{"TERM": "xterm-256color"}, Text},
-		{"screen", map[string]string{"TERM": "screen"}, Text},
-		{"dumb", map[string]string{"TERM": "dumb", "KITTY_WINDOW_ID": "1"}, Text},
-		{"no terminal at all", map[string]string{}, Text},
+		{"plain xterm", map[string]string{"TERM": "xterm-256color"}, None},
+		{"screen", map[string]string{"TERM": "screen"}, None},
+		{"dumb", map[string]string{"TERM": "dumb", "KITTY_WINDOW_ID": "1"}, None},
+		{"no terminal at all", map[string]string{}, None},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := Detect(func(k string) string { return tc.env[k] })
@@ -180,46 +180,28 @@ func TestAnImageWhoseHeaderIsHugeIsNeverDecoded(t *testing.T) {
 		t.Errorf("the error is %q and should say what the limit is", err)
 	}
 
-	// And the renderers answer with the placeholder rather than an error.
+	// And the renderers draw nothing rather than failing.
 	for _, p := range []Protocol{Kitty, ITerm2} {
-		if out := Render(p, bomb, 4, 3); !strings.Contains(out, "╭") {
-			t.Errorf("%s rendered something other than the placeholder", p)
+		if out := Render(p, bomb, 4, 3); out != "" {
+			t.Errorf("%s drew %q for an image it must not decode", p, out)
 		}
 	}
 }
 
-// TestSomethingThatIsNotAnImageIsThePlaceholder covers the renderers being
-// unable to fail. Nothing about a cover is worth interrupting music for.
-func TestSomethingThatIsNotAnImageIsThePlaceholder(t *testing.T) {
-	for _, p := range []Protocol{Kitty, ITerm2, Text} {
-		out := Render(p, []byte("<html>not a picture</html>"), 6, 3)
-		if !strings.Contains(out, "╭") {
-			t.Errorf("%s gave %q, want the placeholder", p, out)
-		}
-	}
-}
-
-// TestThePlaceholderIsExactlyTheBoxItWasAskedFor covers the layout promise: a
-// screen keeps its shape whether or not the terminal shows pictures.
-func TestThePlaceholderIsExactlyTheBoxItWasAskedFor(t *testing.T) {
-	for _, size := range [][2]int{{10, 5}, {2, 2}, {1, 1}, {3, 1}} {
-		cols, rows := size[0], size[1]
-		out := Render(Text, pngOf(t, 8, 8), cols, rows)
-		lines := strings.Split(out, "\n")
-		if len(lines) != rows {
-			t.Errorf("%dx%d gave %d rows", cols, rows, len(lines))
-		}
-		for _, line := range lines {
-			if n := len([]rune(line)); n != cols {
-				t.Errorf("%dx%d gave a row of %d columns: %q", cols, rows, n, line)
-			}
+// TestSomethingThatIsNotAnImageDrawsNothing covers the renderers being unable
+// to fail. Nothing about a cover is worth interrupting music for, and a box
+// where a picture is not is a row of the screen saying so.
+func TestSomethingThatIsNotAnImageDrawsNothing(t *testing.T) {
+	for _, p := range []Protocol{Kitty, ITerm2, None} {
+		if out := Render(p, []byte("<html>not a picture</html>"), 6, 3); out != "" {
+			t.Errorf("%s drew %q for something that is not a picture", p, out)
 		}
 	}
 }
 
 func TestNoRoomIsNothingRatherThanABrokenBox(t *testing.T) {
 	for _, size := range [][2]int{{0, 5}, {5, 0}, {-1, -1}} {
-		if out := Render(Text, pngOf(t, 8, 8), size[0], size[1]); out != "" {
+		if out := Render(Kitty, pngOf(t, 8, 8), size[0], size[1]); out != "" {
 			t.Errorf("%v gave %q", size, out)
 		}
 	}
@@ -229,7 +211,10 @@ func TestNoRoomIsNothingRatherThanABrokenBox(t *testing.T) {
 // without knowing which terminal it is on.
 func TestABlockIsAlwaysTheRowsItWasAskedFor(t *testing.T) {
 	data := pngOf(t, 8, 8)
-	for _, p := range []Protocol{Text, Kitty, ITerm2} {
+	if got := Block(None, data, 12, 4); got != nil {
+		t.Errorf("a terminal that draws nothing was given %d rows", len(got))
+	}
+	for _, p := range []Protocol{Kitty, ITerm2} {
 		for _, rows := range []int{1, 3, 10} {
 			got := Block(p, data, 12, rows)
 			if len(got) != rows {
@@ -237,10 +222,10 @@ func TestABlockIsAlwaysTheRowsItWasAskedFor(t *testing.T) {
 			}
 		}
 	}
-	if got := Detect(nil); got != Text {
+	if got := Detect(nil); got != None {
 		t.Errorf("no environment at all gave %s", got)
 	}
-	if got := Block(Text, data, 0, 4); got != nil {
+	if got := Block(Kitty, data, 0, 4); got != nil {
 		t.Errorf("no width gave %v", got)
 	}
 }
@@ -274,7 +259,7 @@ func TestOnlyAnOverlayNeedsTakingAway(t *testing.T) {
 	} else if !strings.HasPrefix(got, "\x1b_G") || !strings.Contains(got, "a=d") {
 		t.Errorf("the kitty sequence is %q, which is not a delete", got)
 	}
-	for _, p := range []Protocol{Text, ITerm2} {
+	for _, p := range []Protocol{None, ITerm2} {
 		if got := Clear(p); got != "" {
 			t.Errorf("%s is drawn into the screen and needs no clearing, but sends %q", p, got)
 		}

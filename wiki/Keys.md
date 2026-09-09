@@ -152,15 +152,17 @@ fetched it.
 fewer on screen, it is not drawn at all — on a short terminal the track list is
 what you opened the album for. Make the window taller and the cover comes back.
 
-**Every other terminal gets an empty box the same size.** That is deliberate
-rather than a failure — the screen keeps its shape whether or not there is a
-picture in it, so nothing moves when you open an album over ssh.
+**Every other terminal gets nothing at all.** No cover is fetched, no rows are
+held for one, and no escape sequence is sent. A box where a picture is not is a
+row of the screen spent saying the picture is missing, and over ssh to a
+terminal without graphics you get the full track list instead.
 
 Covers are kept in `~/.cache/shanty/covers/` and fetched once. Deleting that
 directory costs one download each and nothing else.
 
 A server that has no cover for an album, or sends something that is not a
-picture, gets the same empty box. Nothing about a cover interrupts the music.
+picture, shows no cover and says nothing about it. Nothing about a cover
+interrupts the music.
 
 ## Playlists
 
