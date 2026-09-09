@@ -270,29 +270,33 @@ tracks.
 ## Commands
 
 Press `:` to type a command. The commands matching what you have typed are
-listed above the line, so pressing `:` on its own shows all of them. `tab`
-completes as far as the matches agree, `enter` runs, and `esc` abandons the
-line.
+listed above the line, so pressing `:` on its own shows all of them, with
+`<angle brackets>` marking the ones that need something typed after. Narrow to
+a single command and the line says what it does. `tab` completes as far as the
+matches agree, `enter` runs, and `esc` abandons the line.
+
+They are listed in the order shanty lists them: what you are looking for, then
+what the screen shows, then the server, then the program itself.
 
 | Command | What it does |
 |---|---|
-| `:q` | Quit |
-| `:volume 40` | Set the volume to a number, where `+` and `-` change it by steps |
-| `:headless` | Close the interface and keep playing |
 | `:search slipway` | Find artists, albums and tracks on the server |
-| `:resume` | Carry on from the queue saved on your server |
-| `:messages` | Show what shanty has said this session |
-| `:wiki` | Explain the commands, without leaving shanty |
-| `:reload` | Ask the server for what is on screen again |
-| `:scan` | Ask the server to look for new music |
-| `:art` | Show the cover of the album you are looking at, filling the screen |
-| `:auto-vol on\|off` | Level quiet and loud records against each other |
 | `:playlist` | List your playlists |
 | `:playlist create <name>` | Make an empty playlist |
 | `:playlist edit <name>` | Add tracks to it, and take them out |
 | `:playlist delete <name>` | Delete it, after asking |
 | `:playlist shuffle <name>` | Play it in a random order |
 | `:shuffle` | Play everything on the server in a random order |
+| `:resume` | Carry on from the queue saved on your server |
+| `:art` | Show the cover of the album you are looking at, filling the screen |
+| `:auto-vol on\|off` | Level quiet and loud records against each other |
+| `:wiki` | Explain the commands, without leaving shanty |
+| `:messages` | Show what shanty has said this session |
+| `:scan` | Ask the server to look for new music |
+| `:reload` | Ask the server for what is on screen again |
+| `:volume 40` | Set the volume to a number, where `+` and `-` change it by steps |
+| `:headless` | Close the interface and keep playing |
+| `:q` | Quit |
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.

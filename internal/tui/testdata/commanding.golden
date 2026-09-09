@@ -4,9 +4,9 @@
    The Bilge Pumps                                       1 album
    坂本龍一                                             3 albums
 
-
 [2m────────────────────────────────────────────────────────────────[0m
 [2mnothing playing[0m
-[2m  q   search   playlist   shuffle   scan   reload   wiki[0m
-[2m  auto-vol   art   messages   resume   headless   volume[0m
+[2m  search <words>   playlist <verb name>   shuffle   resume[0m
+[2m  art   auto-vol <on|off>   wiki   messages   scan   reload[0m
+[2m  volume <0-100>   headless   q[0m
 [1m:█[0m

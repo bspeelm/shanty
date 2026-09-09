@@ -262,3 +262,73 @@ func TestBindingNothingKeepsEveryKey(t *testing.T) {
 		t.Errorf("binding nothing gave %d keys, want the usual %d", len(keys), len(binding(Actions())))
 	}
 }
+
+// TestEveryCommandIsInTheWikiTableAndEveryRowIsACommand holds the published
+// page against the command set in both directions.
+//
+// Nothing held it before, which is how three orders came to exist: the code,
+// the in-app pages and this table each grew by appending, and a command could
+// have been left out of the table without anything noticing.
+func TestEveryCommandIsInTheWikiTableAndEveryRowIsACommand(t *testing.T) {
+	page := commandsSection(t)
+
+	// The rows name a command and sometimes a subcommand, so the first word
+	// after the colon is the command.
+	rows := regexp.MustCompile("(?m)^\\\\| `:([a-z-]+)").FindAllStringSubmatch(page, -1)
+	listed := map[string]bool{}
+	for _, r := range rows {
+		listed[r[1]] = true
+	}
+	if len(listed) == 0 {
+		t.Fatal("no command rows found; this test has stopped matching the page")
+	}
+
+	for _, c := range commands {
+		if !listed[c.name] {
+			t.Errorf(":%s is a command and the wiki table does not list it", c.name)
+		}
+		delete(listed, c.name)
+	}
+	for name := range listed {
+		t.Errorf("the wiki table lists :%s and there is no such command", name)
+	}
+}
+
+// TestTheWikiTableIsInTheSameOrderAsTheCommands covers the thing that made a
+// command hard to find: three lists of the same names in three orders.
+func TestTheWikiTableIsInTheSameOrderAsTheCommands(t *testing.T) {
+	page := commandsSection(t)
+	rows := regexp.MustCompile("(?m)^\\\\| `:([a-z-]+)").FindAllStringSubmatch(page, -1)
+
+	var seen []string
+	for _, r := range rows {
+		if len(seen) == 0 || seen[len(seen)-1] != r[1] {
+			seen = append(seen, r[1])
+		}
+	}
+	var want []string
+	for _, c := range commands {
+		want = append(want, c.name)
+	}
+	if strings.Join(seen, " ") != strings.Join(want, " ") {
+		t.Errorf("the wiki table is in a different order from the commands\npage: %s\ncode: %s",
+			strings.Join(seen, " "), strings.Join(want, " "))
+	}
+}
+
+// commandsSection is the part of the page that tables the commands. Other
+// tables name commands in passing, and holding those to the same order would
+// be holding prose to a shape it does not have.
+func commandsSection(t *testing.T) string {
+	t.Helper()
+	page := keysPage(t)
+	at := strings.Index(page, "## Commands")
+	if at < 0 {
+		t.Fatal("the page has no Commands section")
+	}
+	rest := page[at+len("## Commands"):]
+	if end := strings.Index(rest, "\n## "); end >= 0 {
+		rest = rest[:end]
+	}
+	return rest
+}
