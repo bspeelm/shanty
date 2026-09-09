@@ -94,6 +94,11 @@ const (
 	// artChrome is the rows `:art` leaves for the title, the rules and the
 	// last row, so that a cover filling the screen does not scroll it.
 	artChrome = 5
+	// artMinCols and artMinRows are the smallest box `:art` will draw in.
+	// Below it the picture is smaller than the one above the track list, which
+	// is a worse view of it than the screen it replaced.
+	artMinCols = 20
+	artMinRows = 10
 )
 
 // Messages the app sends itself.
@@ -172,7 +177,14 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.fetchArtist(msg.ID)
 	case tea.WindowSizeMsg:
 		a.size = msg
-		return a.forward(msg)
+		next, cmd := a.forward(msg)
+		a = next.(app)
+		// A cover filling the screen was rendered for the size the screen
+		// used to be, so it is rendered again for the size it is now.
+		if a.ui.ShowingArt() {
+			return a, tea.Batch(cmd, a.fullArt())
+		}
+		return a, cmd
 	case tui.ShowArt:
 		return a, a.fullArt()
 	case tui.OpenAlbum:
@@ -1023,7 +1035,19 @@ func (a app) fullArt() tea.Cmd {
 		}
 	}
 	cols, rows := a.size.Width, a.size.Height-artChrome
-	if album.CoverArt == "" || cols < 1 || rows < 1 {
+	if cols < artMinCols || rows < artMinRows {
+		// Put away whatever is up as well as saying why: a cover rendered for
+		// a window this is no longer the size of is worse than none.
+		return tea.Batch(
+			func() tea.Msg { return tui.FullArt(nil) },
+			func() tea.Msg {
+				return tui.Failed{Message: fmt.Sprintf(
+					"the window is too small to show a cover\n\nIt needs to be at least %d columns by %d rows",
+					artMinCols, artMinRows+artChrome)}
+			},
+		)
+	}
+	if album.CoverArt == "" {
 		return func() tea.Msg { return tui.Failed{Message: "there is no cover to show here"} }
 	}
 	data, found := a.covers.Get(album.CoverArt, artPixels)
