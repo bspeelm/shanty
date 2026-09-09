@@ -115,7 +115,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Editing shows the library, because that is where the music is.
 		m.editing, m.inPlaylist = subsonic.Playlist(msg), holding(subsonic.Playlist(msg))
 		m.screen, m.filter, m.loading = ScreenArtists, "", false
-		m.status = "adding to " + Sanitise(m.editing.Name) + " — a adds, r removes, esc leaves"
+		m.status = editingHint(m.editing.Name)
 		return m.remember(m.status), nil
 	case Confirm:
 		m.mode, m.asking, m.agreed = modeConfirm, msg.Question, msg.Do
@@ -451,15 +451,6 @@ func asAlbum(p subsonic.Playlist) subsonic.Album {
 
 // back moves up one screen. At the top it does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
-	if m.editing.ID != "" {
-		// Leaving the playlist being edited comes before leaving the screen:
-		// the library lists are where the editing happens, so going up one
-		// would look like nothing had changed.
-		name := m.editing.Name
-		m.editing, m.inPlaylist = subsonic.Playlist{}, nil
-		m.status = "finished with " + Sanitise(name)
-		return m.remember(m.status), nil
-	}
 	switch m.screen {
 	case ScreenTracks:
 		m.screen, m.status, m.filter = ScreenAlbums, "", ""

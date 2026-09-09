@@ -204,14 +204,14 @@ func TestOutsideEditModeAStillQueues(t *testing.T) {
 	}
 }
 
-// TestLeavingEditModeStopsTheMarks covers esc, which has to leave the playlist
-// before it leaves the screen.
+// TestLeavingEditModeStopsTheMarks covers e, which is what leaves the playlist.
+// esc moves up a screen instead, because browsing is what edit mode is for.
 func TestLeavingEditModeStopsTheMarks(t *testing.T) {
 	a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-1"}})
 	a, _ = runTo(t, a, tui.Playlist{Verb: "edit", Name: "Evening"})
 	a, _ = step(t, a, tui.AlbumLoaded(threeTracks))
 
-	next, _ := a.ui.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	next, _ := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
 	a.ui = next.(tui.Model)
 
 	if a.ui.Editing().ID != "" {
@@ -283,5 +283,65 @@ func TestAPlaylistThatIsNotThereIsReported(t *testing.T) {
 
 	if !strings.Contains(a.ui.Status(), "no playlist called") {
 		t.Errorf("it said %q", a.ui.Status())
+	}
+}
+
+// TestGoingBackUpDoesNotLeaveThePlaylistBeingEdited covers the bug that made
+// edit mode able to reach only one album.
+//
+// Edit mode shows the library so that tracks can be found anywhere in it.
+// Reaching a second album means going back up to the album list, and esc used
+// to leave the playlist instead of moving up, so everything after the first
+// album needed the whole command typing again.
+func TestGoingBackUpDoesNotLeaveThePlaylistBeingEdited(t *testing.T) {
+	a, srv := withPlaylists(t, map[string][]string{"Evening": {}})
+	a, _ = runTo(t, a, tui.Playlist{Verb: "edit", Name: "Evening"})
+	a, _ = step(t, a, tui.AlbumLoaded(threeTracks))
+
+	// Up to the album list, then up again to the artists.
+	for range 2 {
+		next, _ := a.ui.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		a.ui = next.(tui.Model)
+		if a.ui.Editing().Name != "Evening" {
+			t.Fatalf("esc left the playlist; editing is %q", a.ui.Editing().Name)
+		}
+	}
+
+	// A second album, and a adds from it exactly as it did from the first.
+	a, _ = step(t, a, tui.AlbumLoaded(threeTracks))
+	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	a.ui = next.(tui.Model)
+	if cmd == nil {
+		t.Fatal("a did nothing after coming back up")
+	}
+	a, _ = runTo(t, a, cmd())
+
+	if got := srv.Playlists()[0].Songs; len(got) != 1 || got[0].ID != "tr-1" {
+		t.Fatalf("the playlist holds %+v, want the track added after going back up", got)
+	}
+}
+
+// TestTheEditedPlaylistIsNamedWhereNothingIsMarked covers the visibility ADR-019
+// rests on. The artist and album lists carry no track marks, and edit mode now
+// lasts across them, so the last row is the only thing that can say so.
+func TestTheEditedPlaylistIsNamedWhereNothingIsMarked(t *testing.T) {
+	a, _ := withPlaylists(t, map[string][]string{"Evening": {}})
+	a, _ = runTo(t, a, tui.Playlist{Verb: "edit", Name: "Evening"})
+	a, _ = step(t, a, tui.AlbumLoaded(threeTracks))
+
+	// Coming back up out of an album clears the status line. The mode has to
+	// outlive it, or there is nothing on the album list saying it is on.
+	next, _ := a.ui.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	a.ui = next.(tui.Model)
+	if a.ui.Status() != "" {
+		t.Fatalf("this test needs a cleared status line; it says %q", a.ui.Status())
+	}
+
+	frame := a.View()
+	if !strings.Contains(frame, "adding to Evening") {
+		t.Errorf("the screen does not say which playlist is being edited:\n%s", frame)
+	}
+	if !strings.Contains(frame, "e leaves") {
+		t.Errorf("the screen does not say how to leave edit mode:\n%s", frame)
 	}
 }
