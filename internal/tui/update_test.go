@@ -1402,3 +1402,56 @@ func TestTheBigCoverComingAndGoingRepaints(t *testing.T) {
 		t.Error("esc repaints the screen when there is no cover to take away")
 	}
 }
+
+// TestTheCoverBlockIsLaidOut covers the placement rather than the picture: the
+// facts sit beside the cover, past its full width, and a rule separates the
+// pair from the track list.
+func TestTheCoverBlockIsLaidOut(t *testing.T) {
+	m := New()
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 62, Height: 34})
+	m = next.(Model)
+	next, _ = m.Update(AlbumLoaded(subsonic.Album{
+		ID: "al-1", Name: "Live at Carnegie Hall", Artist: "Bill Withers",
+		Year: 1973, Duration: 4360, CoverArt: "mf-al-1",
+		Songs: []subsonic.Song{{ID: "1", Title: "Use Me", Duration: 523}},
+	}))
+	m = next.(Model)
+
+	art := make([]string, 12)
+	art[0] = "\x1bPLACEMENT\x1b\\" + strings.Repeat(" ", 24)
+	for i := 1; i < len(art); i++ {
+		art[i] = strings.Repeat(" ", 24)
+	}
+	next, _ = m.Update(CoverArt{AlbumID: "al-1", Lines: art})
+	m = next.(Model)
+
+	block := m.artBlock(62)
+	if len(block) != len(art)+artFraming {
+		t.Fatalf("the block is %d rows for %d of picture", len(block), len(art))
+	}
+	if block[0] != "" {
+		t.Errorf("the cover is flush against the rule above it: %q", block[0])
+	}
+	if block[len(block)-2] != "" {
+		t.Error("the cover is flush against the rule below it")
+	}
+	if !strings.Contains(block[len(block)-1], "─") {
+		t.Error("nothing separates the cover from the track list")
+	}
+
+	// The picture is indented like a list row, and the facts clear its width.
+	// Written as an actual space rather than as the constant, or emptying the
+	// constant would still satisfy it.
+	if !strings.HasPrefix(block[1], " ") {
+		t.Errorf("the cover is flush against the left edge: %q", block[1])
+	}
+	for i, want := range []string{"Live at Carnegie Hall", "Bill Withers", "1973", "1 track · 1:12:40"} {
+		row := block[1+i]
+		if !strings.Contains(row, want) {
+			t.Errorf("row %d does not carry %q: %q", i, want, row)
+		}
+		if at := strings.Index(row, want); at < len(artIndent)+24 {
+			t.Errorf("%q starts at column %d, which is over the cover", want, at)
+		}
+	}
+}

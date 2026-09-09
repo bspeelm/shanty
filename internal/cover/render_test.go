@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // pngOf is an image of a given size, as a server would send it.
@@ -302,5 +304,20 @@ func TestSomethingThatIsNotAPictureFillsTheBoxAsked(t *testing.T) {
 	cols, rows := Fit([]byte("<html>not a picture</html>"), 30, 10)
 	if cols != 30 || rows != 10 {
 		t.Errorf("got %dx%d, want the box asked for", cols, rows)
+	}
+}
+
+// TestEveryRowOfABlockIsTheSameWidth covers the row carrying the placement.
+// The sequence leaves the cursor where it was, so that row needs the spaces
+// after it as much as the blank rows do -- without them, anything drawn beside
+// the cover lands on top of it.
+func TestEveryRowOfABlockIsTheSameWidth(t *testing.T) {
+	for _, p := range []Protocol{Kitty, ITerm2} {
+		block := Block(p, pngOf(t, 8, 8), 24, 5)
+		for i, line := range block {
+			if got := lipgloss.Width(line); got != 24 {
+				t.Errorf("%s row %d is %d columns wide, want 24: %q", p, i, got, line)
+			}
+		}
 	}
 }

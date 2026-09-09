@@ -102,6 +102,7 @@ type album struct {
 	ArtistID  string `json:"artistId"`
 	SongCount int    `json:"songCount"`
 	Duration  int    `json:"duration"`
+	Year      int    `json:"year,omitempty"`
 	Songs     []song `json:"song,omitempty"`
 	// CoverArt is what getCoverArt is asked for. A real server's is opaque,
 	// so this one is too rather than being the album id again.
@@ -136,7 +137,7 @@ func DefaultLibrary() Library {
 			Albums: []album{
 				{
 					ID: "al-1", Name: "Harbour", Artist: "Aoi", ArtistID: "ar-1",
-					SongCount: 2, Duration: 360, CoverArt: "mf-al-1",
+					SongCount: 2, Duration: 360, Year: 1973, CoverArt: "mf-al-1",
 					Songs: []song{
 						{ID: "tr-1", Title: "Slipway", Album: "Harbour", AlbumID: "al-1", Artist: "Aoi", ArtistID: "ar-1", Track: 1, Duration: 180, Suffix: "flac", Path: "Aoi/Harbour/01 Slipway.flac"},
 						{ID: "tr-2", Title: "Ballast", Album: "Harbour", AlbumID: "al-1", Artist: "Aoi", ArtistID: "ar-1", Track: 2, Duration: 180, Suffix: "flac", Path: "Aoi/Harbour/02 Ballast.flac"},
@@ -144,7 +145,7 @@ func DefaultLibrary() Library {
 				},
 				{
 					ID: "al-2", Name: "Low Water", Artist: "Aoi", ArtistID: "ar-1",
-					SongCount: 1, Duration: 200, CoverArt: "mf-al-2",
+					SongCount: 1, Duration: 200, Year: 1975, CoverArt: "mf-al-2",
 					Songs: []song{
 						{ID: "tr-3", Title: "Neap", Album: "Low Water", AlbumID: "al-2", Artist: "Aoi", ArtistID: "ar-1", Track: 1, Duration: 200, Suffix: "flac", Path: "Aoi/Low Water/01 Neap.flac"},
 					},

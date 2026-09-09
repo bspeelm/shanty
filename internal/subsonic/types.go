@@ -61,6 +61,7 @@ type Album struct {
 	ArtistID  string `json:"artistId"`
 	SongCount int    `json:"songCount"`
 	Duration  int    `json:"duration"`
+	Year      int    `json:"year"`
 	Songs     []Song `json:"song"`
 	// CoverArt is the identifier to ask getCoverArt for. It is an opaque
 	// server value and is never used as a filename.
