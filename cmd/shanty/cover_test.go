@@ -476,3 +476,90 @@ func TestGoingBackFromAFullScreenCoverLeavesOneCover(t *testing.T) {
 		t.Error("the track list did not come back")
 	}
 }
+
+// TestAFullScreenCoverFollowsTheWindow covers resizing. The picture was
+// rendered for the size the screen used to be, and stayed that size.
+func TestAFullScreenCoverFollowsTheWindow(t *testing.T) {
+	a, _ := withCovers(t)
+	a.art = cover.Kitty
+	a = openAlbum(t, a, "al-1")
+	a = runCommand(t, a, "art")
+
+	if !strings.Contains(a.View(), "c=70,r=35") {
+		t.Fatalf("the cover is not the size of the screen:\n%s", visible(a.View()))
+	}
+
+	// Wider and taller: 60 rows leaves 55, and a square picture wants 110
+	// columns for those, which is more than the 100 there are.
+	a = resize(t, a, 100, 60)
+	if !strings.Contains(a.View(), "c=100,r=50") {
+		t.Errorf("the cover did not grow with the window:\n%s", visible(a.View()))
+	}
+
+	// Smaller again.
+	a = resize(t, a, 60, 30)
+	if !strings.Contains(a.View(), "c=50,r=25") {
+		t.Errorf("the cover did not shrink with the window:\n%s", visible(a.View()))
+	}
+}
+
+// TestAWindowTooSmallForACoverSaysSo covers the floor, from both directions:
+// typing the command in a small window, and shrinking one that is already up.
+func TestAWindowTooSmallForACoverSaysSo(t *testing.T) {
+	t.Run("typed in a window too small", func(t *testing.T) {
+		a, _ := withCovers(t)
+		a.art = cover.Kitty
+		a = openAlbum(t, a, "al-1")
+		a = resize(t, a, 18, 40)
+
+		a = runCommand(t, a, "art")
+
+		if !strings.Contains(a.ui.Status(), "too small") {
+			t.Errorf("it said %q", a.ui.Status())
+		}
+		if a.ui.ShowingArt() {
+			t.Error("a cover was shown in a window too small for one")
+		}
+	})
+
+	t.Run("shrunk while it is up", func(t *testing.T) {
+		a, _ := withCovers(t)
+		a.art = cover.Kitty
+		a = openAlbum(t, a, "al-1")
+		a = runCommand(t, a, "art")
+		if !a.ui.ShowingArt() {
+			t.Fatal("the cover was never shown")
+		}
+
+		a = resize(t, a, 80, 12)
+
+		if a.ui.ShowingArt() {
+			t.Error("a cover rendered for a larger window is still up")
+		}
+		if !strings.Contains(a.ui.Status(), "too small") {
+			t.Errorf("it said %q", a.ui.Status())
+		}
+		if !strings.Contains(a.View(), "Slipway") {
+			t.Error("the track list did not come back")
+		}
+	})
+}
+
+// resize drives a window size change the way a terminal does.
+func resize(t *testing.T, a app, w, h int) app {
+	t.Helper()
+	pending := []tea.Msg{tea.WindowSizeMsg{Width: w, Height: h}}
+	for round := 0; len(pending) > 0 && round < 8; round++ {
+		var produced []tea.Msg
+		for _, m := range pending {
+			if m == nil {
+				continue
+			}
+			var more []tea.Msg
+			a, more = step(t, a, m)
+			produced = append(produced, more...)
+		}
+		pending = produced
+	}
+	return a
+}

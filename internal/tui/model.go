@@ -204,6 +204,10 @@ func (m Model) Editing() subsonic.Playlist { return m.editing }
 func (m Model) Artist() subsonic.Artist { return m.artist }
 func (m Model) Album() subsonic.Album   { return m.album }
 
+// ShowingArt reports that a cover is filling the screen, so that a caller
+// resizing the window knows to render it again at the new size.
+func (m Model) ShowingArt() bool { return len(m.bigArt) > 0 }
+
 // Position is how far into the track playback has reached.
 func (m Model) Position() time.Duration { return m.position }
 
