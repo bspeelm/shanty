@@ -34,6 +34,10 @@ type Env struct {
 	// from.
 	Executable func() (string, error)
 
+	// Getenv reads the environment. Which pictures a terminal can be sent is
+	// decided from it, and a test says what terminal it is on.
+	Getenv func(string) string
+
 	// LookPath and Command locate mpv and ask its version.
 	LookPath func(string) (string, error)
 	Command  func(ctx context.Context, name string, args ...string) ([]byte, error)
@@ -83,6 +87,7 @@ func main() {
 		Stdout:        os.Stdout,
 		Stderr:        os.Stderr,
 		Executable:    os.Executable,
+		Getenv:        os.Getenv,
 		LookPath:      exec.LookPath,
 		ImmutableHost: immutableHost(),
 		Command: func(ctx context.Context, name string, args ...string) ([]byte, error) {

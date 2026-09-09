@@ -41,6 +41,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case AlbumLoaded:
 		album := subsonic.Album(msg)
+		if album.ID != m.album.ID {
+			m.art = nil
+		}
 		if m.keep != "" && m.screen == ScreenTracks && album.ID == m.album.ID {
 			m.album, m.loading = album, false
 			return m.reloaded(ScreenTracks, plural(len(album.Songs), "track")), nil
@@ -111,6 +114,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.screen, m.filter = ScreenPlaylist, ""
 		return m.selecting(ScreenPlaylist, 0), nil
+	case CoverArt:
+		// Art for an album that is no longer open is dropped. A slow request
+		// must not draw one album's cover over another's tracks.
+		if msg.AlbumID == m.album.ID && msg.AlbumID != "" {
+			m.art = msg.Lines
+		}
+		return m, nil
 	case EditingPlaylist:
 		// Editing shows the library, because that is where the music is.
 		m.editing, m.inPlaylist = subsonic.Playlist(msg), holding(subsonic.Playlist(msg))

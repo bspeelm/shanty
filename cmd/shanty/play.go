@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/config"
+	"github.com/bspeelm/shanty/internal/cover"
 	"github.com/bspeelm/shanty/internal/mpv"
 )
 
@@ -90,6 +91,8 @@ func play(ctx context.Context, env Env) error {
 	a := newApp(ctx, client, p, cfg)
 	a.detach = detacher(env)
 	a.backlog = env.Paths.Backlog()
+	a.covers = cover.NewCache(env.Paths.Covers())
+	a.art = cover.Detect(env.Getenv)
 	if running {
 		a = a.resume(resumed)
 	}

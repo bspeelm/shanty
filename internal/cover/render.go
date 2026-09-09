@@ -54,6 +54,9 @@ func (p Protocol) String() string {
 // the same answer as a terminal that cannot show pictures at all and is why
 // being uncertain is safe.
 func Detect(env func(string) string) Protocol {
+	if env == nil {
+		return Text
+	}
 	term, program := env("TERM"), env("TERM_PROGRAM")
 	if term == "" || term == "dumb" {
 		return Text
@@ -179,4 +182,31 @@ func textBox(cols, rows int) string {
 		lines = append(lines, middle)
 	}
 	return strings.Join(append(lines, "╰"+strings.Repeat("─", cols-2)+"╯"), "\n")
+}
+
+// Block renders an image as exactly that many lines, so that a caller laying
+// out a screen can count rows without knowing which protocol was used.
+//
+// A protocol that draws with an escape sequence puts it on the first line and
+// pads the rest with spaces. The padding is what moves the cursor past the
+// picture: how far a terminal moves it on its own varies, and blank lines are
+// the one thing every terminal agrees about.
+func Block(p Protocol, data []byte, cols, rows int) []string {
+	if cols < 1 || rows < 1 {
+		return nil
+	}
+	out := Render(p, data, cols, rows)
+	if p == Text || out == "" {
+		lines := strings.Split(out, "\n")
+		for len(lines) < rows {
+			lines = append(lines, strings.Repeat(" ", cols))
+		}
+		return lines[:rows]
+	}
+	lines := make([]string, rows)
+	lines[0] = out
+	for i := 1; i < rows; i++ {
+		lines[i] = strings.Repeat(" ", cols)
+	}
+	return lines
 }

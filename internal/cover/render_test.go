@@ -216,3 +216,42 @@ func TestNoRoomIsNothingRatherThanABrokenBox(t *testing.T) {
 		}
 	}
 }
+
+// TestABlockIsAlwaysTheRowsItWasAskedFor is what lets a screen count rows
+// without knowing which terminal it is on.
+func TestABlockIsAlwaysTheRowsItWasAskedFor(t *testing.T) {
+	data := pngOf(t, 8, 8)
+	for _, p := range []Protocol{Text, Kitty, ITerm2} {
+		for _, rows := range []int{1, 3, 10} {
+			got := Block(p, data, 12, rows)
+			if len(got) != rows {
+				t.Errorf("%s at %d rows gave %d lines", p, rows, len(got))
+			}
+		}
+	}
+	if got := Detect(nil); got != Text {
+		t.Errorf("no environment at all gave %s", got)
+	}
+	if got := Block(Text, data, 0, 4); got != nil {
+		t.Errorf("no width gave %v", got)
+	}
+}
+
+// TestOnlyTheFirstLineOfAPictureCarriesTheSequence covers the padding: the
+// rest of the block has to be blank, or a terminal draws the image again.
+func TestOnlyTheFirstLineOfAPictureCarriesTheSequence(t *testing.T) {
+	for _, p := range []Protocol{Kitty, ITerm2} {
+		got := Block(p, pngOf(t, 8, 8), 12, 4)
+		if !strings.Contains(got[0], "\x1b") {
+			t.Errorf("%s put no escape sequence on the first line", p)
+		}
+		for _, line := range got[1:] {
+			if strings.Contains(line, "\x1b") {
+				t.Errorf("%s repeated the sequence on a later line", p)
+			}
+			if line != strings.Repeat(" ", 12) {
+				t.Errorf("%s padded with %q", p, line)
+			}
+		}
+	}
+}

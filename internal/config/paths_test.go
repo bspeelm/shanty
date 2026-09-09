@@ -292,3 +292,26 @@ func TestTheLimitIsTheShorterOfTheTwoKernels(t *testing.T) {
 		t.Errorf("the limit is %d; macOS allows 104 bytes including the terminator", SocketLimit)
 	}
 }
+
+// TestCoversAreInsideTheCacheDirectory holds §8: cover art is the first thing
+// written to the cache, and it has to be written inside one of the four
+// directories rather than beside them.
+func TestCoversAreInsideTheCacheDirectory(t *testing.T) {
+	p := Paths{Config: "/c", State: "/s", Cache: "/k", Runtime: "/r"}
+
+	covers := p.Covers()
+	if !strings.HasPrefix(covers, p.Cache+string(filepath.Separator)) {
+		t.Errorf("covers go to %q, which is not inside the cache directory %q", covers, p.Cache)
+	}
+	// Removing the four directories removes the covers with them, which is
+	// what lets `shanty uninstall` say it left nothing.
+	var covered bool
+	for _, dir := range p.All() {
+		if strings.HasPrefix(covers, dir+string(filepath.Separator)) {
+			covered = true
+		}
+	}
+	if !covered {
+		t.Errorf("%q is in none of the four directories, so uninstall would leave it", covers)
+	}
+}

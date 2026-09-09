@@ -16,7 +16,7 @@ const chromeLines = 5
 // The progress bar and the list of matching commands each take one when they
 // are showing.
 func (m Model) chrome() int {
-	n := chromeLines
+	n := chromeLines + len(m.artLines())
 	if m.nowPlaying != "" {
 		n++
 	}
@@ -54,6 +54,9 @@ func (m Model) View() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(fit("shanty · "+m.heading(), w)))
 	b.WriteString("\n" + rule(w) + "\n")
+	for _, line := range m.artLines() {
+		b.WriteString(line + "\n")
+	}
 	b.WriteString(m.list(w, visible))
 	b.WriteString(rule(w) + "\n")
 	b.WriteString(fit(m.player(), w) + "\n")
@@ -128,6 +131,16 @@ func (m Model) footer(w int) string {
 // playlist and the three keys that act on it.
 func editingHint(name string) string {
 	return "adding to " + Sanitise(name) + " — a adds, r removes, e leaves"
+}
+
+// artLines is the cover art rows on the screen showing an album's tracks.
+// Every other screen shows none: the art belongs to one album, and a list of
+// artists is not about any of them.
+func (m Model) artLines() []string {
+	if m.screen != ScreenTracks {
+		return nil
+	}
+	return m.art
 }
 
 // reading reports whether the screen is a page of prose rather than a list.

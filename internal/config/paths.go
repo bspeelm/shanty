@@ -135,6 +135,9 @@ func TooLongForASocket(path string) (int, bool) {
 // Backlog is the file holding plays the server has not accepted.
 func (p Paths) Backlog() string { return filepath.Join(p.State, "plays.jsonl") }
 
+// Covers is the directory cover art is kept in.
+func (p Paths) Covers() string { return filepath.Join(p.Cache, "covers") }
+
 // All returns the four directories shanty writes to.
 func (p Paths) All() []string { return []string{p.Config, p.State, p.Cache, p.Runtime} }
 

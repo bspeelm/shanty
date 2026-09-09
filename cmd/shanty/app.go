@@ -13,6 +13,7 @@ import (
 	"github.com/bspeelm/shanty/internal/backlog"
 	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/control"
+	"github.com/bspeelm/shanty/internal/cover"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/queue"
 	"github.com/bspeelm/shanty/internal/subsonic"
@@ -70,7 +71,24 @@ type app struct {
 	// released is set once the session holds the player, and tells the caller
 	// not to stop mpv on the way out.
 	released bool
+	// art is how this terminal shows pictures, and covers is where the ones
+	// already fetched are kept. A session has no terminal, so art is Text
+	// there and no cover is ever asked for.
+	art    cover.Protocol
+	covers cover.Cache
 }
+
+// Cover art is drawn in a box this many cells across and down. mpv is not
+// asked what shape a cell is, so a square of cells is taller than it is wide
+// and the terminal is left to fit the picture inside it.
+const (
+	artCols = 24
+	artRows = 12
+	// artPixels is the longest edge asked of the server. A terminal cell is
+	// around twice as tall as it is wide, so this is generous for the box
+	// above and leaves the picture room on a screen with large cells.
+	artPixels = 480
+)
 
 // Messages the app sends itself.
 type (
@@ -148,6 +166,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.fetchArtist(msg.ID)
 	case tui.OpenAlbum:
 		return a, a.fetchAlbum(msg.ID)
+	case tui.AlbumLoaded:
+		// The album is shown at once and its cover follows, because a picture
+		// is worth none of the wait before a track list appears.
+		next, cmd := a.forward(msg)
+		return next, tea.Batch(cmd, a.fetchArt(subsonic.Album(msg)))
 	case tui.Search:
 		return a, a.search(string(msg))
 	case tui.Resume:
@@ -941,4 +964,30 @@ func (a app) shuffler() *rand.Rand {
 		return a.random
 	}
 	return rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
+}
+
+// fetchArt gets an album's cover, from the cache if it is there, and renders
+// it for this terminal.
+//
+// Nothing here fails loudly. A cover that cannot be had is a screen without
+// one, and the placeholder holds its place.
+func (a app) fetchArt(album subsonic.Album) tea.Cmd {
+	if album.CoverArt == "" || a.headless {
+		return nil
+	}
+	client, art, covers := a.client, a.art, a.covers
+	return func() tea.Msg {
+		data, found := covers.Get(album.CoverArt, artPixels)
+		if !found {
+			fetched, err := client.CoverArt(a.ctx, album.CoverArt, artPixels)
+			if err != nil {
+				return nil
+			}
+			// A cover that cannot be kept is still a cover worth showing, so
+			// the write failing costs the next run a request and nothing else.
+			_ = covers.Put(album.CoverArt, artPixels, fetched)
+			data = fetched
+		}
+		return tui.CoverArt{AlbumID: album.ID, Lines: cover.Block(art, data, artCols, artRows)}
+	}
 }

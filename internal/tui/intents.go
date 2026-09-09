@@ -96,6 +96,15 @@ type (
 	ArtistsLoaded []subsonic.Artist
 	ArtistLoaded  subsonic.Artist
 	AlbumLoaded   subsonic.Album
+	// CoverArt is an album's art, already rendered for this terminal. The
+	// interface is handed lines rather than an image, because deciding what a
+	// terminal can show and fetching the picture are both I/O.
+	CoverArt struct {
+		// AlbumID says which album the art is for. One that arrives after the
+		// screen has moved on is dropped rather than drawn over the new album.
+		AlbumID string
+		Lines   []string
+	}
 	// StarredChanged is everything the server has starred, and the set of
 	// identifiers so that every list can mark what is in it.
 	StarredChanged struct {
