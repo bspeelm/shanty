@@ -559,6 +559,15 @@ Acting on what is selected:
 
 The long tail lives here, so a rare action never has to claim a letter.
 
+**Amended:** there is no `:help`. The command that explains the commands is
+`:wiki`, which is the name the wiki already had and the one somebody looking
+for the documentation would reach for. It shows the list, and a page for each
+saying what it does and how it is typed.
+
+`:help` is not bound to it. Two names for one command would break the closed
+set the command table is held to, and a set that admits synonyms stops being a
+list of what exists.
+
 ### Quitting
 
 **`:q`.** Quitting ends the session and cannot be undone from inside shanty, so
