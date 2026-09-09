@@ -33,7 +33,7 @@ code. Numbers may start generous and tighten; they may not silently grow.
 | binary size (linux_amd64, stripped) | 15 MiB | `make budgets` builds exactly that and measures it |
 | packages importing `net/http` | 2 | `internal/subsonic` and its `fake` test server, nothing else |
 | test lines : code lines | ≥ 1 : 3 | `wc -l` over `_test.go` vs the rest; a floor, not a target |
-| code lines | 6,000 | `cmd` and `internal`, non-test, comments and blanks excluded |
+| code lines | 6,500 | `cmd` and `internal`, non-test, comments and blanks excluded (ADR-021) |
 | comment lines : code lines | 25% | the one **hard** ceiling: over budget removes a comment |
 | live prose | 4,500 lines | every `.md` outside `docs/history/` and `docs/review/` |
 | lockfile-equivalent | go.sum, and `vendor/` derived from it | no second *independent* pinning mechanism; CI regenerates `vendor/` and fails on a difference |
@@ -392,11 +392,11 @@ and installs every one of them.
 
 **v0.3 — the comforts.** Cover art, using the kitty graphics protocol first
 with sixel and iTerm2 behind the same interface and always a text fallback.
-Synchronised lyrics where the server provides them. Themes as palette files.
-MPRIS, if ADR-006 finds room for D-Bus inside the §0 budget.
 
-None of it fits the §0 code budget as it stands, which is a decision to take
-before the milestone starts rather than partway through its first feature.
+Synchronised lyrics, palette themes and MPRIS were in this milestone and are
+now in the backlog. Each is wanted by nobody who has said so, and a milestone
+is for what is being built rather than for everything that would be pleasant.
+ADR-021 records the code budget this leaves.
 
 **v0.4 — distribution.** What is left after v0.2 shipped the packages. A signed
 and notarised macOS build, which needs ADR-012 answered first, since signing a
@@ -414,8 +414,10 @@ two connections at once are not.
 Settled ones are in `docs/decisions.md`. This is a pointer to what is still
 open, not a second list.
 
-ADR-006, whether to support MPRIS and whether D-Bus fits the §0 budget. It
-belongs to v0.3.
+ADR-006, whether to support MPRIS. It no longer belongs to v0.3: MPRIS is in
+the backlog. The budget half of it is answered — a D-Bus library costs one or
+two modules against 28 of 30 — so what is left is whether the feature is
+wanted, which is not a question a record can settle on its own.
 
 ADR-012, the macOS form of §7 and §8, answered before a release claims to
 support macOS.
