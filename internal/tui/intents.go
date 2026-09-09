@@ -104,6 +104,10 @@ type (
 		// screen has moved on is dropped rather than drawn over the new album.
 		AlbumID string
 		Lines   []string
+		// Clear is sent to the terminal when the art is no longer on screen.
+		// Some protocols draw over the interface rather than into it, and what
+		// they draw stays until it is taken away.
+		Clear string
 	}
 	// StarredChanged is everything the server has starred, and the set of
 	// identifiers so that every list can mark what is in it.

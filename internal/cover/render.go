@@ -189,6 +189,21 @@ func textBox(cols, rows int) string {
 	return strings.Join(append(lines, "╰"+strings.Repeat("─", cols-2)+"╯"), "\n")
 }
 
+// Clear is what a terminal is sent to take away a picture already placed.
+//
+// A kitty graphics image is not text. It is an overlay the terminal keeps
+// until it is told otherwise, so drawing a different screen over it leaves it
+// where it was. An iTerm2 image occupies cells and goes when they are written
+// over, and a text placeholder is text, so both are nothing.
+func Clear(p Protocol) string {
+	if p == Kitty {
+		// d=A takes the placement and the image data with it, because the
+		// picture is sent again whenever it is shown again.
+		return "\x1b_Ga=d,d=A\x1b\\"
+	}
+	return ""
+}
+
 // Block renders an image as exactly that many lines, so that a caller laying
 // out a screen can count rows without knowing which protocol was used.
 //

@@ -258,3 +258,20 @@ func TestOnlyTheFirstLineOfAPictureCarriesTheSequence(t *testing.T) {
 		}
 	}
 }
+
+// TestOnlyAnOverlayNeedsTakingAway covers which protocols leave something
+// behind. Getting this wrong in either direction is visible: too little and a
+// picture sits over the next screen, too much and every frame carries an
+// escape sequence for nothing.
+func TestOnlyAnOverlayNeedsTakingAway(t *testing.T) {
+	if got := Clear(Kitty); got == "" {
+		t.Error("a kitty image is an overlay and is not taken away")
+	} else if !strings.HasPrefix(got, "\x1b_G") || !strings.Contains(got, "a=d") {
+		t.Errorf("the kitty sequence is %q, which is not a delete", got)
+	}
+	for _, p := range []Protocol{Text, ITerm2} {
+		if got := Clear(p); got != "" {
+			t.Errorf("%s is drawn into the screen and needs no clearing, but sends %q", p, got)
+		}
+	}
+}

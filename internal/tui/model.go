@@ -81,6 +81,10 @@ type Model struct {
 	album   subsonic.Album
 	// art is the cover for album, already rendered, one string per row.
 	art []string
+	// clearArt takes away a picture the terminal is still holding. It is kept
+	// once it is known, because it describes the terminal rather than one
+	// album, and it is sent on every screen that shows no art.
+	clearArt string
 
 	// queued is what is playing and what follows it, and queuedAt is the
 	// position in it. The caller owns the queue; this is a copy to draw.
