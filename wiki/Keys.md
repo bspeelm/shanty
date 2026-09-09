@@ -149,9 +149,11 @@ puts it away. It needs no request: the picture above the track list already
 fetched it. It grows and shrinks with the window, and says the window is too
 small rather than drawing a cover smaller than the one it replaced.
 
-**A cover gives way to the music.** If showing it would leave eight tracks or
-fewer on screen, it is not drawn at all — on a short terminal the track list is
-what you opened the album for. Make the window taller and the cover comes back.
+**A cover gives way to the music, but only to music that is there.** It is not
+drawn when the rows it takes would push the album off the screen: eight tracks
+have to remain, or the whole record if it is shorter than that. A record with
+three tracks keeps its cover on a terminal where a record with thirty loses
+one. Make the window taller and the cover comes back.
 
 **Every other terminal gets nothing at all.** No cover is fetched, no rows are
 held for one, and no escape sequence is sent. A box where a picture is not is a
