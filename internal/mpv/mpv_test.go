@@ -145,6 +145,7 @@ func TestCommandsSpeakMpvsProtocol(t *testing.T) {
 	p, dir := stub(t)
 	ctx := t.Context()
 
+	var wanted []string
 	for _, step := range []struct {
 		do   func() error
 		want string
@@ -154,24 +155,24 @@ func TestCommandsSpeakMpvsProtocol(t *testing.T) {
 		{func() error { return p.SetPause(ctx, true) }, `["set_property","pause",true]`},
 		{func() error { return p.Seek(ctx, -10*time.Second) }, `["seek",-10,"relative"]`},
 		{func() error { return p.SetVolume(ctx, 55) }, `["set_property","volume",55]`},
+		// The two spellings matter: "track" is per track and "no" is off, and
+		// mpv takes neither a boolean nor "album" to mean either of them.
+		{func() error { return p.SetReplayGain(ctx, true) }, `["set_property","replaygain","track"]`},
+		{func() error { return p.SetReplayGain(ctx, false) }, `["set_property","replaygain","no"]`},
 		{func() error { return p.Observe(ctx, "time-pos") }, `["observe_property",1,"time-pos"]`},
 		{func() error { return p.Stop(ctx) }, `["stop"]`},
 	} {
 		if err := step.do(); err != nil {
 			t.Fatalf("%s: %v", step.want, err)
 		}
+		wanted = append(wanted, step.want)
 	}
 
+	// Asserted from the table above rather than from a second list of the same
+	// strings. Two lists drift, and a case added to one of them is a case
+	// nothing checks.
 	got := commands(t, dir)
-	for _, want := range []string{
-		`["loadfile","https://example.org/a","replace"]`,
-		`["loadfile","https://example.org/b","append"]`,
-		`["set_property","pause",true]`,
-		`["seek",-10,"relative"]`,
-		`["set_property","volume",55]`,
-		`["observe_property",1,"time-pos"]`,
-		`["stop"]`,
-	} {
+	for _, want := range wanted {
 		if !strings.Contains(got, want) {
 			t.Errorf("mpv never received %s\nreceived:\n%s", want, got)
 		}

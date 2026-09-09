@@ -21,6 +21,10 @@ type Config struct {
 	// Keys binds an action to the keys that do it, replacing the ones shanty
 	// comes with. An action not named here keeps its own.
 	Keys map[string][]string `toml:"keys"`
+	// AutoVolume levels tracks against each other using the loudness a server
+	// recorded in their tags. It changes the volume and nothing else: an
+	// untagged track is played as it is.
+	AutoVolume bool `toml:"auto_volume"`
 }
 
 // LoadConfig reads config.toml. A missing file returns the zero Config and no

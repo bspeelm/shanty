@@ -52,6 +52,9 @@ func (r *recorder) SeekTo(_ context.Context, d time.Duration) error {
 	return r.note("seek to %s", d)
 }
 func (r *recorder) SetVolume(_ context.Context, v int) error { return r.note("volume %d", v) }
+func (r *recorder) SetReplayGain(_ context.Context, on bool) error {
+	return r.note("replaygain %v", on)
+}
 func (r *recorder) Observe(_ context.Context, p string) error {
 	return r.note("observe %s", p)
 }

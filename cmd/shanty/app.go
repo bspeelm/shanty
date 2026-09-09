@@ -28,6 +28,7 @@ type player interface {
 	Seek(ctx context.Context, d time.Duration) error
 	SeekTo(ctx context.Context, d time.Duration) error
 	SetVolume(ctx context.Context, percent int) error
+	SetReplayGain(ctx context.Context, on bool) error
 	Prefetch(ctx context.Context, url string) error
 	Observe(ctx context.Context, property string) error
 	Events() <-chan mpv.Event
@@ -76,6 +77,11 @@ type app struct {
 	// there and no cover is ever asked for.
 	art    cover.Protocol
 	covers cover.Cache
+	// autoVolume levels tracks against each other, and configFile is where
+	// saying so is remembered. The file is empty in a session and in tests,
+	// which is how they run without writing anything.
+	autoVolume bool
+	configFile string
 	// size is the terminal, remembered because `:art` renders a cover to fill
 	// it and the interface does not do the rendering.
 	size tea.WindowSizeMsg
@@ -144,8 +150,18 @@ func newApp(ctx context.Context, client *subsonic.Client, p player, cfg config.C
 }
 
 func (a app) Init() tea.Cmd {
+	// The player is told about levelling at startup rather than only when it
+	// is changed, or a setting that was remembered would do nothing until it
+	// was set again.
+	levelling := func() tea.Msg {
+		if err := a.player.SetReplayGain(a.ctx, a.autoVolume); err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return nil
+	}
 	return tea.Batch(a.fetchArtists(), a.watchPlayer(), a.observePosition(),
-		a.fetchStarred(), func() tea.Msg { return a.flushBacklog() }, a.fetchSaved())
+		a.fetchStarred(), func() tea.Msg { return a.flushBacklog() }, a.fetchSaved(),
+		levelling)
 }
 
 // View renders the interface. A session has no terminal to render to.
@@ -187,6 +203,10 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	case tui.ShowArt:
 		return a, a.fullArt()
+	case tui.ToggleAutoVolume:
+		return a.Update(tui.AutoVolume{On: !a.autoVolume})
+	case tui.AutoVolume:
+		return a.setAutoVolume(msg.On)
 	case tui.OpenAlbum:
 		return a, a.fetchAlbum(msg.ID)
 	case tui.AlbumLoaded:
@@ -1060,4 +1080,39 @@ func (a app) fullArt() tea.Cmd {
 	// it is tall.
 	cols, rows = cover.Fit(data, cols, rows)
 	return func() tea.Msg { return tui.FullArt(cover.Block(art, data, cols, rows)) }
+}
+
+// setAutoVolume turns loudness levelling on or off, tells the player, and
+// remembers it.
+//
+// A setting that has to be turned on again every time shanty starts is one
+// nobody uses, so it is written to config.toml as it changes. The write
+// failing is reported and the setting still applies to this session: the
+// levelling is what was asked for, and remembering it is the smaller half.
+func (a app) setAutoVolume(on bool) (tea.Model, tea.Cmd) {
+	a.autoVolume = on
+	told := "levelling quiet and loud records against each other"
+	if !on {
+		told = "playing every record at the volume it was recorded"
+	}
+
+	player, path := a.player, a.configFile
+	apply := func() tea.Msg {
+		if err := player.SetReplayGain(a.ctx, on); err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		if path == "" {
+			return tui.Notice(told)
+		}
+		cfg, err := config.LoadConfig(path)
+		if err != nil {
+			return tui.Failed{Message: "the setting applies now but could not be saved: " + err.Error()}
+		}
+		cfg.AutoVolume = on
+		if err := cfg.Save(path); err != nil {
+			return tui.Failed{Message: "the setting applies now but could not be saved: " + err.Error()}
+		}
+		return tui.Notice(told)
+	}
+	return a, apply
 }
