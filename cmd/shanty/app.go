@@ -76,6 +76,9 @@ type app struct {
 	// there and no cover is ever asked for.
 	art    cover.Protocol
 	covers cover.Cache
+	// size is the terminal, remembered because `:art` renders a cover to fill
+	// it and the interface does not do the rendering.
+	size tea.WindowSizeMsg
 }
 
 // Cover art is drawn in a box this many cells across and down. mpv is not
@@ -88,6 +91,9 @@ const (
 	// around twice as tall as it is wide, so this is generous for the box
 	// above and leaves the picture room on a screen with large cells.
 	artPixels = 480
+	// artChrome is the rows `:art` leaves for the title, the rules and the
+	// last row, so that a cover filling the screen does not scroll it.
+	artChrome = 5
 )
 
 // Messages the app sends itself.
@@ -164,6 +170,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.OpenArtist:
 		return a, a.fetchArtist(msg.ID)
+	case tea.WindowSizeMsg:
+		a.size = msg
+		return a.forward(msg)
+	case tui.ShowArt:
+		return a, a.fullArt()
 	case tui.OpenAlbum:
 		return a, a.fetchAlbum(msg.ID)
 	case tui.AlbumLoaded:
@@ -994,4 +1005,23 @@ func (a app) fetchArt(album subsonic.Album) tea.Cmd {
 			Clear:   cover.Clear(art),
 		}
 	}
+}
+
+// fullArt renders the open album's cover to fill the terminal.
+//
+// The bytes come from the cache, which is where the cover above the track list
+// put them, so looking at a picture costs no request. An album whose cover has
+// not been fetched is one nobody has seen, and there is nothing to enlarge.
+func (a app) fullArt() tea.Cmd {
+	album := a.ui.Album()
+	cols, rows := a.size.Width, a.size.Height-artChrome
+	if album.CoverArt == "" || cols < 1 || rows < 1 {
+		return func() tea.Msg { return tui.Failed{Message: "there is no cover to show here"} }
+	}
+	data, found := a.covers.Get(album.CoverArt, artPixels)
+	if !found {
+		return func() tea.Msg { return tui.Failed{Message: "that cover has not been fetched yet"} }
+	}
+	art := a.art
+	return func() tea.Msg { return tui.FullArt(cover.Block(art, data, cols, rows)) }
 }

@@ -22,8 +22,10 @@ func withCovers(t *testing.T) (app, *fake.Server) {
 
 	// Tall enough that a cover still leaves a track list worth reading. The
 	// default 24 rows is not, which is the point of minTracksBesideArt.
-	next, _ := a.ui.Update(tea.WindowSizeMsg{Width: 80, Height: 40})
-	a.ui = next.(tui.Model)
+	//
+	// Sent through the app rather than to the interface, because `:art` needs
+	// the size to render a cover the size of the screen.
+	a, _ = step(t, a, tea.WindowSizeMsg{Width: 80, Height: 40})
 	return a, srv
 }
 
@@ -291,8 +293,7 @@ func TestAShortTerminalKeepsTheTracksAndDropsTheCover(t *testing.T) {
 	} {
 		a, _ := withCovers(t)
 		a.art = cover.Kitty
-		next, _ := a.ui.Update(tea.WindowSizeMsg{Width: 80, Height: tc.height})
-		a.ui = next.(tui.Model)
+		a, _ = step(t, a, tea.WindowSizeMsg{Width: 80, Height: tc.height})
 		a = openAlbum(t, a, "al-1")
 
 		frame := a.View()
@@ -304,4 +305,119 @@ func TestAShortTerminalKeepsTheTracksAndDropsTheCover(t *testing.T) {
 			t.Errorf("at %d rows the frame is %d rows", tc.height, rows)
 		}
 	}
+}
+
+// TestArtFillsTheScreenAndEscPutsItAway covers the command end to end.
+func TestArtFillsTheScreenAndEscPutsItAway(t *testing.T) {
+	a, srv := withCovers(t)
+	a.art = cover.Kitty
+	a = openAlbum(t, a, "al-1")
+	before := len(srv.Requests())
+
+	a = runCommand(t, a, "art")
+
+	frame := a.View()
+	if !strings.Contains(frame, "f=100") {
+		t.Fatal("the command drew no picture")
+	}
+	// Bigger than the twelve rows a cover takes above a track list.
+	if !strings.Contains(frame, "r=35") {
+		t.Errorf("the picture was not enlarged to the screen:\n%s", visible(frame))
+	}
+	if strings.Contains(frame, "Slipway") {
+		t.Error("the track list is drawn under a cover filling the screen")
+	}
+	// The cache already held it, so looking at it costs no request.
+	if got := len(srv.Requests()); got != before {
+		t.Errorf("%d requests were made to enlarge a cover already fetched", got-before)
+	}
+
+	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
+	if strings.Contains(a.View(), "r=35") {
+		t.Error("esc did not put the cover away")
+	}
+	if !strings.Contains(a.View(), "Slipway") {
+		t.Error("esc did not bring the track list back")
+	}
+}
+
+// TestArtWithNothingToShowSaysSo covers the two ways there is nothing to
+// enlarge: no album open, and an album whose cover never arrived.
+func TestArtWithNothingToShowSaysSo(t *testing.T) {
+	t.Run("no album open", func(t *testing.T) {
+		a, _ := withCovers(t)
+		a.art = cover.Kitty
+
+		a = runCommand(t, a, "art")
+
+		if !strings.Contains(a.ui.Status(), "no cover") {
+			t.Errorf("it said %q", a.ui.Status())
+		}
+	})
+
+	t.Run("the cover was never fetched", func(t *testing.T) {
+		a, _ := withCovers(t)
+		a.art = cover.Kitty
+		a = openAlbum(t, a, "al-1")
+
+		// The server went away between opening the album and asking to see
+		// the cover, so the cache holds nothing for it.
+		a.covers = cover.NewCache(t.TempDir())
+
+		a = runCommand(t, a, "art")
+
+		if !strings.Contains(a.ui.Status(), "not been fetched") {
+			t.Errorf("it said %q", a.ui.Status())
+		}
+		if strings.Contains(a.View(), "r=35") {
+			t.Error("a cover was drawn from nothing")
+		}
+	})
+}
+
+// runCommand types a command and presses enter.
+func runCommand(t *testing.T, a app, name string) app {
+	t.Helper()
+	next, _ := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+	a.ui = next.(tui.Model)
+	for _, r := range name {
+		next, _ = a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		a.ui = next.(tui.Model)
+	}
+	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	a.ui = next.(tui.Model)
+
+	// The intent reaches the app, the app answers with a message, and that
+	// message is what the interface draws. Stopping after the first round
+	// would report a command as done while nothing had been shown.
+	pending := runAll(cmd)
+	for round := 0; len(pending) > 0 && round < 8; round++ {
+		var produced []tea.Msg
+		for _, m := range pending {
+			if m == nil {
+				continue
+			}
+			var more []tea.Msg
+			a, more = step(t, a, m)
+			produced = append(produced, more...)
+		}
+		pending = produced
+	}
+	return a
+}
+
+// visible strips escape sequences so a failure prints something readable.
+func visible(frame string) string {
+	var b strings.Builder
+	for skip := false; len(frame) > 0; frame = frame[1:] {
+		switch {
+		case frame[0] == 0x1b:
+			skip = true
+		case skip && (frame[0] == '\\' || frame[0] == '\a' || frame[0] == 'm'):
+			skip = false
+		case !skip:
+			b.WriteByte(frame[0])
+		}
+	}
+	return b.String()
 }

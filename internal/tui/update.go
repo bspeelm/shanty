@@ -120,6 +120,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.screen, m.filter = ScreenPlaylist, ""
 		return m.selecting(ScreenPlaylist, 0), nil
+	case FullArt:
+		m.bigArt = msg
+		return m, nil
 	case CoverArt:
 		// Art for an album that is no longer open is dropped. A slow request
 		// must not draw one album's cover over another's tracks.
@@ -473,6 +476,10 @@ func asAlbum(p subsonic.Playlist) subsonic.Album {
 
 // back moves up one screen. At the top it does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
+	if len(m.bigArt) > 0 {
+		m.bigArt = nil
+		return m, nil
+	}
 	switch m.screen {
 	case ScreenTracks:
 		m.screen, m.status, m.filter = ScreenAlbums, "", ""

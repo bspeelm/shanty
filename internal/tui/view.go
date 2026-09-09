@@ -64,15 +64,27 @@ func (m Model) View() string {
 	var b strings.Builder
 	// A picture the terminal is holding is taken away before a screen that is
 	// not showing one is drawn. Writing text over it does not remove it.
-	if len(m.artLines()) == 0 {
+	if len(m.artLines()) == 0 && len(m.bigArt) == 0 {
 		b.WriteString(m.clearArt)
 	}
 	b.WriteString(titleStyle.Render(fit("shanty · "+m.heading(), w)))
 	b.WriteString("\n" + rule(w) + "\n")
-	for _, line := range m.artLines() {
-		b.WriteString(line + "\n")
+
+	// A cover filling the screen is all there is to see. The list is not drawn
+	// under it, because there is no room for one and nothing to scroll.
+	if len(m.bigArt) > 0 {
+		for _, line := range m.bigArt {
+			b.WriteString(line + "\n")
+		}
+		for range max(0, visible-len(m.bigArt)) {
+			b.WriteString("\n")
+		}
+	} else {
+		for _, line := range m.artLines() {
+			b.WriteString(line + "\n")
+		}
+		b.WriteString(m.list(w, visible))
 	}
-	b.WriteString(m.list(w, visible))
 	b.WriteString(rule(w) + "\n")
 	b.WriteString(fit(m.player(), w) + "\n")
 	if m.nowPlaying != "" {

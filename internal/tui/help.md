@@ -73,6 +73,21 @@ one album's tracks, or the starred list.
 The cursor stays on what you had selected if it is still there, and the last
 row says what came back.
 
+## art
+
+Shows the cover of the album you are looking at, as large as the screen allows.
+
+    :art
+
+`esc` puts it away and returns you to the track list.
+
+Above the track list a cover takes twelve rows, and it is not drawn at all when
+that would leave eight tracks or fewer on screen. This is how to see the whole
+thing on a short terminal, and how to look at it properly on any terminal.
+
+It needs an album open, and a terminal that draws pictures. `shanty doctor`
+says whether yours does under `cover-art`.
+
 ## messages
 
 Shows everything shanty has said this session, newest first, with the time.
