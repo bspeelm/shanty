@@ -138,6 +138,18 @@ func editingHint(name string) string {
 	return "adding to " + Sanitise(name) + " — a adds, r removes, e leaves"
 }
 
+// blankLike is an empty block the same shape as a rendered cover. The width is
+// taken from a padding row rather than the first, which carries an escape
+// sequence in every protocol that draws a picture.
+func blankLike(lines []string) []string {
+	width := lipgloss.Width(lines[len(lines)-1])
+	out := make([]string, len(lines))
+	for i := range out {
+		out[i] = strings.Repeat(" ", width)
+	}
+	return out
+}
+
 // artLines is the cover art rows on the screen showing an album's tracks.
 // Every other screen shows none: the art belongs to one album, and a list of
 // artists is not about any of them.

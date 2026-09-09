@@ -159,7 +159,12 @@ func kitty(data []byte, cols, rows int) string {
 		}
 		b.WriteString("\x1b_G")
 		if first {
-			fmt.Fprintf(&b, "a=T,f=100,c=%d,r=%d,", cols, rows)
+			// C=1 is the cursor movement policy: leave the cursor where it
+			// was. Without it the terminal moves past the picture, and the
+			// blank lines that reserve the rows land below it instead of
+			// under it, making the frame twice as tall as the space it asked
+			// for.
+			fmt.Fprintf(&b, "a=T,f=100,c=%d,r=%d,C=1,", cols, rows)
 		}
 		fmt.Fprintf(&b, "m=%d;%s\x1b\\", more, chunk)
 	}

@@ -201,3 +201,71 @@ func TestATerminalThatDrawsIntoTheScreenIsSentNothingExtra(t *testing.T) {
 		t.Error("a terminal drawing text placeholders was sent a graphics sequence")
 	}
 }
+
+// TestTheRowsAreHeldBeforeThePictureArrives covers the jump. The cover is a
+// request behind the track list, so a screen that grows when it lands moves
+// every track under the cursor.
+func TestTheRowsAreHeldBeforeThePictureArrives(t *testing.T) {
+	a, _ := withCovers(t)
+	a.art = cover.Kitty
+
+	// The first album teaches the interface how big a cover is. The frame is
+	// always the height of the terminal, so what moves when the list jumps is
+	// where the first track sits in it.
+	a = openAlbum(t, a, "al-1")
+	withPicture := rowOf(t, a.View(), "Slipway")
+
+	// The second arrives with its cover still on its way.
+	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
+	next, _ := a.ui.Update(tui.AlbumLoaded(subsonic.Album{
+		ID: "al-2", Name: "Other", CoverArt: "mf-al-2",
+		Songs: []subsonic.Song{{ID: "tr-9", Title: "Waiting"}},
+	}))
+	a.ui = next.(tui.Model)
+
+	waiting := rowOf(t, a.View(), "Waiting")
+	if waiting != withPicture {
+		t.Errorf("the first track is on row %d while the cover is on its way and row %d once it lands; the list jumps by %d",
+			waiting, withPicture, withPicture-waiting)
+	}
+	if strings.Contains(a.View(), "f=100") {
+		t.Error("a picture is being placed before one has arrived")
+	}
+}
+
+// rowOf is which row of a frame a piece of text is on.
+func rowOf(t *testing.T, frame, text string) int {
+	t.Helper()
+	for i, line := range strings.Split(frame, "\n") {
+		if strings.Contains(line, text) {
+			return i
+		}
+	}
+	t.Fatalf("%q is not on the screen:\n%s", text, frame)
+	return -1
+}
+
+// TestAnAlbumWithNoCoverHoldsNoRows covers the other side: a server with no
+// art for an album must not leave a gap where a picture will never be, and the
+// picture from the album before it has to go.
+func TestAnAlbumWithNoCoverHoldsNoRows(t *testing.T) {
+	a, _ := withCovers(t)
+	a.art = cover.Kitty
+	a = openAlbum(t, a, "al-1")
+
+	next, _ := a.ui.Update(tui.AlbumLoaded(subsonic.Album{
+		ID: "al-3", Name: "Coverless",
+		Songs: []subsonic.Song{{ID: "tr-9", Title: "Nothing"}},
+	}))
+	a.ui = next.(tui.Model)
+
+	frame := a.View()
+	// f=100 is the placement. The delete sequence shares its prefix, so
+	// looking for the prefix alone finds the thing that takes a picture away.
+	if strings.Contains(frame, "f=100") {
+		t.Error("an album with no cover art placed a picture")
+	}
+	if !strings.Contains(frame, cover.Clear(cover.Kitty)) {
+		t.Error("the picture from the album before it was not taken away")
+	}
+}
