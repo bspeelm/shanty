@@ -999,9 +999,10 @@ func (a app) fetchArt(album subsonic.Album) tea.Cmd {
 			_ = covers.Put(album.CoverArt, artPixels, fetched)
 			data = fetched
 		}
+		cols, rows := cover.Fit(data, artCols, artRows)
 		return tui.CoverArt{
 			AlbumID: album.ID,
-			Lines:   cover.Block(art, data, artCols, artRows),
+			Lines:   cover.Block(art, data, cols, rows),
 			Clear:   cover.Clear(art),
 		}
 	}
@@ -1023,5 +1024,9 @@ func (a app) fullArt() tea.Cmd {
 		return func() tea.Msg { return tui.Failed{Message: "that cover has not been fetched yet"} }
 	}
 	art := a.art
+	// The box is shaped to the picture rather than to the screen, or the
+	// terminal stretches a square cover across a screen five times as wide as
+	// it is tall.
+	cols, rows = cover.Fit(data, cols, rows)
 	return func() tea.Msg { return tui.FullArt(cover.Block(art, data, cols, rows)) }
 }

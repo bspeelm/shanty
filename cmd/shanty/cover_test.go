@@ -181,13 +181,16 @@ func TestLeavingAnAlbumTakesThePictureWithIt(t *testing.T) {
 	if !strings.Contains(a.View(), "\x1b_G") {
 		t.Fatal("the album screen carries no picture to take away")
 	}
-	if strings.Contains(a.View(), "a=d") {
-		t.Error("the screen showing the picture also asks for it to be deleted")
+	// The delete travels with every placement, and has to come first: it takes
+	// away whatever was there before this frame drew its own.
+	frame := a.View()
+	if del, put := strings.Index(frame, "a=d"), strings.Index(frame, "f=100"); del < 0 || del > put {
+		t.Errorf("the delete is at %d and the placement at %d; the picture is placed then deleted", del, put)
 	}
 
 	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
 
-	frame := a.View()
+	frame = a.View()
 	if !strings.Contains(frame, cover.Clear(cover.Kitty)) {
 		t.Error("leaving the album did not take the picture away")
 	}
@@ -320,9 +323,12 @@ func TestArtFillsTheScreenAndEscPutsItAway(t *testing.T) {
 	if !strings.Contains(frame, "f=100") {
 		t.Fatal("the command drew no picture")
 	}
-	// Bigger than the twelve rows a cover takes above a track list.
-	if !strings.Contains(frame, "r=35") {
-		t.Errorf("the picture was not enlarged to the screen:\n%s", visible(frame))
+	// Bigger than the twelve rows a cover takes above a track list, and shaped
+	// to the picture rather than to the screen. The fixture is square and a
+	// cell is twice as tall as it is wide, so 35 rows want 70 columns -- not
+	// the 80 the screen has, which would stretch it.
+	if !strings.Contains(frame, "c=70,r=35") {
+		t.Errorf("the box is not the screen-sized box the picture asked for:\n%s", visible(frame))
 	}
 	if strings.Contains(frame, "Slipway") {
 		t.Error("the track list is drawn under a cover filling the screen")
@@ -333,7 +339,7 @@ func TestArtFillsTheScreenAndEscPutsItAway(t *testing.T) {
 	}
 
 	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
-	if strings.Contains(a.View(), "r=35") {
+	if strings.Contains(a.View(), "c=70,r=35") {
 		t.Error("esc did not put the cover away")
 	}
 	if !strings.Contains(a.View(), "Slipway") {
@@ -369,7 +375,7 @@ func TestArtWithNothingToShowSaysSo(t *testing.T) {
 		if !strings.Contains(a.ui.Status(), "not been fetched") {
 			t.Errorf("it said %q", a.ui.Status())
 		}
-		if strings.Contains(a.View(), "r=35") {
+		if strings.Contains(a.View(), "c=70,r=35") {
 			t.Error("a cover was drawn from nothing")
 		}
 	})
@@ -420,4 +426,28 @@ func visible(frame string) string {
 		}
 	}
 	return b.String()
+}
+
+// TestGoingBackFromAFullScreenCoverLeavesOneCover is the second thing a
+// screenshot showed: esc redrew the cover above the track list without taking
+// the full screen one away, so both were on screen at once.
+func TestGoingBackFromAFullScreenCoverLeavesOneCover(t *testing.T) {
+	a, _ := withCovers(t)
+	a.art = cover.Kitty
+	a = openAlbum(t, a, "al-1")
+	a = runCommand(t, a, "art")
+
+	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
+
+	frame := a.View()
+	if n := strings.Count(frame, "f=100"); n != 1 {
+		t.Errorf("%d covers are being placed, want the one above the track list", n)
+	}
+	// The one that is left is the small one, and the big one was taken away.
+	if del, put := strings.Index(frame, "a=d"), strings.Index(frame, "f=100"); del < 0 || del > put {
+		t.Error("the full screen cover was not taken away before the small one was drawn")
+	}
+	if !strings.Contains(frame, "Slipway") {
+		t.Error("the track list did not come back")
+	}
 }

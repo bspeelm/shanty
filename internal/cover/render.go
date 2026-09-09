@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"math"
 	"strings"
 
 	// Registered for their decoders. A server sends whichever it kept.
@@ -192,6 +193,33 @@ func textBox(cols, rows int) string {
 		lines = append(lines, middle)
 	}
 	return strings.Join(append(lines, "╰"+strings.Repeat("─", cols-2)+"╯"), "\n")
+}
+
+// cellAspect is how many times taller a terminal cell is than it is wide. It
+// is not asked of the terminal: the answer varies by a little between fonts
+// and by nothing that matters at the size a cover is drawn.
+const cellAspect = 2.0
+
+// Fit is the box of cells a picture should be drawn in to keep its shape,
+// inside the space there is for it.
+//
+// Giving a terminal both a width and a height in cells makes it stretch the
+// picture to fill them. The way to keep a square cover square is to ask for a
+// box that is already the right shape.
+func Fit(data []byte, maxCols, maxRows int) (cols, rows int) {
+	if maxCols < 1 || maxRows < 1 {
+		return 0, 0
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width < 1 || cfg.Height < 1 {
+		return maxCols, maxRows
+	}
+	// How many columns this picture wants for every row it is given.
+	wide := float64(cfg.Width) * cellAspect / float64(cfg.Height)
+	if c := int(math.Round(float64(maxRows) * wide)); c <= maxCols {
+		return max(1, c), maxRows
+	}
+	return maxCols, max(1, int(math.Round(float64(maxCols)/wide)))
 }
 
 // Clear is what a terminal is sent to take away a picture already placed.

@@ -64,9 +64,11 @@ func (m Model) View() string {
 	var b strings.Builder
 	// A picture the terminal is holding is taken away before a screen that is
 	// not showing one is drawn. Writing text over it does not remove it.
-	if len(m.artLines()) == 0 && len(m.bigArt) == 0 {
-		b.WriteString(m.clearArt)
-	}
+	// The picture the terminal is holding is taken away before anything is
+	// drawn, whether or not this frame draws one of its own. Going from a
+	// cover filling the screen back to one above a track list draws art in
+	// both frames, and without this both pictures end up on screen.
+	b.WriteString(m.clearArt)
 	b.WriteString(titleStyle.Render(fit("shanty · "+m.heading(), w)))
 	b.WriteString("\n" + rule(w) + "\n")
 
