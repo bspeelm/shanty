@@ -42,6 +42,10 @@ archives:
     files:
       - LICENSE
       - README.md
+      # The cask installs these out of the archive, which is the only way a
+      # Homebrew install gets completions. bootstrap/install.sh ignores them
+      # and runs `shanty completions install` instead.
+      - completions/*
 
 # The rpm is built from source by Copr out of packaging/shanty.spec, so this
 # makes the deb and nothing else. Adding "rpm" here would publish a second
@@ -120,6 +124,13 @@ homebrew_casks:
     # other two package managers are told the same thing.
     dependencies:
       - formula: mpv
+    # A cask installs a binary and nothing else unless it is told otherwise,
+    # so without this the Homebrew route is the only package route with no
+    # completions. The paths are inside the archive.
+    completions:
+      bash: completions/shanty.bash
+      zsh: completions/_shanty
+      fish: completions/shanty.fish
     # Homebrew removed --no-quarantine in 4.7, so the user cannot opt out and
     # the cask has to do it. Without this the binary installs and Gatekeeper
     # refuses to run it, unsigned. ADR-012 owes the answer to signing it.
