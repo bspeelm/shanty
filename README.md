@@ -30,36 +30,55 @@ on your system. The [Installing](https://github.com/bspeelm/shanty/wiki/Installi
 installing mpv on each platform, including containers and image-based systems
 such as Fedora Silverblue.
 
-## Installing
+## Install
 
-From your package manager, which installs mpv with it:
+You need **mpv**. shanty plays nothing on its own — every track is handed to
+mpv over a socket, which is why the credential in a stream URL never reaches a
+command line. Every package below installs it with shanty. You also need a
+Subsonic server you can reach; Navidrome is the one shanty is tested against.
+
+Pick the one that fits your machine:
 
 | | |
 |---|---|
 | **Fedora** | `sudo dnf copr enable bspeelman/shanty && sudo dnf install shanty` |
-| **Debian, Ubuntu, Mint** | download the `.deb` from the [latest release](https://github.com/bspeelm/shanty/releases/latest), then `sudo apt install ./shanty_*.deb` |
+| **Debian, Ubuntu, Mint** | download the `.deb` from [the latest release](https://github.com/bspeelm/shanty/releases/latest), then `sudo apt install ./shanty_*.deb` |
 | **macOS** | `brew install --cask bspeelm/shanty/shanty` |
 | **you already have Go** | `go install github.com/bspeelm/shanty/cmd/shanty@latest` |
 
-shanty plays through mpv and decodes no audio itself, so every line above but
-the last installs mpv too. After `go install`, run `shanty doctor`: it names
-the command for your system.
+Then:
 
-On an image-based system, or anywhere you would rather not involve a package
-manager:
+```sh
+shanty
+```
+
+The first run asks for your server address, your username and a credential,
+checks them against the server, and writes its own two configuration files.
+There is nothing to create by hand.
+
+`go install` is the one line above that brings no mpv and no tab completion.
+Run `shanty doctor` after it and it will name what is missing.
+
+### If none of those fit
+
+There is an install script, and one case where it is genuinely the better
+answer: an image-based system like Silverblue, where `dnf` means `rpm-ostree`
+and a reboot for a binary that runs perfectly well out of `~/.local/bin`. It
+needs no root.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bspeelm/shanty/main/bootstrap/install.sh | sh
 ```
 
-That puts the binary in `~/.local/bin` and sets up tab completion. You can also
-build it from a clone:
+The cost: the script is fetched over HTTPS and run **unsigned**, before shanty
+exists to verify anything. No signature on a later artifact fixes that. It is
+the same trade as any `curl | sh`.
 
-```sh
-make install-binary
-```
+You can also build it from a clone with `make install-binary`, which needs Go
+and no network.
 
-[All the ways in, and what checks what](https://github.com/bspeelm/shanty/wiki/Installing).
+[Every way in, and what checks what](https://github.com/bspeelm/shanty/wiki/Installing) ·
+[Where shanty puts things](https://github.com/bspeelm/shanty/wiki/Where-it-puts-things)
 
 ## Using it
 

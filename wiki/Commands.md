@@ -23,7 +23,7 @@ unless your server accepts the credential you gave it.
 
 ## `shanty doctor`
 
-Examines your setup and reports on nine things, from whether mpv is installed
+Examines your setup and reports on ten things, from whether mpv is installed
 to whether your server accepts your credential. Anything that is wrong is
 listed together with the command or configuration change that fixes it. The
 [The doctor](The-doctor) page explains each check.

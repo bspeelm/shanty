@@ -1,6 +1,6 @@
 # The doctor
 
-`shanty doctor` examines your setup and reports on eight things. Anything that
+`shanty doctor` examines your setup and reports on ten things. Anything that
 is not working is listed with the command or configuration change that fixes
 it.
 
@@ -37,10 +37,21 @@ while music is playing. The check confirms the directory is usable and readable
 only by you. If it does not exist yet, that is normal; shanty creates it when
 you first play something.
 
+**`session`** — whether a session left by `:headless` is playing in the
+background, and whether an mpv is running that no session owns. A background
+process is the one thing here that cannot report itself, so this is where it is
+named. Both of the states that are wrong carry the command that ends them.
+
 **`config`** — whether `config.toml` can be read and names a server address
 that shanty can use. This check produces a warning rather than an error if your
 server address uses `http://` instead of `https://`, because your credential
 and everything you play then cross the network unencrypted.
+
+**`keys`** — whether the key bindings in `config.toml` will work. An action
+that does not exist, one bound to no keys, and a key two actions both want are
+each reported, with the list of everything that can be bound. shanty starts
+either way and says so on the last row; a typo is not a reason to withhold your
+music.
 
 **`credentials`** — whether a credential exists, and whether the file holding it
 can be read by other users of the machine. It warns if the credential is a
