@@ -212,6 +212,24 @@ are written into the files by a tool such as rsgain, wherever your music
 lives. Until that has been done there is nothing for this to read and turning
 it on changes nothing.
 
+### When nothing seems to happen
+
+Turning it on and hearing no difference means one of two things, and **shanty
+cannot tell you which**: either nothing needed correcting, or nothing has been
+measured and there is nothing to read. Both sound the same.
+
+Nothing on screen distinguishes them, because the tags are in the files and
+shanty is handed audio rather than files. The answer is on the machine holding
+your music. A track that has been measured carries a `REPLAYGAIN_TRACK_GAIN`
+tag:
+
+```sh
+metaflac --export-tags-to=- "some track.flac" | grep -i replaygain
+```
+
+Nothing back means nothing measured. Measuring a library is a one-off pass with
+a tool such as rsgain, and a scheduled job afterwards keeps new music covered.
+
 ## Shuffling
 
 `:playlist shuffle Evening` plays a playlist in a random order, and `:shuffle`
@@ -278,25 +296,25 @@ matches agree, `enter` runs, and `esc` abandons the line.
 They are listed in the order shanty lists them: what you are looking for, then
 what the screen shows, then the server, then the program itself.
 
+<!-- commands: written by go test ./internal/tui/ -update -->
+
 | Command | What it does |
 |---|---|
-| `:search slipway` | Find artists, albums and tracks on the server |
-| `:playlist` | List your playlists |
-| `:playlist create <name>` | Make an empty playlist |
-| `:playlist edit <name>` | Add tracks to it, and take them out |
-| `:playlist delete <name>` | Delete it, after asking |
-| `:playlist shuffle <name>` | Play it in a random order |
-| `:shuffle` | Play everything on the server in a random order |
-| `:resume` | Carry on from the queue saved on your server |
-| `:art` | Show the cover of the album you are looking at, filling the screen |
-| `:auto-vol on\|off` | Level quiet and loud records against each other |
-| `:wiki` | Explain the commands, without leaving shanty |
-| `:messages` | Show what shanty has said this session |
-| `:scan` | Ask the server to look for new music |
-| `:reload` | Ask the server for what is on screen again |
-| `:volume 40` | Set the volume to a number, where `+` and `-` change it by steps |
-| `:headless` | Close the interface and keep playing |
-| `:q` | Quit |
+| `:search <words>` | find artists, albums and tracks on the server |
+| `:playlist <verb name>` | list them, or create, delete, edit or shuffle one |
+| `:shuffle` | play everything on the server in a random order |
+| `:resume` | carry on from the queue saved on the server |
+| `:art` | show the cover of the album you are looking at, filling the screen |
+| `:auto-vol <on\|off>` | level quiet and loud records against each other |
+| `:wiki` | explain the commands |
+| `:messages` | show what shanty has said this session |
+| `:scan` | ask the server to look for new music |
+| `:reload` | ask the server for what is on screen again |
+| `:volume <0-100>` | set the volume |
+| `:headless` | leave the interface and keep playing |
+| `:q` | quit |
+
+<!-- end commands -->
 
 Commands exist for things a key cannot do: those that need something typed
 after them, and those too rare to be worth a key.
