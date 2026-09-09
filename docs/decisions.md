@@ -290,7 +290,28 @@ it is a contained change rather than a rewrite.
 
 ## ADR-012 — macOS support is not yet described
 
-**Status:** open. Recorded before it is needed.
+**Status:** open, and one question below is now answered. Recorded before it
+was needed.
+
+**Answered: shanty uses XDG paths on every platform, macOS included.** All four
+directories are resolved from the XDG variables by shanty rather than by
+`os.UserConfigDir` and `os.UserCacheDir`, which return `~/Library` paths on
+macOS and ignore the environment variables entirely.
+
+The deciding argument is fish. The fish completion goes beside fish's own
+configuration, which is `~/.config/fish` on macOS as much as on Linux, because
+fish follows XDG on both. Resolving shanty's configuration directory the Apple
+way put that file in `~/Library/Application Support/fish/completions`, where
+fish does not look. A macOS-native table would have had to except fish from
+itself, which is the shape of a rule that is not the right rule.
+
+The rest follows from that: one filesystem contract, one write set for the
+isolation suite to hold, one set of paths in §8 and in the wiki, and
+`XDG_CONFIG_HOME` working the same way in both places. The cost is that shanty
+does not follow the platform convention on macOS, which is a cost paid by a
+program whose configuration is a text file people are expected to edit.
+
+The questions below this line are still open.
 
 Everything decided so far is settled for Linux and applies to macOS in
 intent — one mpv process, one socket, the credential passed over that socket
@@ -308,9 +329,6 @@ tests will assert a different set of written files depending on the platform.
 The open questions, to be answered together rather than one at a time as each
 first causes a problem:
 
-- Which four directories are the contract on macOS? Does the plan gain a second
-  table, or does shanty use XDG paths everywhere regardless of platform
-  convention?
 - macOS has no `XDG_RUNTIME_DIR`. The socket falls back to the cache directory,
   which unlike a runtime directory is not cleared at logout, so a socket left
   behind survives a reboot. shanty removes a stale one at startup, but a socket
@@ -324,7 +342,9 @@ first causes a problem:
   inheriting the environment does not apply on macOS and the decision should be
   made again rather than assumed.
 - A downloaded binary is quarantined by macOS until it is signed or notarised.
-  This has to be answered before a release claims to support macOS.
+  The Homebrew cask strips the attribute on install, which makes that route
+  work. A tarball downloaded by hand still does not run, and signing properly
+  is unanswered.
 
 Recorded now because these are architectural questions rather than packaging
 ones. Answering them after the Linux implementation has settled is how a

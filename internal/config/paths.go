@@ -25,12 +25,16 @@ type Paths struct {
 
 // Discover resolves the four directories from the environment. It creates
 // none of them.
+//
+// All four follow the XDG base directory specification on every platform,
+// including macOS, where the standard library resolves the same names to
+// ~/Library instead.
 func Discover() (Paths, error) {
-	configHome, err := os.UserConfigDir()
+	configHome, err := xdgDir("XDG_CONFIG_HOME", ".config")
 	if err != nil {
 		return Paths{}, err
 	}
-	cacheHome, err := os.UserCacheDir()
+	cacheHome, err := xdgDir("XDG_CACHE_HOME", ".cache")
 	if err != nil {
 		return Paths{}, err
 	}

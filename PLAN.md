@@ -275,11 +275,13 @@ is already outside this set, and `shanty uninstall` removes it. No startup file
 is ever written to. `TestIsolationOnlyTheInstallerWritesOutsideTheFourDirectories`
 holds this to one command.
 
-Those are the Linux paths. macOS resolves elsewhere: `os.UserConfigDir` is
-`~/Library/Application Support` and `os.UserCacheDir` is `~/Library/Caches`,
-and there is no `XDG_RUNTIME_DIR`. The table above is one platform's shape of
-the promise rather than the promise itself. ADR-012 owes the other, and until
-it is answered the isolation suite asserts a different write set per platform.
+**The table is every platform, macOS included.** shanty resolves all four
+directories from the XDG variables itself rather than through the standard
+library, which on macOS answers with `~/Library/Application Support` and
+`~/Library/Caches` instead. ADR-012 records the decision. macOS still has no
+`XDG_RUNTIME_DIR`, so the sockets go under the cache directory, which the
+system does not clear at logout. The `macos` CI job runs the isolation suite
+and asserts this write set on that platform too.
 
 Nothing else, ever — not `~/.config/mpv`, not the user's shell files, nothing.
 The isolation suite runs a first run against a scratch `$HOME` and asserts the
