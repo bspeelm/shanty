@@ -117,6 +117,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case CoverArt:
 		// Art for an album that is no longer open is dropped. A slow request
 		// must not draw one album's cover over another's tracks.
+		if msg.Clear != "" {
+			m.clearArt = msg.Clear
+		}
 		if msg.AlbumID == m.album.ID && msg.AlbumID != "" {
 			m.art = msg.Lines
 		}

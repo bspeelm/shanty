@@ -45,6 +45,15 @@ func openAlbum(t *testing.T, a app, id string) app {
 	return a
 }
 
+// press sends a key to the interface, which is how a screen is actually left:
+// the key runs the action directly rather than emitting an intent.
+func press(t *testing.T, a app, key tea.KeyMsg) app {
+	t.Helper()
+	next, _ := a.ui.Update(key)
+	a.ui = next.(tui.Model)
+	return a
+}
+
 // TestOpeningAnAlbumFetchesItsCover covers the wiring end to end: the album
 // arrives, the art follows it, and the screen holds both.
 func TestOpeningAnAlbumFetchesItsCover(t *testing.T) {
@@ -78,7 +87,7 @@ func TestTheCoverIsAskedForOnceAndKept(t *testing.T) {
 	a, srv := withCovers(t)
 
 	a = openAlbum(t, a, "al-1")
-	a, _ = runTo(t, a, tui.GoBack{})
+	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
 	a = openAlbum(t, a, "al-1")
 
 	var asks int
@@ -151,5 +160,44 @@ func TestOpeningASecondAlbumDropsTheFirstCover(t *testing.T) {
 
 	if strings.Contains(a.View(), "╭") {
 		t.Errorf("the first album's cover is still on screen:\n%s", a.View())
+	}
+}
+
+// TestLeavingAnAlbumTakesThePictureWithIt covers what a screenshot showed: a
+// kitty image is an overlay the terminal holds, so navigating out of an album
+// left the cover sitting over the artist list.
+func TestLeavingAnAlbumTakesThePictureWithIt(t *testing.T) {
+	a, _ := withCovers(t)
+	a.art = cover.Kitty
+	a = openAlbum(t, a, "al-1")
+
+	if !strings.Contains(a.View(), "\x1b_G") {
+		t.Fatal("the album screen carries no picture to take away")
+	}
+	if strings.Contains(a.View(), "a=d") {
+		t.Error("the screen showing the picture also asks for it to be deleted")
+	}
+
+	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
+
+	frame := a.View()
+	if !strings.Contains(frame, cover.Clear(cover.Kitty)) {
+		t.Error("leaving the album did not take the picture away")
+	}
+	if strings.Contains(frame, "f=100") {
+		t.Error("the picture is still being placed after leaving the album")
+	}
+}
+
+// TestATerminalThatDrawsIntoTheScreenIsSentNothingExtra covers the other
+// direction. A sequence on every frame of every screen is a cost paid by
+// terminals that never needed it.
+func TestATerminalThatDrawsIntoTheScreenIsSentNothingExtra(t *testing.T) {
+	a, _ := withCovers(t)
+	a = openAlbum(t, a, "al-1")
+	a = press(t, a, tea.KeyMsg{Type: tea.KeyEsc})
+
+	if strings.Contains(a.View(), "\x1b_G") {
+		t.Error("a terminal drawing text placeholders was sent a graphics sequence")
 	}
 }

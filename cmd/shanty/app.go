@@ -988,6 +988,10 @@ func (a app) fetchArt(album subsonic.Album) tea.Cmd {
 			_ = covers.Put(album.CoverArt, artPixels, fetched)
 			data = fetched
 		}
-		return tui.CoverArt{AlbumID: album.ID, Lines: cover.Block(art, data, artCols, artRows)}
+		return tui.CoverArt{
+			AlbumID: album.ID,
+			Lines:   cover.Block(art, data, artCols, artRows),
+			Clear:   cover.Clear(art),
+		}
 	}
 }

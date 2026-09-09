@@ -52,6 +52,11 @@ func (m Model) View() string {
 	visible := max(1, h-m.chrome())
 
 	var b strings.Builder
+	// A picture the terminal is holding is taken away before a screen that is
+	// not showing one is drawn. Writing text over it does not remove it.
+	if len(m.artLines()) == 0 {
+		b.WriteString(m.clearArt)
+	}
 	b.WriteString(titleStyle.Render(fit("shanty · "+m.heading(), w)))
 	b.WriteString("\n" + rule(w) + "\n")
 	for _, line := range m.artLines() {
