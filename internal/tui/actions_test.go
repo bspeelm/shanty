@@ -82,9 +82,16 @@ func TestEveryKeyIsDocumentedAndEveryDocumentedKeyIsBound(t *testing.T) {
 		"[keys]": "the section of config.toml that binds them",
 	}
 
+	// The longest key anybody presses. Prose names tools, tags and settings in
+	// the same style, and adding each to the list above as it appears is a
+	// list that grows with the documentation rather than with the keys.
+	const longestKey = len("backspace")
+
 	for _, found := range backticked.FindAllStringSubmatch(page, -1) {
 		written := found[1]
 		if notAKey[written] != "" ||
+			len(written) > longestKey || // a tool, a tag, a setting
+			strings.ToUpper(written) == written && len(written) > 1 || // a tag name
 			strings.HasPrefix(written, ":") || // a command
 			strings.Contains(written, " ") || // a phrase, or a command with an argument
 			strings.HasPrefix(written, "g") || // the two-key jumps
@@ -263,72 +270,57 @@ func TestBindingNothingKeepsEveryKey(t *testing.T) {
 	}
 }
 
-// TestEveryCommandIsInTheWikiTableAndEveryRowIsACommand holds the published
-// page against the command set in both directions.
+// The wiki's command table is written from the command set rather than by
+// hand, and these mark the part of the page that is written.
+const (
+	tableStart = "<!-- commands: written by go test ./internal/tui/ -update -->"
+	tableEnd   = "<!-- end commands -->"
+)
+
+// commandTable is the table wiki/Keys.md should hold.
+func commandTable() string {
+	var b strings.Builder
+	b.WriteString(tableStart + "\n\n| Command | What it does |\n|---|---|\n")
+	for _, c := range commands {
+		// A vertical bar is a column separator, and `on|off` has one in it.
+		name := strings.ReplaceAll(spelled(c), "|", "\\|")
+		b.WriteString("| `:" + name + "` | " + c.summary + " |\n")
+	}
+	return b.String() + "\n" + tableEnd
+}
+
+// TestTheWikiTableIsWrittenFromTheCommands is what stops the two drifting.
 //
-// Nothing held it before, which is how three orders came to exist: the code,
-// the in-app pages and this table each grew by appending, and a command could
-// have been left out of the table without anything noticing.
-func TestEveryCommandIsInTheWikiTableAndEveryRowIsACommand(t *testing.T) {
-	page := commandsSection(t)
-
-	// The rows name a command and sometimes a subcommand, so the first word
-	// after the colon is the command.
-	rows := regexp.MustCompile("(?m)^\\\\| `:([a-z-]+)").FindAllStringSubmatch(page, -1)
-	listed := map[string]bool{}
-	for _, r := range rows {
-		listed[r[1]] = true
+// The table used to be typed out beside the command set, and the two grew
+// apart: three lists of the same names existed in three orders, and a command
+// missing from the page would have failed nothing. It is generated now, and
+// this test is how it is generated.
+func TestTheWikiTableIsWrittenFromTheCommands(t *testing.T) {
+	path := filepath.Join("..", "..", "wiki", "Keys.md")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(listed) == 0 {
-		t.Fatal("no command rows found; this test has stopped matching the page")
-	}
+	page := string(body)
 
-	for _, c := range commands {
-		if !listed[c.name] {
-			t.Errorf(":%s is a command and the wiki table does not list it", c.name)
+	from := strings.Index(page, tableStart)
+	to := strings.Index(page, tableEnd)
+	if from < 0 || to < 0 {
+		t.Fatalf("wiki/Keys.md has no marked command table; it should hold\n%s", commandTable())
+	}
+	to += len(tableEnd)
+
+	want := commandTable()
+	if page[from:to] == want {
+		return
+	}
+	if *update {
+		if err := os.WriteFile(path, []byte(page[:from]+want+page[to:]), 0o644); err != nil {
+			t.Fatal(err)
 		}
-		delete(listed, c.name)
+		t.Log("wrote the command table into wiki/Keys.md")
+		return
 	}
-	for name := range listed {
-		t.Errorf("the wiki table lists :%s and there is no such command", name)
-	}
-}
-
-// TestTheWikiTableIsInTheSameOrderAsTheCommands covers the thing that made a
-// command hard to find: three lists of the same names in three orders.
-func TestTheWikiTableIsInTheSameOrderAsTheCommands(t *testing.T) {
-	page := commandsSection(t)
-	rows := regexp.MustCompile("(?m)^\\\\| `:([a-z-]+)").FindAllStringSubmatch(page, -1)
-
-	var seen []string
-	for _, r := range rows {
-		if len(seen) == 0 || seen[len(seen)-1] != r[1] {
-			seen = append(seen, r[1])
-		}
-	}
-	var want []string
-	for _, c := range commands {
-		want = append(want, c.name)
-	}
-	if strings.Join(seen, " ") != strings.Join(want, " ") {
-		t.Errorf("the wiki table is in a different order from the commands\npage: %s\ncode: %s",
-			strings.Join(seen, " "), strings.Join(want, " "))
-	}
-}
-
-// commandsSection is the part of the page that tables the commands. Other
-// tables name commands in passing, and holding those to the same order would
-// be holding prose to a shape it does not have.
-func commandsSection(t *testing.T) string {
-	t.Helper()
-	page := keysPage(t)
-	at := strings.Index(page, "## Commands")
-	if at < 0 {
-		t.Fatal("the page has no Commands section")
-	}
-	rest := page[at+len("## Commands"):]
-	if end := strings.Index(rest, "\n## "); end >= 0 {
-		rest = rest[:end]
-	}
-	return rest
+	t.Errorf("the wiki table is not what the commands say.\nRun: go test ./internal/tui/ -update\n\nwant:\n%s\n\ngot:\n%s",
+		want, page[from:to])
 }

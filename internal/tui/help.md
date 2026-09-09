@@ -88,6 +88,15 @@ is, so a part-tagged library is safe.
 The measuring is not done by shanty and not by the server. It is written into
 the files on whatever holds your music, with a tool such as rsgain.
 
+**Turning it on and hearing no difference means one of two things**, and shanty
+cannot tell you which. Either nothing needed correcting, or nothing in your
+library has been measured and there is nothing to read. Both are silence.
+
+The answer is in the files rather than here. On the machine holding your music,
+a track that has been measured carries a `REPLAYGAIN_TRACK_GAIN` tag; one that
+has not carries nothing. If none of them do, this command has nothing to work
+with however it is set.
+
 ## wiki
 
 Shows this.
