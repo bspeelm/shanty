@@ -122,7 +122,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.selecting(ScreenPlaylist, 0), nil
 	case FullArt:
 		m.bigArt = msg
-		return m, nil
+		// A cover filling the screen and the one above the track list are the
+		// same album, so the title row does not change between them. The
+		// renderer writes only rows that changed, so the row carrying the
+		// sequence that takes the old picture away would never be written and
+		// both pictures would be on screen. A repaint writes every row.
+		return m, tea.ClearScreen
 	case CoverArt:
 		// Art for an album that is no longer open is dropped. A slow request
 		// must not draw one album's cover over another's tracks.
@@ -478,7 +483,7 @@ func asAlbum(p subsonic.Playlist) subsonic.Album {
 func (m Model) back() (tea.Model, tea.Cmd) {
 	if len(m.bigArt) > 0 {
 		m.bigArt = nil
-		return m, nil
+		return m, tea.ClearScreen
 	}
 	switch m.screen {
 	case ScreenTracks:
