@@ -144,6 +144,10 @@ Opening an album shows its cover above the track list, if your terminal can
 draw pictures. shanty works out which from the environment: kitty, Ghostty and
 WezTerm get the kitty graphics protocol, and iTerm2 gets its own.
 
+**A cover gives way to the music.** If showing it would leave eight tracks or
+fewer on screen, it is not drawn at all — on a short terminal the track list is
+what you opened the album for. Make the window taller and the cover comes back.
+
 **Every other terminal gets an empty box the same size.** That is deliberate
 rather than a failure — the screen keeps its shape whether or not there is a
 picture in it, so nothing moves when you open an album over ssh.

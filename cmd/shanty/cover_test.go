@@ -19,6 +19,11 @@ func withCovers(t *testing.T) (app, *fake.Server) {
 	a, srv := withPlaylists(t, nil)
 	a.covers = cover.NewCache(t.TempDir())
 	a.art = cover.Text
+
+	// Tall enough that a cover still leaves a track list worth reading. The
+	// default 24 rows is not, which is the point of minTracksBesideArt.
+	next, _ := a.ui.Update(tea.WindowSizeMsg{Width: 80, Height: 40})
+	a.ui = next.(tui.Model)
 	return a, srv
 }
 
@@ -267,5 +272,36 @@ func TestAnAlbumWithNoCoverHoldsNoRows(t *testing.T) {
 	}
 	if !strings.Contains(frame, cover.Clear(cover.Kitty)) {
 		t.Error("the picture from the album before it was not taken away")
+	}
+}
+
+// TestAShortTerminalKeepsTheTracksAndDropsTheCover covers what a cover costs.
+// Twelve rows of picture on a short terminal leaves a handful of tracks, and
+// the tracks are what somebody opened the album for.
+func TestAShortTerminalKeepsTheTracksAndDropsTheCover(t *testing.T) {
+	for _, tc := range []struct {
+		height int
+		shown  bool
+	}{
+		{40, true},  // room for the cover and most of a record
+		{26, true},  // exactly the eight tracks the rule asks for
+		{25, false}, // one short, so the cover goes
+		{24, false}, // the ordinary terminal
+		{10, false},
+	} {
+		a, _ := withCovers(t)
+		a.art = cover.Kitty
+		next, _ := a.ui.Update(tea.WindowSizeMsg{Width: 80, Height: tc.height})
+		a.ui = next.(tui.Model)
+		a = openAlbum(t, a, "al-1")
+
+		frame := a.View()
+		if shown := strings.Contains(frame, "f=100"); shown != tc.shown {
+			t.Errorf("at %d rows the cover is shown=%v, want %v", tc.height, shown, tc.shown)
+		}
+		// However tall the terminal, the frame is never taller than it.
+		if rows := strings.Count(frame, "\n") + 1; rows > tc.height {
+			t.Errorf("at %d rows the frame is %d rows", tc.height, rows)
+		}
 	}
 }

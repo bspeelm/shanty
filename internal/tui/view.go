@@ -15,8 +15,13 @@ const chromeLines = 5
 // chrome is how many rows the frame uses for something other than the list.
 // The progress bar and the list of matching commands each take one when they
 // are showing.
-func (m Model) chrome() int {
-	n := chromeLines + len(m.artLines())
+func (m Model) chrome() int { return m.chromeBase() + len(m.artLines()) }
+
+// chromeBase is every row of the frame that is neither the list nor the cover
+// art. It does not count the art, so that the decision to show art can be made
+// from it without asking itself.
+func (m Model) chromeBase() int {
+	n := chromeLines
 	if m.nowPlaying != "" {
 		n++
 	}
@@ -25,6 +30,11 @@ func (m Model) chrome() int {
 	}
 	return n
 }
+
+// minTracksBesideArt is how much of a track list has to remain for a cover to
+// be worth the rows it takes: more than eight of them. Below that the picture
+// is the thing in the way, and somebody opened the album for the music.
+const minTracksBesideArt = 8
 
 const (
 	defaultWidth  = 80
@@ -154,7 +164,12 @@ func blankLike(lines []string) []string {
 // Every other screen shows none: the art belongs to one album, and a list of
 // artists is not about any of them.
 func (m Model) artLines() []string {
-	if m.screen != ScreenTracks {
+	if m.screen != ScreenTracks || len(m.art) == 0 {
+		return nil
+	}
+	// A cover is worth having only while the list it sits above is still worth
+	// reading. On a short terminal the tracks are what somebody came for.
+	if m.viewHeight()-m.chromeBase()-len(m.art) <= minTracksBesideArt {
 		return nil
 	}
 	return m.art
@@ -340,6 +355,13 @@ func (m Model) star(id string) string {
 		return "★"
 	}
 	return " "
+}
+
+func (m Model) viewHeight() int {
+	if m.height > 0 {
+		return m.height
+	}
+	return defaultHeight
 }
 
 func (m Model) viewWidth() int {
