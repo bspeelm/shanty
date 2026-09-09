@@ -73,6 +73,25 @@ one album's tracks, or the starred list.
 The cursor stays on what you had selected if it is still there, and the last
 row says what came back.
 
+## auto-vol
+
+Levels quiet records against loud ones, so that shuffling does not jump in
+volume between a vinyl rip and a modern master.
+
+    :auto-vol on
+    :auto-vol off
+    :auto-vol          changes it to whichever it is not
+
+It is remembered in `config.toml` and comes back the way you left it.
+
+It uses the loudness a tagger measured and wrote into each track. That is a
+number, not a filter: the track is turned up or down as a whole and its
+dynamics are untouched. A track nobody has measured is played exactly as it
+is, so a part-tagged library is safe.
+
+The measuring is not done by shanty and not by the server. It is written into
+the files on whatever holds your music, with a tool such as rsgain.
+
 ## art
 
 Shows the cover of the album you are looking at, as large as the screen allows.

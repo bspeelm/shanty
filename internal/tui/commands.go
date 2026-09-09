@@ -64,6 +64,22 @@ var commands = []command{
 		run:     func(string) (any, error) { return ShowWiki{}, nil },
 	},
 	{
+		name:     "auto-vol",
+		summary:  "level quiet and loud records against each other",
+		argument: "on|off",
+		run: func(arg string) (any, error) {
+			switch strings.ToLower(strings.TrimSpace(arg)) {
+			case "on":
+				return AutoVolume{On: true}, nil
+			case "off":
+				return AutoVolume{On: false}, nil
+			case "":
+				return ToggleAutoVolume{}, nil
+			}
+			return nil, errBadArgument{"auto-vol", arg, "on or off, or nothing to change it"}
+		},
+	},
+	{
 		name:    "art",
 		summary: "show the cover of the album you are looking at, filling the screen",
 		run:     func(string) (any, error) { return ShowArt{}, nil },

@@ -195,6 +195,23 @@ it holds. Anything but `y` answers no.
 If two of your playlists share a name, shanty says so rather than guessing
 which you meant. Rename one on your server.
 
+## Levelling the volume
+
+Records are mastered at different loudnesses, so shuffling a vinyl rip against
+a modern one jumps in volume. `:auto-vol on` levels them; `:auto-vol off` plays
+each at the volume it was recorded, and `:auto-vol` on its own changes it to
+whichever it is not. It is remembered in `config.toml`.
+
+It uses the loudness written into each track's tags. That is a number rather
+than a filter: the whole track is turned up or down and its dynamics are
+untouched. A track nobody has measured plays exactly as it is, so a library
+that is only partly tagged is safe.
+
+**shanty does not do the measuring, and neither does the server.** The numbers
+are written into the files by a tool such as rsgain, wherever your music
+lives. Until that has been done there is nothing for this to read and turning
+it on changes nothing.
+
 ## Shuffling
 
 `:playlist shuffle Evening` plays a playlist in a random order, and `:shuffle`
@@ -269,6 +286,7 @@ line.
 | `:reload` | Ask the server for what is on screen again |
 | `:scan` | Ask the server to look for new music |
 | `:art` | Show the cover of the album you are looking at, filling the screen |
+| `:auto-vol on\|off` | Level quiet and loud records against each other |
 | `:playlist` | List your playlists |
 | `:playlist create <name>` | Make an empty playlist |
 | `:playlist edit <name>` | Add tracks to it, and take them out |

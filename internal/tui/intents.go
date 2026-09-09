@@ -39,7 +39,12 @@ type (
 	GoBack    struct{}
 	// ShowArt asks for the cover of the album on screen, as large as it fits.
 	ShowArt struct{}
-	Quit    struct{}
+	// AutoVolume turns loudness levelling on or off, and is remembered.
+	AutoVolume struct{ On bool }
+	// ToggleAutoVolume asks for whichever of the two it is not, because the
+	// caller holds the setting and the interface does not.
+	ToggleAutoVolume struct{}
+	Quit             struct{}
 	// Detach asks for the interface to end while playback carries on.
 	Detach struct{}
 	// PlayNext asks for the selected track to play after the current one, and

@@ -154,6 +154,19 @@ func (p *Player) SetVolume(ctx context.Context, percent int) error {
 	return p.setProperty(ctx, "volume", percent)
 }
 
+// SetReplayGain turns loudness levelling on or off.
+//
+// The gain is a number a tagger measured and wrote into the file, and mpv
+// applies it as a volume change. A track without one is played untouched, so
+// this is safe over a library that is only partly tagged.
+func (p *Player) SetReplayGain(ctx context.Context, on bool) error {
+	mode := "no"
+	if on {
+		mode = "track"
+	}
+	return p.setProperty(ctx, "replaygain", mode)
+}
+
 // Observe asks mpv to report a property whenever it changes, delivered on
 // Events.
 func (p *Player) Observe(ctx context.Context, property string) error {

@@ -93,6 +93,8 @@ func play(ctx context.Context, env Env) error {
 	a.backlog = env.Paths.Backlog()
 	a.covers = cover.NewCache(env.Paths.Covers())
 	a.art = cover.Detect(env.Getenv)
+	a.autoVolume = cfg.AutoVolume
+	a.configFile = env.Paths.ConfigFile()
 	if running {
 		a = a.resume(resumed)
 	}

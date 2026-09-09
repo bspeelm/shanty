@@ -33,7 +33,7 @@ code. Numbers may start generous and tighten; they may not silently grow.
 | binary size (linux_amd64, stripped) | 15 MiB | `make budgets` builds exactly that and measures it |
 | packages importing `net/http` | 2 | `internal/subsonic` and its `fake` test server, nothing else |
 | test lines : code lines | ≥ 1 : 3 | `wc -l` over `_test.go` vs the rest; a floor, not a target |
-| code lines | 6,500 | `cmd` and `internal`, non-test, comments and blanks excluded (ADR-021) |
+| code lines | 6,700 | `cmd` and `internal`, non-test, comments and blanks excluded (ADR-022) |
 | comment lines : code lines | 25% | the one **hard** ceiling: over budget removes a comment |
 | live prose | 4,500 lines | every `.md` outside `docs/history/` and `docs/review/` |
 | lockfile-equivalent | go.sum, and `vendor/` derived from it | no second *independent* pinning mechanism; CI regenerates `vendor/` and fails on a difference |

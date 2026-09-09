@@ -959,3 +959,65 @@ the same module budget. If cover art passes 450 lines, the estimate was wrong,
 and that is the moment to stop and look rather than to raise the cap again.
 
 ---
+
+## ADR-022 — The code budget is 6,700, and what ADR-021 got wrong
+
+**Status:** accepted. Amends PLAN.md §0, and amends ADR-021, which set the cap
+at 6,500 on an estimate that turned out to be short.
+
+### What ADR-021 estimated, and what happened
+
+It put cover art at 350 to 450 lines and set the cap to 6,500 to cover it with
+80 to 180 to spare. Cover art came to about 500, and the milestone finished at
+6,496 of 6,500: four lines.
+
+The estimate was not wrong about the code #12 described. It was wrong about
+what the feature turned out to be. Three things were not in it:
+
+- **Five protocol bugs, each needing code.** A graphics escape does not take
+  the space it appears to, does not go away when text is drawn over it, does
+  not keep its shape unless asked, and is not sent unless the row it sits on
+  changed. None of these are in a specification; all of them are in a terminal.
+- **A design pass.** The cover, the album's facts beside it, and the rule
+  between the pair and the track list. #12 asked for a picture on a screen and
+  said nothing about where.
+- **`:art`.** A second way to look at the same picture, which nobody asked for
+  until they had seen the first one.
+
+ADR-021 said that passing 450 meant the estimate was wrong and that this was
+the moment to stop and look rather than raise the cap again. That is what this
+record is.
+
+### Why 6,700
+
+`scripts/budgets.sh` reads 6,564 with loudness levelling written. That is the
+measured number, not an estimate: the feature is built.
+
+6,700 leaves 136. That is chosen to be enough for the ordinary corrections a
+shipped feature attracts — the fixes in this milestone ran between ten and
+sixty lines each — and not enough for another feature. A cap that has to be
+raised for a bug fix is a ritual; a cap that quietly admits a feature is not a
+cap.
+
+### What was refused
+
+**Setting it to 6,564.** The measured number with no margin means the next
+one-line fix reopens this record. That is the ritual failure, and it teaches
+everybody to route around the budget rather than to argue with it.
+
+**Rounding to 7,000.** ADR-021 refused this and the refusal still holds. 436
+above the measured number stops reporting long before a look is warranted, and
+the whole value of the number is that it speaks up early.
+
+**Deciding it before the code existed.** The estimate is what failed last time.
+This one is a measurement of work already done, which is the only kind of
+number that cannot be optimistic.
+
+### What this does not settle
+
+The estimate was short because the specification was, and nothing here fixes
+that. The next feature will also be larger than its issue says. The answer is
+not a bigger cap but a smaller claim about what an estimate is worth: it sizes
+the code somebody can describe, and the terminal will add more.
+
+---
