@@ -103,6 +103,9 @@ type album struct {
 	SongCount int    `json:"songCount"`
 	Duration  int    `json:"duration"`
 	Songs     []song `json:"song,omitempty"`
+	// CoverArt is what getCoverArt is asked for. A real server's is opaque,
+	// so this one is too rather than being the album id again.
+	CoverArt string `json:"coverArt,omitempty"`
 }
 
 type song struct {
@@ -133,7 +136,7 @@ func DefaultLibrary() Library {
 			Albums: []album{
 				{
 					ID: "al-1", Name: "Harbour", Artist: "Aoi", ArtistID: "ar-1",
-					SongCount: 2, Duration: 360,
+					SongCount: 2, Duration: 360, CoverArt: "mf-al-1",
 					Songs: []song{
 						{ID: "tr-1", Title: "Slipway", Album: "Harbour", AlbumID: "al-1", Artist: "Aoi", ArtistID: "ar-1", Track: 1, Duration: 180, Suffix: "flac", Path: "Aoi/Harbour/01 Slipway.flac"},
 						{ID: "tr-2", Title: "Ballast", Album: "Harbour", AlbumID: "al-1", Artist: "Aoi", ArtistID: "ar-1", Track: 2, Duration: 180, Suffix: "flac", Path: "Aoi/Harbour/02 Ballast.flac"},
@@ -141,7 +144,7 @@ func DefaultLibrary() Library {
 				},
 				{
 					ID: "al-2", Name: "Low Water", Artist: "Aoi", ArtistID: "ar-1",
-					SongCount: 1, Duration: 200,
+					SongCount: 1, Duration: 200, CoverArt: "mf-al-2",
 					Songs: []song{
 						{ID: "tr-3", Title: "Neap", Album: "Low Water", AlbumID: "al-2", Artist: "Aoi", ArtistID: "ar-1", Track: 1, Duration: 200, Suffix: "flac", Path: "Aoi/Low Water/01 Neap.flac"},
 					},
@@ -153,7 +156,7 @@ func DefaultLibrary() Library {
 			Albums: []album{
 				{
 					ID: "al-3", Name: "Bail", Artist: "The Bilge Pumps", ArtistID: "ar-2",
-					SongCount: 1, Duration: 240,
+					SongCount: 1, Duration: 240, CoverArt: "mf-al-3",
 					Songs: []song{
 						{ID: "tr-4", Title: "Scupper", Album: "Bail", AlbumID: "al-3", Artist: "The Bilge Pumps", ArtistID: "ar-2", Track: 1, Duration: 240, Suffix: "flac", Path: "The Bilge Pumps/Bail/01 Scupper.flac"},
 					},

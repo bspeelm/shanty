@@ -237,6 +237,29 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "audio/flac")
 		// Not real audio. The integration test is where real audio is played.
 		_, _ = w.Write([]byte(strings.Repeat(sg.ID+" ", 64)))
+	case "getCoverArt":
+		id := q.Get("id")
+		if id == "" {
+			s.fail(w, 10, "Required parameter id is missing")
+			return
+		}
+		// A server answers a missing image with an error envelope rather than
+		// a status, which is the case a client has to read the body to find.
+		if id == NoArt {
+			s.fail(w, 70, "Cover art not found")
+			return
+		}
+		if s.opt.Malice.WrongContentType {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html><body>a login page</body></html>"))
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		if s.opt.Malice.OversizeBody {
+			_, _ = w.Write(append(onePixel, make([]byte, oversizeBytes)...))
+			return
+		}
+		_, _ = w.Write(onePixel)
 	case "search3":
 		if q.Get("query") == "" {
 			s.fail(w, 10, "Required parameter query is missing")
@@ -592,4 +615,21 @@ func (s *Server) changePlaylist(q url.Values) (int, string) {
 		return 0, ""
 	}
 	return 70, "Playlist not found"
+}
+
+// NoArt is the cover art id the server has no image for.
+const NoArt = "art-missing"
+
+// onePixel is a real one pixel PNG, written out rather than encoded so that
+// there is no error to handle and no image package in the fake. A client
+// checking whether the answer is an image gets the same answer it would from a
+// server.
+var onePixel = []byte{
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+	0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+	0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde, 0x00, 0x00, 0x00,
+	0x10, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x62, 0xd2, 0x33, 0x71, 0x00,
+	0x04, 0x00, 0x00, 0xff, 0xff, 0x01, 0x3e, 0x00, 0xa5, 0x52, 0xf9, 0x80,
+	0x9e, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60,
+	0x82,
 }

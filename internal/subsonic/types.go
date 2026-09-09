@@ -62,6 +62,9 @@ type Album struct {
 	SongCount int    `json:"songCount"`
 	Duration  int    `json:"duration"`
 	Songs     []Song `json:"song"`
+	// CoverArt is the identifier to ask getCoverArt for. It is an opaque
+	// server value and is never used as a filename.
+	CoverArt string `json:"coverArt"`
 }
 
 type Song struct {
@@ -76,6 +79,9 @@ type Song struct {
 	Suffix   string `json:"suffix"`
 	// Path is the server’s path for the track. It is not used as a filename.
 	Path string `json:"path"`
+	// CoverArt is the identifier to ask getCoverArt for. It is an opaque
+	// server value and is never used as a filename.
+	CoverArt string `json:"coverArt"`
 }
 
 // Results is what a search found, in the three kinds a Subsonic server
