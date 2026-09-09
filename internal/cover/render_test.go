@@ -65,8 +65,11 @@ func TestTheTerminalDecidesTheProtocol(t *testing.T) {
 	}{
 		{"kitty by its own variable", map[string]string{"TERM": "xterm-256color", "KITTY_WINDOW_ID": "1"}, Kitty},
 		{"kitty by TERM", map[string]string{"TERM": "xterm-kitty"}, Kitty},
-		{"ghostty", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "ghostty"}, Kitty},
-		{"wezterm", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "WezTerm"}, Kitty},
+		// Read off a running Ghostty on Linux: it sets TERM and nothing else.
+		{"ghostty by TERM", map[string]string{"TERM": "xterm-ghostty"}, Kitty},
+		{"ghostty naming itself", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "ghostty"}, Kitty},
+		{"wezterm by its own variable", map[string]string{"TERM": "xterm-256color", "WEZTERM_PANE": "0"}, Kitty},
+		{"wezterm naming itself", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "WezTerm"}, Kitty},
 		{"iterm2", map[string]string{"TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app"}, ITerm2},
 		{"iterm2 over ssh", map[string]string{"TERM": "xterm-256color", "LC_TERMINAL": "iTerm2"}, ITerm2},
 		{"plain xterm", map[string]string{"TERM": "xterm-256color"}, Text},

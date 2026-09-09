@@ -1,6 +1,6 @@
 # The doctor
 
-`shanty doctor` examines your setup and reports on ten things. Anything that
+`shanty doctor` examines your setup and reports on eleven things. Anything that
 is not working is listed with the command or configuration change that fixes
 it.
 
@@ -46,6 +46,15 @@ named. Both of the states that are wrong carry the command that ends them.
 that shanty can use. This check produces a warning rather than an error if your
 server address uses `http://` instead of `https://`, because your credential
 and everything you play then cross the network unencrypted.
+
+**`cover-art`** — how this terminal is sent pictures, and the value of `TERM`
+it decided that from. kitty, Ghostty, WezTerm and iTerm2 draw album art;
+everything else gets an empty box the same size. It is a warning rather than a
+failure, because a terminal that shows no pictures is a perfectly good terminal.
+
+The check exists because the answer is otherwise invisible. A terminal shanty
+does not recognise gets an empty box, and so does an album whose server has no
+cover, and the two look exactly the same.
 
 **`keys`** — whether the key bindings in `config.toml` will work. An action
 that does not exist, one bound to no keys, and a key two actions both want are

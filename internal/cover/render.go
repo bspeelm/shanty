@@ -61,10 +61,15 @@ func Detect(env func(string) string) Protocol {
 	if term == "" || term == "dumb" {
 		return Text
 	}
+	// TERM is what a terminal always sets, and several of these set nothing
+	// else. TERM_PROGRAM is checked as well because the same terminal sets it
+	// on macOS and not on Linux.
 	switch {
 	case env("KITTY_WINDOW_ID") != "", strings.Contains(term, "kitty"):
 		return Kitty
-	case program == "ghostty", program == "WezTerm":
+	case strings.Contains(term, "ghostty"), program == "ghostty", program == "Ghostty":
+		return Kitty
+	case env("WEZTERM_PANE") != "", strings.Contains(term, "wezterm"), program == "WezTerm":
 		return Kitty
 	case program == "iTerm.app", env("LC_TERMINAL") == "iTerm2":
 		return ITerm2
