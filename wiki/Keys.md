@@ -160,6 +160,10 @@ held for one, and no escape sequence is sent. A box where a picture is not is a
 row of the screen spent saying the picture is missing, and over ssh to a
 terminal without graphics you get the full track list instead.
 
+Beside the cover are the things the title bar does not carry: the year, how
+many tracks, and how long the record runs. A rule separates the pair from the
+track list.
+
 Covers are kept in `~/.cache/shanty/covers/` and fetched once. Deleting that
 directory costs one download each and nothing else.
 

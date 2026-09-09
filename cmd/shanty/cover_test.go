@@ -297,16 +297,17 @@ func TestAnAlbumWithNoCoverHoldsNoRows(t *testing.T) {
 // there happen to be. A record with two tracks on a short terminal was giving
 // up its cover to hold eight rows that nothing would ever fill.
 func TestACoverGivesWayOnlyToTracksThatExist(t *testing.T) {
-	// A cover is twelve rows and the frame keeps five, so a terminal of h rows
-	// leaves h-17 for the list beside one.
+	// The cover block is twelve rows of picture, a blank row either side and a
+	// rule, and the frame keeps five, so a terminal of h rows leaves h-20 for
+	// the list under it.
 	t.Run("a long album keeps eight tracks", func(t *testing.T) {
 		for _, tc := range []struct {
 			height int
 			shown  bool
 		}{
-			{40, true},  // 23 rows beside the cover
-			{25, true},  // exactly the eight the floor asks for
-			{24, false}, // one short, so the cover goes
+			{40, true},  // 20 rows under the cover
+			{28, true},  // exactly the eight the floor asks for
+			{27, false}, // one short, so the cover goes
 			{20, false},
 		} {
 			a := withLongAlbum(t, 20)
@@ -329,9 +330,9 @@ func TestACoverGivesWayOnlyToTracksThatExist(t *testing.T) {
 			shown  bool
 		}{
 			{25, true},  // the case a screenshot showed, with the cover gone
-			{20, true},  // three rows beside it, and only two are wanted
-			{19, true},  // exactly two
-			{18, false}, // one row, and the album has two tracks
+			{23, true},  // three rows under it, and only two are wanted
+			{22, true},  // exactly two
+			{21, false}, // one row, and the album has two tracks
 		} {
 			a, _ := withCovers(t)
 			a.art = cover.Kitty

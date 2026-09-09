@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,7 +16,7 @@ const chromeLines = 5
 // chrome is how many rows the frame uses for something other than the list.
 // The progress bar and the list of matching commands each take one when they
 // are showing.
-func (m Model) chrome() int { return m.chromeBase() + len(m.artLines()) }
+func (m Model) chrome() int { return m.chromeBase() + len(m.artBlock(m.viewWidth())) }
 
 // chromeBase is every row of the frame that is neither the list nor the cover
 // art. It does not count the art, so that the decision to show art can be made
@@ -83,7 +84,7 @@ func (m Model) View() string {
 			b.WriteString("\n")
 		}
 	} else {
-		for _, line := range m.artLines() {
+		for _, line := range m.artBlock(w) {
 			b.WriteString(line + "\n")
 		}
 		b.WriteString(m.list(w, visible))
@@ -175,6 +176,56 @@ func blankLike(lines []string) []string {
 	return out
 }
 
+// The cover sits in from the left edge the way a list row does, with a gap
+// between it and the album's facts.
+const (
+	artIndent = "   "
+	artGap    = "   "
+	// artFraming is the blank row above the cover, the blank row below it and
+	// the rule that separates the pair from the track list.
+	artFraming = 3
+)
+
+// artBlock is the cover, the album's facts beside it, and the rule between the
+// two and the track list. It is empty when there is no cover.
+//
+// The facts are here rather than in the list because the space beside a cover
+// is otherwise dead: twelve rows of nothing, in the one place on the screen
+// where there is something to say about the record.
+func (m Model) artBlock(w int) []string {
+	art := m.artLines()
+	if len(art) == 0 {
+		return nil
+	}
+	facts := m.albumFacts()
+	out := make([]string, 0, len(art)+artFraming)
+	out = append(out, "")
+	for i, line := range art {
+		row := artIndent + line
+		if i < len(facts) {
+			row += artGap + facts[i]
+		}
+		out = append(out, strings.TrimRight(row, " "))
+	}
+	return append(out, "", rule(w))
+}
+
+// albumFacts is what is worth saying about a record beside its cover. The
+// title bar already carries the artist and the album, so these are the things
+// that are nowhere else.
+func (m Model) albumFacts() []string {
+	a := m.album
+	facts := []string{titleStyle.Render(Sanitise(a.Name)), Sanitise(a.Artist)}
+	if a.Year > 0 {
+		facts = append(facts, faintStyle.Render(strconv.Itoa(a.Year)))
+	}
+	count := plural(len(a.Songs), "track")
+	if a.Duration > 0 {
+		count += " · " + long(time.Duration(a.Duration)*time.Second)
+	}
+	return append(facts, faintStyle.Render(count))
+}
+
 // artLines is the cover art rows on the screen showing an album's tracks.
 // Every other screen shows none: the art belongs to one album, and a list of
 // artists is not about any of them.
@@ -187,7 +238,7 @@ func (m Model) artLines() []string {
 	// against is the tracks there are: a record with three of them does not
 	// need eight rows kept clear, and giving up the cover to hold rows nothing
 	// will fill is the picture lost for nothing.
-	if m.viewHeight()-m.chromeBase()-len(m.art) < min(m.rows(), minTracksBesideArt) {
+	if m.viewHeight()-m.chromeBase()-len(m.art)-artFraming < min(m.rows(), minTracksBesideArt) {
 		return nil
 	}
 	return m.art
@@ -460,6 +511,15 @@ func plural(n int, unit string) string {
 		return fmt.Sprintf("1 %s", unit)
 	}
 	return fmt.Sprintf("%d %ss", n, unit)
+}
+
+// long is a duration that may run past an hour, as a record does. A track
+// never does, so clock does not carry the hours and this does.
+func long(d time.Duration) string {
+	if d < time.Hour {
+		return clock(d)
+	}
+	return fmt.Sprintf("%d:%02d:%02d", int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60)
 }
 
 func clock(d time.Duration) string {

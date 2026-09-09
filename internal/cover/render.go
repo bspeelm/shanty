@@ -237,8 +237,11 @@ func Block(p Protocol, data []byte, cols, rows int) []string {
 	if out == "" {
 		return nil
 	}
+	// Every row is the full width, the first one included: the sequence that
+	// places the picture leaves the cursor where it was, so the spaces after
+	// it are what carry anything drawn beside the cover past it.
 	lines := make([]string, rows)
-	lines[0] = out
+	lines[0] = out + strings.Repeat(" ", cols)
 	for i := 1; i < rows; i++ {
 		lines[i] = strings.Repeat(" ", cols)
 	}
