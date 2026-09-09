@@ -824,8 +824,22 @@ those keys could sensibly do while that screen is up.
 
 The rule this rests on is that a mode is visible. `:playlist edit` says what it
 is doing on the last row, every list carries `(A)` beside the tracks already in
-the playlist, and `esc` leaves. Somebody pressing `a` can see which of the two
-it will do before they press it.
+the playlist, and `e` leaves. Somebody pressing `a` can see which of the two it
+will do before they press it.
+
+**Amended: the key that leaves is `e`, and `esc` moves up a screen.** As first
+built, `esc` left the playlist rather than going up, on the reasoning that
+leaving the mode mattered more than leaving the screen. That reasoning had the
+mode backwards. Edit mode shows the library because tracks have to be found
+anywhere in it, and reaching a second album means going back up to the album
+list. Giving `esc` to the mode meant edit mode could reach exactly one album
+before the whole command had to be typed again.
+
+So `esc` keeps the one meaning it has everywhere, `e` leaves, and edit mode
+lasts however far the library is browsed. The visibility rule costs more under
+this arrangement and is paid: the artist and album lists carry no track marks,
+so the last row names the playlist for as long as the mode is on rather than
+until the next message replaces it.
 
 That is the same test the filter and the command line already pass: `/` and `:`
 change what typing does, and both show it. A mode that could not be seen would

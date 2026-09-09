@@ -112,10 +112,22 @@ func (m Model) footer(w int) string {
 		return statusStyle.Render(fit(Sanitise(m.asking)+"  [y/N]", w))
 	}
 	if m.status == "" {
+		// Editing is a mode, and a mode that cannot be seen is not allowed to
+		// change what a key does (ADR-019). The artist and album lists carry
+		// no track marks, so this row is the only sign of it there.
+		if m.editing.ID != "" {
+			return statusStyle.Render(fit(editingHint(m.editing.Name), w))
+		}
 		return faintStyle.Render(fit(help, w))
 	}
 	oneLine := strings.ReplaceAll(m.status, "\n", " · ")
 	return statusStyle.Render(fit(Sanitise(oneLine), w))
+}
+
+// editingHint is the row shown while a playlist is being edited. It names the
+// playlist and the three keys that act on it.
+func editingHint(name string) string {
+	return "adding to " + Sanitise(name) + " — a adds, r removes, e leaves"
 }
 
 // reading reports whether the screen is a page of prose rather than a list.

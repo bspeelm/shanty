@@ -19,6 +19,7 @@ work on all three.
 | `/` | Filter the list you are looking at |
 | `a` | Add the selected track to the end of the queue |
 | `A` | Play the selected track after the one playing |
+| `e` | Leave the playlist being edited |
 | `*` | Star the selected artist, album or track, or unstar it |
 
 Pressing back on the artist list does nothing, because there is nothing above
@@ -145,12 +146,15 @@ a track plays the playlist from there.
 `:playlist create Evening` makes an empty one. `:playlist edit Evening` fills
 it: the library appears as usual, `(A)` marks the tracks already in the
 playlist, `a` adds the selected track and `r` takes it out. Each change reaches
-the server as you make it, so what the marks show is what is there. `esc`
-finishes.
+the server as you make it, so what the marks show is what is there.
+
+**`e` finishes.** `esc` moves up a screen as it always does, so you can go back
+to the album list and on to another artist without leaving the playlist. Edit
+mode lasts until you press `e`, however far you browse.
 
 While you are editing, `a` and `r` are about the playlist. Everywhere else `a`
-adds to the queue and `A` plays next, as they always do. The last row says
-which you are in.
+adds to the queue and `A` plays next, as they always do. The last row names the
+playlist you are adding to for as long as you are adding to it.
 
 `:playlist delete Evening` asks first, naming the playlist and how many tracks
 it holds. Anything but `y` answers no.

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
 // An Action is one thing a key does, under a name.
@@ -74,6 +76,16 @@ func Actions() []Action {
 			})},
 		{Name: "queue-next", Summary: "play the selected track after the one playing", Keys: []string{"A"},
 			do: modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.queueSelected(true) })},
+		{Name: "playlist-done", Summary: "leave the playlist being edited",
+			Keys: []string{"e"}, do: modelCmd(func(m Model) (tea.Model, tea.Cmd) {
+				if m.editing.ID == "" {
+					return m, nil
+				}
+				name := m.editing.Name
+				m.editing, m.inPlaylist = subsonic.Playlist{}, nil
+				m.status = "finished with " + Sanitise(name)
+				return m.remember(m.status), nil
+			})},
 		{Name: "playlist-remove", Summary: "take the selected track out of the playlist being edited",
 			Keys: []string{"r"}, do: modelCmd(func(m Model) (tea.Model, tea.Cmd) {
 				if m.editing.ID != "" {
