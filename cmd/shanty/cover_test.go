@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -290,34 +291,78 @@ func TestAnAlbumWithNoCoverHoldsNoRows(t *testing.T) {
 	}
 }
 
-// TestAShortTerminalKeepsTheTracksAndDropsTheCover covers what a cover costs.
-// Twelve rows of picture on a short terminal leaves a handful of tracks, and
-// the tracks are what somebody opened the album for.
-func TestAShortTerminalKeepsTheTracksAndDropsTheCover(t *testing.T) {
-	for _, tc := range []struct {
-		height int
-		shown  bool
-	}{
-		{40, true},  // room for the cover and most of a record
-		{26, true},  // exactly the eight tracks the rule asks for
-		{25, false}, // one short, so the cover goes
-		{24, false}, // the ordinary terminal
-		{10, false},
-	} {
-		a, _ := withCovers(t)
-		a.art = cover.Kitty
-		a, _ = step(t, a, tea.WindowSizeMsg{Width: 80, Height: tc.height})
-		a = openAlbum(t, a, "al-1")
+// TestACoverGivesWayOnlyToTracksThatExist covers what the cover costs.
+//
+// The rows it takes are measured against the tracks there are, not the rows
+// there happen to be. A record with two tracks on a short terminal was giving
+// up its cover to hold eight rows that nothing would ever fill.
+func TestACoverGivesWayOnlyToTracksThatExist(t *testing.T) {
+	// A cover is twelve rows and the frame keeps five, so a terminal of h rows
+	// leaves h-17 for the list beside one.
+	t.Run("a long album keeps eight tracks", func(t *testing.T) {
+		for _, tc := range []struct {
+			height int
+			shown  bool
+		}{
+			{40, true},  // 23 rows beside the cover
+			{25, true},  // exactly the eight the floor asks for
+			{24, false}, // one short, so the cover goes
+			{20, false},
+		} {
+			a := withLongAlbum(t, 20)
+			a = resize(t, a, 80, tc.height)
 
-		frame := a.View()
-		if shown := strings.Contains(frame, "f=100"); shown != tc.shown {
-			t.Errorf("at %d rows the cover is shown=%v, want %v", tc.height, shown, tc.shown)
+			if shown := strings.Contains(a.View(), "f=100"); shown != tc.shown {
+				t.Errorf("20 tracks at %d rows: cover shown=%v, want %v", tc.height, shown, tc.shown)
+			}
+			if rows := strings.Count(a.View(), "\n") + 1; rows > tc.height {
+				t.Errorf("at %d rows the frame is %d rows", tc.height, rows)
+			}
 		}
-		// However tall the terminal, the frame is never taller than it.
-		if rows := strings.Count(frame, "\n") + 1; rows > tc.height {
-			t.Errorf("at %d rows the frame is %d rows", tc.height, rows)
+	})
+
+	t.Run("a short album needs only its own rows", func(t *testing.T) {
+		// The fixture album has two tracks, so two rows beside the cover is
+		// the whole record and the cover stays.
+		for _, tc := range []struct {
+			height int
+			shown  bool
+		}{
+			{25, true},  // the case a screenshot showed, with the cover gone
+			{20, true},  // three rows beside it, and only two are wanted
+			{19, true},  // exactly two
+			{18, false}, // one row, and the album has two tracks
+		} {
+			a, _ := withCovers(t)
+			a.art = cover.Kitty
+			a = resize(t, a, 80, tc.height)
+			a = openAlbum(t, a, "al-1")
+
+			if shown := strings.Contains(a.View(), "f=100"); shown != tc.shown {
+				t.Errorf("2 tracks at %d rows: cover shown=%v, want %v", tc.height, shown, tc.shown)
+			}
 		}
+	})
+}
+
+// withLongAlbum is the fixture album with more tracks than any terminal here
+// will show, keeping the cover the fake serves for it.
+func withLongAlbum(t *testing.T, tracks int) app {
+	t.Helper()
+	a, _ := withCovers(t)
+	a.art = cover.Kitty
+	a = openAlbum(t, a, "al-1")
+
+	songs := make([]subsonic.Song, tracks)
+	for i := range songs {
+		songs[i] = subsonic.Song{ID: "tr-" + strconv.Itoa(i), Title: "Track " + strconv.Itoa(i)}
 	}
+	// The same album identifier, so the cover already fetched is kept.
+	next, _ := a.ui.Update(tui.AlbumLoaded(subsonic.Album{
+		ID: "al-1", Name: "Harbour", Artist: "Aoi", CoverArt: "mf-al-1", Songs: songs,
+	}))
+	a.ui = next.(tui.Model)
+	return a
 }
 
 // TestArtFillsTheScreenAndEscPutsItAway covers the command end to end.

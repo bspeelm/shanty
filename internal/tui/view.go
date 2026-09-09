@@ -32,8 +32,9 @@ func (m Model) chromeBase() int {
 }
 
 // minTracksBesideArt is how much of a track list has to remain for a cover to
-// be worth the rows it takes: more than eight of them. Below that the picture
-// is the thing in the way, and somebody opened the album for the music.
+// be worth the rows it takes. An album with fewer tracks than this needs only
+// its own: eight rows held for tracks that do not exist is a cover given up
+// for nothing.
 const minTracksBesideArt = 8
 
 const (
@@ -181,9 +182,12 @@ func (m Model) artLines() []string {
 	if m.screen != ScreenTracks || len(m.art) == 0 {
 		return nil
 	}
-	// A cover is worth having only while the list it sits above is still worth
-	// reading. On a short terminal the tracks are what somebody came for.
-	if m.viewHeight()-m.chromeBase()-len(m.art) <= minTracksBesideArt {
+	// A cover is worth having only while the list it sits above still shows
+	// the album, or enough of it to be worth reading. What it is measured
+	// against is the tracks there are: a record with three of them does not
+	// need eight rows kept clear, and giving up the cover to hold rows nothing
+	// will fill is the picture lost for nothing.
+	if m.viewHeight()-m.chromeBase()-len(m.art) < min(m.rows(), minTracksBesideArt) {
 		return nil
 	}
 	return m.art
