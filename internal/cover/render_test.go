@@ -101,6 +101,11 @@ func TestKittySendsAPNGWhateverTheServerSent(t *testing.T) {
 			if !strings.Contains(out, "c=20,r=10") {
 				t.Error("the sequence does not carry the size in cells")
 			}
+			// Without this the terminal moves the cursor past the picture and
+			// the rows reserved for it are added to the rows it already took.
+			if !strings.Contains(out, "C=1") {
+				t.Error("the sequence lets the terminal move the cursor")
+			}
 			// The payload decodes to a PNG, whatever arrived.
 			body := out[strings.Index(out, ";")+1:]
 			body = body[:strings.Index(body, "\x1b\\")]

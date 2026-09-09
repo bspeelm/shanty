@@ -42,7 +42,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AlbumLoaded:
 		album := subsonic.Album(msg)
 		if album.ID != m.album.ID {
+			// An album with a cover holds the rows for it straight away. The
+			// picture is a request away and the list would otherwise jump
+			// when it lands.
 			m.art = nil
+			if album.CoverArt != "" {
+				m.art = m.artBlank
+			}
 		}
 		if m.keep != "" && m.screen == ScreenTracks && album.ID == m.album.ID {
 			m.album, m.loading = album, false
@@ -119,6 +125,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// must not draw one album's cover over another's tracks.
 		if msg.Clear != "" {
 			m.clearArt = msg.Clear
+		}
+		if len(msg.Lines) > 0 {
+			m.artBlank = blankLike(msg.Lines)
 		}
 		if msg.AlbumID == m.album.ID && msg.AlbumID != "" {
 			m.art = msg.Lines
