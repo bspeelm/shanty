@@ -5,6 +5,11 @@ nine glyphs `# % * + - . : =` and `@`.
 
 `shanty-source.png` is that text rendered — light glyphs on a dark ground.
 
+`shanty_screenshot.png` is the album screen: a cover drawn with the kitty
+graphics protocol, the album's facts beside it, and the track list below. It is
+a photograph of a terminal rather than anything generated, so it is replaced by
+taking another one.
+
 `shanty-dark.png` and `shanty-light.png` are derived from it for the README.
 The ground becomes transparent, or it would sit as a slab in whichever theme it
 was not made for, and the glyphs are flooded with one colour: a bright cyan for
