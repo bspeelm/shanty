@@ -932,12 +932,25 @@ func (a app) editPlaylist(msg tui.EditPlaylist) tea.Cmd {
 				return tui.Failed{Message: err.Error()}
 			}
 			// The server removes by position, and the same track can be in a
-			// playlist more than once. The last one is what a second press
-			// after an add takes back out.
+			// playlist more than once.
 			at := -1
-			for i, s := range full.Songs {
-				if s.ID == msg.SongID {
-					at = i
+			switch {
+			case msg.At >= 0 && msg.At < len(full.Songs) && full.Songs[msg.At].ID == msg.SongID:
+				// The position somebody pointed at, still holding what it held
+				// when they pointed at it.
+				at = msg.At
+			case msg.At >= 0:
+				// It moved between the screen being drawn and the key being
+				// pressed. Removing whatever is there now would be removing
+				// something nobody chose.
+				return tui.Failed{Message: "the playlist has changed since it was shown, so nothing was removed\n\nPress r again"}
+			default:
+				// From the library, where the position is not on screen. The
+				// last one is what a second press after an add takes back out.
+				for i, s := range full.Songs {
+					if s.ID == msg.SongID {
+						at = i
+					}
 				}
 			}
 			if at < 0 {

@@ -84,6 +84,14 @@ type (
 		ID     string
 		SongID string
 		Add    bool
+		// At is which of the playlist's tracks to remove, where the caller
+		// knows. Removing is by position, and a playlist may hold the same
+		// track twice, so the position is the difference between taking out
+		// the one somebody pointed at and taking out another copy of it.
+		//
+		// It is -1 from the library, where the position in the playlist is
+		// not on screen to be pointed at.
+		At int
 	}
 	// ShowWiki asks for the list of commands and what each does.
 	ShowWiki struct{}

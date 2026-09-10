@@ -5,8 +5,8 @@
       :playlist
       :playlist create Evening
       :playlist edit Evening
-      :playlist delete Evening
-      :playlist shuffle Evening
+
+  `gp` opens the list of playlists and `enter` opens one. From
 [2m────────────────────────────────────────────────────────────────[0m
 [2mnothing playing[0m
 [2m↑↓ move · gg top · G end · enter open · esc back · / filter · :…[0m
