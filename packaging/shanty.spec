@@ -18,7 +18,7 @@ License:        MIT
 URL:            https://github.com/bspeelm/shanty
 Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
 
-BuildRequires:  golang >= 1.24
+BuildRequires:  golang >= 1.25
 BuildRequires:  git-core
 
 # mpv is required, not suggested. shanty decodes no audio itself and hands
