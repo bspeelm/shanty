@@ -68,6 +68,12 @@ jobs:
             echo "automatically; an upgrade is a commit somebody made on purpose."
           } > /tmp/body.md
 
+          # The label the issue is found by. Created here rather than by hand,
+          # because a workflow that needs somebody to have clicked something
+          # once fails on a fresh clone and fails on a Monday.
+          gh label create dependencies --color 0366d6 \
+            --description "Weekly govulncheck and module freshness" 2>/dev/null || true
+
           behind=$(grep -c '\[' /tmp/outdated.txt || true)
           if [ "${{ steps.vuln.outputs.clean }}" = "true" ]; then
             headline="No known vulnerabilities. $behind module(s) behind."
