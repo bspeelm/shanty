@@ -41,7 +41,10 @@ jobs:
       - name: open or update the tracking issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
         run: |
+          # The date is the first line and nothing else, so that a week which
+          # found the same thing can be recognised as such.
           {
             echo "Weekly dependency check, $(date -u +%Y-%m-%d)."
             echo
@@ -65,12 +68,38 @@ jobs:
             echo "automatically; an upgrade is a commit somebody made on purpose."
           } > /tmp/body.md
 
+          behind=$(grep -c '\[' /tmp/outdated.txt || true)
+          if [ "${{ steps.vuln.outputs.clean }}" = "true" ]; then
+            headline="No known vulnerabilities. $behind module(s) behind."
+          else
+            headline="**govulncheck reports something.** $behind module(s) behind."
+          fi
+
           existing=$(gh issue list --state open --label dependencies \
             --search "Weekly dependency check in:title" --json number -q '.[0].number')
-          if [ -n "$existing" ]; then
-            gh issue edit "$existing" --body-file /tmp/body.md
-            echo "updated issue #$existing"
-          else
+
+          # No open issue means the first run, or that the last one was closed.
+          # Closing it is how somebody asks to be told again from scratch.
+          if [ -z "$existing" ]; then
             gh issue create --title "Weekly dependency check" \
-              --label dependencies --body-file /tmp/body.md
+              --label dependencies --assignee "$OWNER" --body-file /tmp/body.md
+            exit 0
           fi
+
+          # Editing an issue body notifies nobody: not the author, not a
+          # watcher, not the assignee. A check that quietly rewrites itself
+          # every week is one whose findings are never read, so a week that
+          # found something different says so in a comment, which does notify,
+          # and a week that found the same thing says nothing at all.
+          gh issue view "$existing" --json body -q .body > /tmp/previous.md
+          if diff -q <(sed 1d /tmp/previous.md | tr -d '\r') \
+                     <(sed 1d /tmp/body.md) >/dev/null 2>&1; then
+            echo "the same as last week; issue #$existing left alone"
+            exit 0
+          fi
+
+          gh issue edit "$existing" --body-file /tmp/body.md
+          gh issue comment "$existing" --body "$(printf '%s\n\n%s\n' \
+            "$headline" \
+            "This is different from last week. The issue body above has the detail.")"
+          echo "updated and commented on issue #$existing"
