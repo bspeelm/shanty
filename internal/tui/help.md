@@ -18,6 +18,10 @@ Lists your playlists, or does one thing to one of them.
     :playlist
     :playlist create Evening
     :playlist edit Evening
+
+`gp` opens the list of playlists and `enter` opens one. From there `e` starts
+adding to that playlist without naming it, and `r` takes the track under the
+cursor out of it.
     :playlist delete Evening
     :playlist shuffle Evening
 

@@ -461,7 +461,7 @@ func (m Model) editSelected(add bool) (tea.Model, tea.Cmd) {
 		m.status = "that track is " + what + " " + Sanitise(m.editing.Name)
 		return m, nil
 	}
-	return m, emit(EditPlaylist{ID: m.editing.ID, SongID: id, Add: add})
+	return m, emit(EditPlaylist{ID: m.editing.ID, SongID: id, Add: add, At: -1})
 }
 
 // holding is the identifiers of the tracks in a playlist.
@@ -646,4 +646,32 @@ func (m Model) confirmKey(key string) (tea.Model, tea.Cmd) {
 	}
 	m.status = ""
 	return m, emit(agreed)
+}
+
+// editPlaylist starts adding to a playlist, showing the library to find tracks
+// in. It is what `:playlist edit` arrives at and what `e` does on a playlist.
+func (m Model) editPlaylist(p subsonic.Playlist) (tea.Model, tea.Cmd) {
+	m.editing, m.inPlaylist = p, holding(p)
+	m.screen, m.filter, m.loading = ScreenArtists, "", false
+	m.status = editingHint(p.Name)
+	return m.remember(m.status), nil
+}
+
+// removeFromPlaylist takes the selected track out of the playlist on screen.
+//
+// The server removes by position rather than by identifier, and the position
+// it means is the one in the playlist rather than the one on screen, which
+// differ whenever a filter is narrowing the list.
+func (m Model) removeFromPlaylist() (tea.Model, tea.Cmd) {
+	if m.rows() == 0 || m.playlist.ID == "" {
+		return m, nil
+	}
+	at := m.matches()[m.cursor[m.screen]]
+	if at >= len(m.playlist.Songs) {
+		return m, nil
+	}
+	// Nothing is said until the server has done it. Saying so first reads as
+	// success, and the removal can still be refused.
+	track := m.playlist.Songs[at]
+	return m, emit(EditPlaylist{ID: m.playlist.ID, SongID: track.ID, Add: false, At: at})
 }

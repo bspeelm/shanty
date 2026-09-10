@@ -345,3 +345,185 @@ func TestTheEditedPlaylistIsNamedWhereNothingIsMarked(t *testing.T) {
 		t.Errorf("the screen does not say how to leave edit mode:\n%s", frame)
 	}
 }
+
+// TestRemovingFromThePlaylistOnScreen covers taking a track out without
+// entering edit mode first. A playlist on screen is a list of what is in it,
+// so `r` acts on the row under the cursor.
+func TestRemovingFromThePlaylistOnScreen(t *testing.T) {
+	a, srv := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2"}})
+	a = openPlaylist(t, a)
+
+	if a.ui.Screen() != tui.ScreenPlaylist {
+		t.Fatalf("the playlist did not open; on %s", a.ui.Screen())
+	}
+	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	a.ui = next.(tui.Model)
+	if cmd == nil {
+		t.Fatal("r did nothing on a playlist")
+	}
+	a, _ = runTo(t, a, cmd())
+
+	got := srv.Playlists()[0].Songs
+	if len(got) != 1 || got[0].ID != "tr-2" {
+		t.Errorf("the playlist holds %+v, want tr-2 alone", got)
+	}
+}
+
+// TestRemovingTakesTheTrackPointedAtNotAnotherCopy covers the thing that makes
+// removal by position rather than by identifier necessary. A playlist may hold
+// the same track twice, and taking out the wrong copy is not visible.
+func TestRemovingTakesTheTrackPointedAtNotAnotherCopy(t *testing.T) {
+	a, srv := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2", "tr-1"}})
+	a = openPlaylist(t, a)
+
+	// The cursor is on the first row, which is the first copy of tr-1.
+	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	a.ui = next.(tui.Model)
+	a, _ = runTo(t, a, cmd())
+
+	var ids []string
+	for _, s := range srv.Playlists()[0].Songs {
+		ids = append(ids, s.ID)
+	}
+	// The first copy went, so the second is still there behind tr-2.
+	if strings.Join(ids, ",") != "tr-2,tr-1" {
+		t.Errorf("the playlist holds %v, want tr-2 then tr-1", ids)
+	}
+}
+
+// TestEditingStartsFromThePlaylistOnScreen covers `e` where a playlist is
+// open: knowing which one to add to is what looking at it means.
+func TestEditingStartsFromThePlaylistOnScreen(t *testing.T) {
+	a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-1"}})
+	a = openPlaylist(t, a)
+
+	next, _ := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	a.ui = next.(tui.Model)
+
+	if a.ui.Editing().Name != "Evening" {
+		t.Fatalf("e did not start editing; editing is %q", a.ui.Editing().Name)
+	}
+	if a.ui.Screen() != tui.ScreenArtists {
+		t.Errorf("editing did not show the library; on %s", a.ui.Screen())
+	}
+	if !strings.Contains(a.ui.Status(), "adding to Evening") {
+		t.Errorf("it said %q", a.ui.Status())
+	}
+
+	// And e again leaves, which is what it did before.
+	next, _ = a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	a.ui = next.(tui.Model)
+	if a.ui.Editing().ID != "" {
+		t.Error("e did not leave the playlist it had started")
+	}
+}
+
+// TestEWithNoPlaylistOnScreenDoesNothing covers the key everywhere else.
+func TestEWithNoPlaylistOnScreenDoesNothing(t *testing.T) {
+	a, _ := withPlaylists(t, nil)
+	a, _ = step(t, a, tui.AlbumLoaded(threeTracks))
+
+	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	a.ui = next.(tui.Model)
+
+	if a.ui.Editing().ID != "" {
+		t.Error("e started editing something with no playlist on screen")
+	}
+	if cmd != nil {
+		t.Errorf("e emitted %#v on an album", cmd())
+	}
+}
+
+// openPlaylist lists the playlists and opens the first, the way gp and enter
+// do. The tracks have to be on screen for r and e to act on them.
+func openPlaylist(t *testing.T, a app) app {
+	t.Helper()
+	pending := []tea.Msg{tui.ShowPlaylists{}}
+	for round := 0; len(pending) > 0 && round < 8; round++ {
+		var produced []tea.Msg
+		for _, m := range pending {
+			if m == nil {
+				continue
+			}
+			var more []tea.Msg
+			a, more = step(t, a, m)
+			produced = append(produced, more...)
+		}
+		pending = produced
+	}
+	// enter asks for the playlist, the app fetches it, and the answer is what
+	// puts the tracks on screen. Stopping after one round leaves the list of
+	// playlists showing.
+	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	a.ui = next.(tui.Model)
+	pending = runAll(cmd)
+	for round := 0; len(pending) > 0 && round < 8; round++ {
+		var produced []tea.Msg
+		for _, m := range pending {
+			if m == nil {
+				continue
+			}
+			var more []tea.Msg
+			a, more = step(t, a, m)
+			produced = append(produced, more...)
+		}
+		pending = produced
+	}
+	return a
+}
+
+// TestRemovingRefusesWhenThePlaylistMovedUnderneath covers the gap between the
+// screen being drawn and the key being pressed.
+//
+// Removal is by position, so a playlist that changed since it was shown means
+// the position now holds something else. Removing it would delete a track
+// nobody pointed at, which is the one mistake here that cannot be undone from
+// inside shanty.
+func TestRemovingRefusesWhenThePlaylistMovedUnderneath(t *testing.T) {
+	a, srv := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2"}})
+	a = openPlaylist(t, a)
+
+	// The playlist loses its first track without the screen being told, which
+	// is what any other client doing the same thing looks like from here. The
+	// answer is dropped rather than fed back, so the list stays as drawn.
+	_, _ = step(t, a, tui.EditPlaylist{ID: "pl-1", SongID: "tr-1", Add: false, At: 0})
+	if got := srv.Playlists()[0].Songs; len(got) != 1 {
+		t.Fatalf("the setup did not remove a track; the playlist holds %+v", got)
+	}
+
+	// The cursor is still on row one, which the screen says is tr-1 and the
+	// server now says is tr-2.
+	a = pressAndSettle(t, a, "r")
+
+	if !strings.Contains(a.ui.Status(), "changed since it was shown") {
+		t.Errorf("it said %q", a.ui.Status())
+	}
+	// The one track the setup left is still there: the refused removal took
+	// nothing, rather than taking whatever row one holds now.
+	got := srv.Playlists()[0].Songs
+	if len(got) != 1 || got[0].ID != "tr-2" {
+		t.Errorf("the refusal removed something anyway: the playlist holds %+v", got)
+	}
+}
+
+// pressAndSettle presses a key and drives every message it produces back in,
+// which is what the interface and the app do between them.
+func pressAndSettle(t *testing.T, a app, key string) app {
+	t.Helper()
+	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+	a.ui = next.(tui.Model)
+	pending := runAll(cmd)
+	for round := 0; len(pending) > 0 && round < 8; round++ {
+		var produced []tea.Msg
+		for _, m := range pending {
+			if m == nil {
+				continue
+			}
+			var more []tea.Msg
+			a, more = step(t, a, m)
+			produced = append(produced, more...)
+		}
+		pending = produced
+	}
+	return a
+}

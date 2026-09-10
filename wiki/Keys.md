@@ -19,7 +19,7 @@ work on all three.
 | `/` | Filter the list you are looking at |
 | `a` | Add the selected track to the end of the queue |
 | `A` | Play the selected track after the one playing |
-| `e` | Leave the playlist being edited |
+| `e` | Add to the playlist you are looking at, or leave the one you are adding to |
 | `*` | Star the selected artist, album or track, or unstar it |
 
 Pressing back on the artist list does nothing, because there is nothing above
@@ -184,6 +184,25 @@ the server as you make it, so what the marks show is what is there.
 **`e` finishes.** `esc` moves up a screen as it always does, so you can go back
 to the album list and on to another artist without leaving the playlist. Edit
 mode lasts until you press `e`, however far you browse.
+
+**From a playlist you are looking at, `e` starts.** `gp` and `enter` open one,
+and `e` begins adding to that one without naming it — looking at a playlist is
+knowing which one you mean. `:playlist edit` is for one you are not looking at.
+
+**`r` works there too.** A playlist on screen is a list of what is in it, so
+`r` takes the track under the cursor out without entering edit mode first. If
+the playlist changed since the screen was drawn, the removal is refused rather
+than taking whatever is in that position now.
+
+**From a playlist you are looking at, `e` starts.** `gp` and `enter` open one,
+and `e` begins adding to that one without naming it — looking at a playlist is
+knowing which one you mean. `:playlist edit` is for a playlist you are not
+looking at.
+
+**`r` works there too.** A playlist on screen is a list of what is in it, so
+`r` takes the track under the cursor out without entering edit mode first. If
+the playlist changed since the screen was drawn, the removal is refused rather
+than taking whatever is in that position now.
 
 While you are editing, `a` and `r` are about the playlist. Everywhere else `a`
 adds to the queue and `A` plays next, as they always do. The last row names the

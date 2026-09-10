@@ -76,20 +76,31 @@ func Actions() []Action {
 			})},
 		{Name: "queue-next", Summary: "play the selected track after the one playing", Keys: []string{"A"},
 			do: modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.queueSelected(true) })},
-		{Name: "playlist-done", Summary: "leave the playlist being edited",
+		{Name: "playlist-edit", Summary: "add to the playlist you are looking at, or leave the one you are adding to",
 			Keys: []string{"e"}, do: modelCmd(func(m Model) (tea.Model, tea.Cmd) {
-				if m.editing.ID == "" {
-					return m, nil
+				if m.editing.ID != "" {
+					name := m.editing.Name
+					m.editing, m.inPlaylist = subsonic.Playlist{}, nil
+					m.status = "finished with " + Sanitise(name)
+					return m.remember(m.status), nil
 				}
-				name := m.editing.Name
-				m.editing, m.inPlaylist = subsonic.Playlist{}, nil
-				m.status = "finished with " + Sanitise(name)
-				return m.remember(m.status), nil
+				// Looking at a playlist is knowing which one to add to, so the
+				// key that leaves is the key that starts. `:playlist edit` is
+				// for the one you are not looking at.
+				if m.screen == ScreenPlaylist && m.playlist.ID != "" {
+					return m.editPlaylist(m.playlist)
+				}
+				return m, nil
 			})},
-		{Name: "playlist-remove", Summary: "take the selected track out of the playlist being edited",
+		{Name: "playlist-remove", Summary: "take the selected track out of the playlist you are looking at, or the one you are adding to",
 			Keys: []string{"r"}, do: modelCmd(func(m Model) (tea.Model, tea.Cmd) {
 				if m.editing.ID != "" {
 					return m.editSelected(false)
+				}
+				// A playlist on screen is a list of the tracks in it, so a
+				// track can be taken out of it without editing it first.
+				if m.screen == ScreenPlaylist {
+					return m.removeFromPlaylist()
 				}
 				return m, nil
 			})},
