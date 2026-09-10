@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           check-latest: true
       # make check is lint, vet, race tests, budgets and standard. The
       # conformance check is inside the gate rather than beside it.
@@ -46,7 +46,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
 
       # The release configuration is only otherwise read after a tag is pushed,
       # which is the one step that cannot be taken back.
@@ -146,7 +146,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - run: make build
 
       - name: the suite passes on macOS
@@ -226,7 +226,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - run: make crossbuild
 
   # The suite runs where the artifact is built, not only where it is written.
@@ -251,7 +251,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - run: |
           go test ./... -run Isolation -v | tee /tmp/isolation.log
           ran=$(grep -c '^--- PASS: TestIsolation' /tmp/isolation.log || true)
@@ -267,7 +267,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       # Run without a terminal on purpose: the golden files pin the colour
       # profile rather than detecting it, and this is where that would show.
       - run: go test ./internal/tui/... -v
@@ -285,7 +285,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - run: go test ./internal/subsonic/ -run=FuzzDecode -fuzz=FuzzDecode -fuzztime=60s
 
   # The only job that talks to a real server and a real player. Everything
@@ -303,7 +303,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mpv
       - run: mpv --version | head -1
       # A runner has no sound card, and mpv without one fails at the speaker

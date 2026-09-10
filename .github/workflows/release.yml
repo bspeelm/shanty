@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
 
       # The gates run again here rather than trusting the branch: a tag can be
       # pushed at any commit, including one CI never saw.
