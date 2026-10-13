@@ -960,6 +960,65 @@ and that is the moment to stop and look rather than to raise the cap again.
 
 ---
 
+## ADR-023 — The code budget is 6,870, and reporting a failure costs more than fixing it
+
+**Status:** accepted. Amends PLAN.md §0, and amends ADR-022, which set the cap
+at 6,700 with 136 lines of margin for the corrections a shipped feature
+attracts.
+
+### What the margin was for, and what was spent
+
+ADR-022 reserved 136 lines for ordinary corrections and said plainly that a cap
+raised for a bug fix is a ritual. That refusal is right and is not what
+happened here. The work that overran it measures as three parts:
+
+| part | lines | what it is |
+|---|---|---|
+| a stalled track is reported | 50 | the bug fix |
+| what mpv says is kept and quoted | 45 | a channel that did not exist |
+| `doctor` plays silence and times it | 39 | a check that did not exist |
+
+The bug fix is 50 lines and fits the margin ADR-022 left, so the cap holds for
+the thing it was sized for. The other two are not corrections to it. They are a
+diagnostic channel out of the player and a new entry in the doctor's closed
+set, and they were asked for by name.
+
+### Why 6,870
+
+`scripts/budgets.sh` reads 6,735 with all three built. That is measured, not
+estimated.
+
+The margin is 135, which is ADR-022's reasoning unchanged: enough for the
+corrections this work will attract, not enough for another feature. Copying the
+number rather than re-deriving it is deliberate — it was argued once on
+evidence, and nothing since has contradicted it.
+
+### What was refused
+
+**Cramming the work under 6,700.** The 35 lines over could be recovered by
+holding one line of mpv's output instead of a few, or by dropping the guard
+that stops a process writing without newlines from growing the buffer. Both
+were measured and both make the code worse. A budget that is met by removing a
+bound is not being met.
+
+**Rounding to 7,000.** ADR-021 and ADR-022 both refused this and the refusal
+still holds. 265 above the measured number stops reporting long before a look
+is warranted.
+
+**Counting the diagnostic channel as part of the fix.** It would have made the
+overrun look like a correction and the cap like a formality. The table above is
+the honest split, and it is why this record exists rather than a quiet edit to
+the number.
+
+### What this does not settle
+
+Reporting a failure well is not free, and this is the second record in a row
+where the number moved for work that is about honesty rather than features. If
+a third arrives, the thing to question is not the cap but whether every failure
+needs its own prose, its own check and its own channel.
+
+---
+
 ## ADR-022 — The code budget is 6,700, and what ADR-021 got wrong
 
 **Status:** accepted. Amends PLAN.md §0, and amends ADR-021, which set the cap
