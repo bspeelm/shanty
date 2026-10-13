@@ -90,6 +90,10 @@ type app struct {
 	// recognised by its number and dropped.
 	heard time.Duration
 	watch int
+	// notes is what mpv wrote to its standard error. It is nil in a session,
+	// in tests, and whenever this process attached to a player it did not
+	// start.
+	notes *diagnostics
 }
 
 // Cover art is drawn in a box this many cells across and down. mpv is not
@@ -433,8 +437,13 @@ func (a app) stallSaid(msg stallCheck) (tea.Model, tea.Cmd) {
 	track, _ := a.queue.Current()
 	// Said once, rather than again every stallGrace. The next track starts a
 	// watch of its own, so a stall that comes back is reported again.
-	// The first line carries the fact and the remedy, because the status row
-	// shows one line and `:messages` keeps the rest.
+	// The status row and the message list each show one line, so what mpv said
+	// is a message of its own. Appended to the report below it would be cut
+	// off the end of it, and said after it would take the row the remedy wants.
+	if lines := a.notes.said(); len(lines) > 0 {
+		next, _ := a.forward(tui.Notice("mpv said: " + lines[len(lines)-1]))
+		a = next.(app)
+	}
 	return a.forward(tui.Failed{Message: fmt.Sprintf(
 		"%s is not playing: press n to skip, or check your audio output"+
 			"\n\nmpv took the track and reported no position for %s. That points at the audio output or the server, not at shanty.",

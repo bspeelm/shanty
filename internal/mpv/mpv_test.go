@@ -100,7 +100,7 @@ func TestTheFlagsAreFixedAndLeaveTheUsersMpvAlone(t *testing.T) {
 	_, dir := stub(t)
 	argv := report(t, dir, argvFile)
 
-	for _, want := range []string{"--no-config", "--no-video", "--idle=yes", "--prefetch-playlist=yes", "--input-ipc-server="} {
+	for _, want := range []string{"--no-config", "--no-video", "--idle=yes", "--prefetch-playlist=yes", "--term-status-msg=", "--input-ipc-server="} {
 		if !strings.Contains(argv, want) {
 			t.Errorf("the child was not given %s:\n%s", want, argv)
 		}
@@ -565,5 +565,18 @@ func TestASocketPathTooLongIsRefusedWithTheReason(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "invalid argument") {
 		t.Errorf("the message passes on the kernel's own: %v", err)
+	}
+}
+
+// mpv writes its messages to standard output and leaves standard error empty.
+// Wiring only standard error is how a player's account of its own failure was
+// discarded while the field for it looked connected.
+func TestWhatMpvSaysReachesTheCaller(t *testing.T) {
+	_, _, notes := stubSaying(t)
+
+	// The child writes its line before it serves the socket, which Start waits
+	// for, so by here it has been written.
+	if got := notes.String(); !strings.Contains(got, stubSays) {
+		t.Errorf("the player's diagnostics are %q, want them to carry %q", got, stubSays)
 	}
 }
