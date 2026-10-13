@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
 
       # The gates run again here rather than trusting the branch: a tag can be
       # pushed at any commit, including one CI never saw.
@@ -56,6 +56,23 @@ jobs:
             exit 1
           }
           echo "$packet is present"
+
+      # A release built with an older toolchain than go.mod asks for is a
+      # release that looks fixed and is not: setup-go matches a version spec
+      # against whatever the runner already has, so `1.26` accepted 1.26.8 on
+      # the day 1.26.9 was what nine advisories were fixed in. Checked here
+      # rather than trusted, because the symptom is invisible until somebody
+      # scans the published binary.
+      - name: the toolchain is the one go.mod asks for
+        run: |
+          need=$(sed -n 's/^toolchain go//p' go.mod)
+          test -n "$need" || { echo "::error::go.mod names no toolchain"; exit 1; }
+          got=$(go version | awk '{print $3}' | sed 's/^go//')
+          if [ "$(printf '%s\n%s\n' "$need" "$got" | sort -V | head -1)" != "$need" ]; then
+            echo "::error::go.mod asks for go$need and this is go$got"
+            exit 1
+          fi
+          echo "building with go$got, which go.mod asks go$need of"
 
       - uses: goreleaser/goreleaser-action@v6
         with:

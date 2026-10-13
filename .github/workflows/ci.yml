@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
           check-latest: true
       # make check is lint, vet, race tests, budgets and standard. The
       # conformance check is inside the gate rather than beside it.
@@ -46,7 +46,24 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
+
+      # A release built with an older toolchain than go.mod asks for is a
+      # release that looks fixed and is not: setup-go matches a version spec
+      # against whatever the runner already has, so `1.26` accepted 1.26.8 on
+      # the day 1.26.9 was what nine advisories were fixed in. Checked here
+      # rather than trusted, because the symptom is invisible until somebody
+      # scans the published binary.
+      - name: the toolchain is the one go.mod asks for
+        run: |
+          need=$(sed -n 's/^toolchain go//p' go.mod)
+          test -n "$need" || { echo "::error::go.mod names no toolchain"; exit 1; }
+          got=$(go version | awk '{print $3}' | sed 's/^go//')
+          if [ "$(printf '%s\n%s\n' "$need" "$got" | sort -V | head -1)" != "$need" ]; then
+            echo "::error::go.mod asks for go$need and this is go$got"
+            exit 1
+          fi
+          echo "building with go$got, which go.mod asks go$need of"
 
       # The release configuration is only otherwise read after a tag is pushed,
       # which is the one step that cannot be taken back.
@@ -146,7 +163,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
       - run: make build
 
       - name: the suite passes on macOS
@@ -226,7 +243,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
       - run: make crossbuild
 
   # The suite runs where the artifact is built, not only where it is written.
@@ -251,7 +268,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
       - run: |
           go test ./... -run Isolation -v | tee /tmp/isolation.log
           ran=$(grep -c '^--- PASS: TestIsolation' /tmp/isolation.log || true)
@@ -267,7 +284,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
       # Run without a terminal on purpose: the golden files pin the colour
       # profile rather than detecting it, and this is where that would show.
       - run: go test ./internal/tui/... -v
@@ -285,7 +302,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
       - run: go test ./internal/subsonic/ -run=FuzzDecode -fuzz=FuzzDecode -fuzztime=60s
 
   # The only job that talks to a real server and a real player. Everything
@@ -303,7 +320,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mpv
       - run: mpv --version | head -1
       # A runner has no sound card, and mpv without one fails at the speaker
