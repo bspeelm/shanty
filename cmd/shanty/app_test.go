@@ -481,3 +481,43 @@ func find[T tea.Msg](msgs []tea.Msg) (T, bool) {
 	}
 	return zero, false
 }
+
+// A stall says what mpv said about it. mpv is the only thing that can name the
+// cause, and discarding its standard error was half of why this failure left
+// nothing to go on.
+func TestAStallSaysWhatMpvSaid(t *testing.T) {
+	short(t, 10*time.Millisecond)
+	a, _, _ := wired(t)
+	a.notes = &diagnostics{}
+	fmt.Fprintln(a.notes, "[ao/pipewire] could not connect to the output")
+	album := subsonic.Album{ID: "al-1", Songs: []subsonic.Song{{ID: "tr-1", Title: "Slipway"}}}
+
+	a, out := step(t, a, tui.PlayFrom{Album: album, Index: 0})
+	a, out = step(t, a, only[tui.NowPlaying](t, out))
+	a, _ = step(t, a, only[stallCheck](t, out))
+
+	// mpv's words are a row of their own in `:messages`, beside the report.
+	a, _ = step(t, a, tui.ShowMessages{})
+	frame := a.View()
+	if !strings.Contains(frame, "could not connect to the output") {
+		t.Errorf("the message does not carry what mpv said:\n%s", frame)
+	}
+}
+
+// A player this process attached to was started elsewhere, so there is nothing
+// of its standard error to quote. Saying nothing beats saying "mpv said:" and
+// then nothing.
+func TestAStallWithNothingFromMpvSaysOnlyWhatItKnows(t *testing.T) {
+	short(t, 10*time.Millisecond)
+	a, _, _ := wired(t)
+	album := subsonic.Album{ID: "al-1", Songs: []subsonic.Song{{ID: "tr-1", Title: "Slipway"}}}
+
+	a, out := step(t, a, tui.PlayFrom{Album: album, Index: 0})
+	a, out = step(t, a, only[tui.NowPlaying](t, out))
+	a, _ = step(t, a, only[stallCheck](t, out))
+
+	a, _ = step(t, a, tui.ShowMessages{})
+	if frame := a.View(); strings.Contains(frame, "mpv said") {
+		t.Errorf("the message quotes mpv having nothing to quote:\n%s", frame)
+	}
+}

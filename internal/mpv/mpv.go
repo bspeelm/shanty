@@ -42,8 +42,11 @@ type Options struct {
 	Binary string
 	// Socket is the path mpv listens on. Its directory is created 0700.
 	Socket string
-	// Stderr receives mpv’s diagnostics. Nil discards them.
-	Stderr io.Writer
+	// Diagnostics receives what mpv says about itself. Nil discards it.
+	//
+	// It is given both of mpv’s streams because mpv writes its messages, errors
+	// included, to standard output; its standard error stays empty.
+	Diagnostics io.Writer
 }
 
 // Player is a running mpv process.
@@ -71,8 +74,10 @@ type Player struct {
 
 // Start launches mpv and connects to its socket. The flags are fixed:
 // --no-config so the user’s own mpv configuration is not read, --no-video,
-// --idle so it waits for a track, and --prefetch-playlist so the next track
-// is opened early.
+// --idle so it waits for a track, --prefetch-playlist so the next track is
+// opened early, and --term-status-msg= to silence the position line mpv would
+// otherwise repeat several times a second, which is the only thing standing
+// between Diagnostics and what mpv has to say.
 func Start(ctx context.Context, opt Options) (*Player, error) {
 	binary := opt.Binary
 	if binary == "" {
@@ -96,6 +101,7 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 		"--no-video",
 		"--idle=yes",
 		"--prefetch-playlist=yes",
+		"--term-status-msg=",
 		"--input-ipc-server="+opt.Socket,
 	)
 	// The environment is inherited because PipeWire, PulseAudio and ALSA read
@@ -104,7 +110,7 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 	// mpv runs in its own session and is not tied to a context, so neither the
 	// terminal nor a cancellation stops it. Close is the only thing that does.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Stderr = opt.Stderr
+	cmd.Stdout, cmd.Stderr = opt.Diagnostics, opt.Diagnostics
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("could not start %s: %w\nInstall mpv, or set its path in config.toml", binary, err)
 	}
