@@ -368,3 +368,116 @@ func TestAnAbsoluteVolumeIsClamped(t *testing.T) {
 		t.Errorf("the player heard %q", said[len(said)-1])
 	}
 }
+
+// A track mpv accepts and never plays used to leave the screen saying it was
+// playing, with the position at zero and no message, until shanty was quit.
+// That is what an audio output refusing a sample rate looks like from here: the
+// load succeeds, mpv sends no end-file, and nothing else arrives either.
+func TestATrackThatNeverPlaysIsReported(t *testing.T) {
+	short(t, 10*time.Millisecond)
+	a, _, _ := wired(t)
+	album := subsonic.Album{ID: "al-1", Songs: []subsonic.Song{{ID: "tr-1", Title: "Slipway"}}}
+
+	a, out := step(t, a, tui.PlayFrom{Album: album, Index: 0})
+	a, out = step(t, a, only[tui.NowPlaying](t, out))
+
+	// The watch is the command the screen's own update asked for, so the whole
+	// chain is exercised rather than the message being posted by hand.
+	a, _ = step(t, a, only[stallCheck](t, out))
+
+	frame := a.View()
+	if !strings.Contains(frame, "Slipway is not playing") {
+		t.Errorf("the frame does not name the track that is not playing:\n%s", frame)
+	}
+	if !strings.Contains(frame, "press n to skip") {
+		t.Errorf("the frame does not say what to do:\n%s", frame)
+	}
+}
+
+// Playback that is moving is not a stall, and the watch asks again rather than
+// giving up: a track that stops halfway is reported too.
+func TestATrackThatIsPlayingIsNotReportedAsStalled(t *testing.T) {
+	short(t, 10*time.Millisecond)
+	a, rec, _ := wired(t)
+	album := subsonic.Album{ID: "al-1", Songs: []subsonic.Song{{ID: "tr-1", Title: "Slipway"}}}
+
+	a, out := step(t, a, tui.PlayFrom{Album: album, Index: 0})
+	a, out = step(t, a, only[tui.NowPlaying](t, out))
+	check := only[stallCheck](t, out)
+
+	// mpv reports a position, which is what a stall never does.
+	rec.events <- mpv.Event{Name: "property-change", Property: "time-pos", Data: []byte("4.0")}
+	a, _ = step(t, a, playerEvent(<-rec.events))
+
+	a, out = step(t, a, check)
+	if frame := a.View(); strings.Contains(frame, "is not playing") {
+		t.Errorf("a track that is playing was reported as stalled:\n%s", frame)
+	}
+	if _, asked := find[stallCheck](out); !asked {
+		t.Error("the watch gave up instead of asking again")
+	}
+}
+
+// A paused track sits at one position on purpose.
+func TestAPausedTrackIsNotReportedAsStalled(t *testing.T) {
+	short(t, 10*time.Millisecond)
+	a, _, _ := wired(t)
+	album := subsonic.Album{ID: "al-1", Songs: []subsonic.Song{{ID: "tr-1", Title: "Slipway"}}}
+
+	a, out := step(t, a, tui.PlayFrom{Album: album, Index: 0})
+	a, out = step(t, a, only[tui.NowPlaying](t, out))
+	check := only[stallCheck](t, out)
+
+	a, _ = step(t, a, tui.PausedChanged(true))
+	a, out = step(t, a, check)
+
+	if frame := a.View(); strings.Contains(frame, "is not playing") {
+		t.Errorf("a paused track was reported as stalled:\n%s", frame)
+	}
+	if _, asked := find[stallCheck](out); !asked {
+		t.Error("the watch gave up while paused, so a stall after it resumes is missed")
+	}
+}
+
+// The queue moving on leaves a watch in flight. Its answer is about a track
+// that is no longer playing, and reporting it would name the wrong one.
+func TestAStallWatchFromATrackAlreadyPassedIsIgnored(t *testing.T) {
+	short(t, 10*time.Millisecond)
+	a, _, _ := wired(t)
+	album := subsonic.Album{ID: "al-1", Songs: []subsonic.Song{
+		{ID: "tr-1", Title: "Slipway"}, {ID: "tr-2", Title: "Harbour"}}}
+
+	a, out := step(t, a, tui.PlayFrom{Album: album, Index: 0})
+	a, out = step(t, a, only[tui.NowPlaying](t, out))
+	stale := only[stallCheck](t, out)
+
+	a, out = step(t, a, tui.SkipNext{})
+	a, _ = step(t, a, only[tui.NowPlaying](t, out))
+
+	a, out = step(t, a, stale)
+	if frame := a.View(); strings.Contains(frame, "is not playing") {
+		t.Errorf("a watch from the previous track reported a stall:\n%s", frame)
+	}
+	if _, asked := find[stallCheck](out); asked {
+		t.Error("the stale watch asked again, so watches accumulate per track")
+	}
+}
+
+// short makes the stall watch quick enough to assert on, and puts it back.
+func short(t *testing.T, grace time.Duration) {
+	t.Helper()
+	was := stallGrace
+	stallGrace = grace
+	t.Cleanup(func() { stallGrace = was })
+}
+
+// find reports whether a message of the given type is among those returned.
+func find[T tea.Msg](msgs []tea.Msg) (T, bool) {
+	var zero T
+	for _, m := range msgs {
+		if got, ok := m.(T); ok {
+			return got, true
+		}
+	}
+	return zero, false
+}
