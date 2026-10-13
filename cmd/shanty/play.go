@@ -69,11 +69,17 @@ func play(ctx context.Context, env Env) error {
 		return err
 	}
 
+	// mpv's own account of a failure is kept in memory, because a stall is
+	// reported from here and mpv is the only thing that can say why. A player
+	// this process attached to was started elsewhere and has nothing to say
+	// here.
+	notes := &diagnostics{}
+
 	var p *mpv.Player
 	if running {
 		p, err = mpv.Attach(ctx, env.Paths.Socket())
 	} else {
-		p, err = mpv.Start(ctx, mpv.Options{Socket: env.Paths.Socket()})
+		p, err = mpv.Start(ctx, mpv.Options{Socket: env.Paths.Socket(), Diagnostics: notes})
 	}
 	if err != nil {
 		return err
@@ -95,6 +101,7 @@ func play(ctx context.Context, env Env) error {
 	a.art = cover.Detect(env.Getenv)
 	a.autoVolume = cfg.AutoVolume
 	a.configFile = env.Paths.ConfigFile()
+	a.notes = notes
 	if running {
 		a = a.resume(resumed)
 	}

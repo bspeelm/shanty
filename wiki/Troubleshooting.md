@@ -62,6 +62,19 @@ If your account signs in through LDAP, your server may not accept the scrambled
 password that Subsonic clients normally send. Create an API key in the server's
 web interface and use that instead.
 
+## A track is on the status line but there is no sound
+
+shanty says `… is not playing` when mpv accepted the track and then reported no
+position for several seconds. mpv has the track, so the silence is further down
+the chain: the audio output, or the server sending the audio.
+
+Press `n` to skip. If every track does it, play one with mpv directly; if mpv is
+silent too, the fault is outside shanty. One cause is a sample rate the audio
+output will not accept, which can leave the output refusing everything until the
+programs using it have quit.
+
+`:messages` keeps the whole message, which says how long shanty waited.
+
 ## Playback stops between tracks
 
 If mpv has stopped running, shanty reports that on the status line rather than

@@ -85,6 +85,15 @@ type app struct {
 	// size is the terminal, remembered because `:art` renders a cover to fill
 	// it and the interface does not do the rendering.
 	size tea.WindowSizeMsg
+	// heard is the position mpv last reported, and watch counts the stall
+	// watchers started. An answer from a watcher the queue has moved past is
+	// recognised by its number and dropped.
+	heard time.Duration
+	watch int
+	// notes is what mpv wrote to its standard error. It is nil in a session,
+	// in tests, and whenever this process attached to a player it did not
+	// start.
+	notes *diagnostics
 }
 
 // Cover art is drawn in a box this many cells across and down. mpv is not
@@ -123,6 +132,12 @@ type (
 	}
 	// savedQueue is what the server was holding when this started.
 	savedQueue subsonic.PlayQueue
+	// stallCheck asks whether playback has moved on from the position it
+	// carries.
+	stallCheck struct {
+		watch int
+		at    time.Duration
+	}
 	// starredLoaded is what the server has starred, with the identifiers
 	// gathered so that every list can mark them.
 	starredLoaded struct {
@@ -306,6 +321,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msg.reply <- a.handoff()
 		return a, nil
 
+	case tui.NowPlaying:
+		return a.nowPlaying(msg)
+	case stallCheck:
+		return a.stallSaid(msg)
+
 	case playerEvent:
 		return a.playerSaid(mpv.Event(msg))
 	case playerGone:
@@ -347,7 +367,8 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 	switch {
 	case e.Name == "property-change" && e.Property == "time-pos":
 		if pos, ok := e.Float(); ok {
-			ui, _ := a.ui.Update(tui.Progress(time.Duration(pos * float64(time.Second))))
+			a.heard = time.Duration(pos * float64(time.Second))
+			ui, _ := a.ui.Update(tui.Progress(a.heard))
 			a.ui = ui.(tui.Model)
 		}
 		return a, next
@@ -372,6 +393,61 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 			a.queueChanged(), a.saveQueue())
 	}
 	return a, next
+}
+
+// stallGrace is how long a track may sit at one position before shanty says it
+// is not playing. mpv opens the stream and fills its cache before the first
+// position arrives, so this is longer than that wait.
+var stallGrace = 12 * time.Second
+
+// nowPlaying starts a watch for a track mpv accepts and then never plays. A
+// session has nobody to tell, so it does not watch.
+func (a app) nowPlaying(msg tui.NowPlaying) (tea.Model, tea.Cmd) {
+	a.heard = 0
+	if _, playing := a.queue.Current(); !playing || a.headless {
+		return a.forward(msg)
+	}
+	a.watch++
+	return a.forwardAnd(msg, a.watchStall(a.watch, 0))
+}
+
+// watchStall asks, after stallGrace, whether playback has moved on from a
+// position. The answer arrives as a message, the same way a scan's does.
+func (a app) watchStall(watch int, from time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case <-a.ctx.Done():
+			return nil
+		case <-time.After(stallGrace):
+		}
+		return stallCheck{watch: watch, at: from}
+	}
+}
+
+// stallSaid reports a track whose position has not moved while it was meant to
+// be playing. mpv sends no event when its output never starts, so a position
+// that stays where it was is the only sign of it.
+func (a app) stallSaid(msg stallCheck) (tea.Model, tea.Cmd) {
+	if msg.watch != a.watch {
+		return a, nil
+	}
+	if a.paused() || a.heard != msg.at {
+		return a, a.watchStall(a.watch, a.heard)
+	}
+	track, _ := a.queue.Current()
+	// Said once, rather than again every stallGrace. The next track starts a
+	// watch of its own, so a stall that comes back is reported again.
+	// The status row and the message list each show one line, so what mpv said
+	// is a message of its own. Appended to the report below it would be cut
+	// off the end of it, and said after it would take the row the remedy wants.
+	if lines := a.notes.said(); len(lines) > 0 {
+		next, _ := a.forward(tui.Notice("mpv said: " + lines[len(lines)-1]))
+		a = next.(app)
+	}
+	return a.forward(tui.Failed{Message: fmt.Sprintf(
+		"%s is not playing: press n to skip, or check your audio output"+
+			"\n\nmpv took the track and reported no position for %s. That points at the audio output or the server, not at shanty.",
+		track.Title, stallGrace)})
 }
 
 func queueFrom(album subsonic.Album) queue.Queue {

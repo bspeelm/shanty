@@ -217,7 +217,7 @@ func TestIntegrationVerticalSlice(t *testing.T) {
 	t.Run("stream", func(t *testing.T) {
 		socket := filepath.Join(t.TempDir(), "mpv.sock")
 		var said bytes.Buffer
-		player, err := mpv.Start(ctx, mpv.Options{Binary: mpvPath, Socket: socket, Stderr: &said})
+		player, err := mpv.Start(ctx, mpv.Options{Binary: mpvPath, Socket: socket, Diagnostics: &said})
 		if err != nil {
 			t.Fatalf("starting real mpv: %v", err)
 		}
