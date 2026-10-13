@@ -294,10 +294,10 @@ two instances cannot overwrite each other's partial file.
 
 `shanty uninstall` removes all four directories and prints what it removed.
 
-`shanty doctor` checks, in order: mpv present and its version, the runtime
-directory usable, the configuration parseable, the credential file's
-permissions, the server reachable, the credential accepted, and whether the
-server offers a better credential than the one in use. Every failing line
+`shanty doctor` checks, in order: mpv present and its version, the audio
+output starting, the runtime directory usable, the configuration parseable, the
+credential file's permissions, the server reachable, the credential accepted,
+and whether the server offers a better credential than the one in use. Every failing line
 includes the command or configuration change that fixes it. `-json` for
 scripting.
 

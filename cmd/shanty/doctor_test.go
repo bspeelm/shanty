@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -450,5 +451,81 @@ func TestDoctorWithNoWayToReadTheEnvironmentDoesNotPanic(t *testing.T) {
 	got := checkCoverArt(Env{})
 	if got.Severity != Warn {
 		t.Errorf("severity is %v with no environment to read", got.Severity)
+	}
+}
+
+// An audio output that accepts a track and never starts it is what left a
+// track sitting at 0:00 with nothing on screen to explain it. The doctor plays
+// a second of silence so that the same fault is one command away, and 44.1 kHz
+// is the rate it is asked at because that is the rate outputs refuse.
+func TestTheDoctorReportsAnAudioOutputThatNeverStarts(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		command  func(context.Context, string, ...string) ([]byte, error)
+		severity Severity
+		says     string
+	}{
+		{
+			name: "it plays and stops",
+			command: func(context.Context, string, ...string) ([]byte, error) {
+				return nil, nil
+			},
+			severity: Pass,
+			says:     "44.1 kHz",
+		},
+		{
+			name: "it never starts",
+			command: func(ctx context.Context, _ string, _ ...string) ([]byte, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+			severity: Fail,
+			says:     "did not start",
+		},
+		{
+			name: "mpv cannot generate the silence",
+			command: func(context.Context, string, ...string) ([]byte, error) {
+				return nil, errors.New("exit status 2")
+			},
+			severity: Warn,
+			says:     "would not play",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			was := audioGrace
+			audioGrace = 20 * time.Millisecond
+			t.Cleanup(func() { audioGrace = was })
+
+			env, _ := scratch(t)
+			env.Command = tc.command
+
+			got := checkAudioOutput(t.Context(), env, Result{ID: "mpv", Severity: Pass})
+
+			if got.Severity != tc.severity {
+				t.Errorf("severity %v, want %v (%s / %s)", got.Severity, tc.severity, got.Summary, got.Detail)
+			}
+			if !strings.Contains(got.Summary+got.Detail+got.Fix, tc.says) {
+				t.Errorf("the report reads %q / %q / %q, want it to mention %q",
+					got.Summary, got.Detail, got.Fix, tc.says)
+			}
+			if tc.severity == Fail && !strings.Contains(got.Fix, "44.1 kHz") {
+				t.Errorf("the fix does not name the rate to look at: %q", got.Fix)
+			}
+		})
+	}
+}
+
+// Nothing is asked of the audio output when mpv is not there to ask it with.
+func TestTheDoctorSkipsTheAudioOutputWithoutMpv(t *testing.T) {
+	env, _ := scratch(t)
+	env.Command = func(context.Context, string, ...string) ([]byte, error) {
+		t.Error("mpv was run although it was reported missing")
+		return nil, nil
+	}
+
+	got := checkAudioOutput(t.Context(), env, Result{ID: "mpv", Severity: Fail})
+
+	if got.Severity != Skip {
+		t.Errorf("severity %v, want %v", got.Severity, Skip)
 	}
 }
