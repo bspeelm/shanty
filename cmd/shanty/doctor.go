@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/bspeelm/shanty/internal/config"
 	"github.com/bspeelm/shanty/internal/cover"
@@ -54,8 +55,8 @@ func (r Report) OK() bool {
 // checkIDs is every check the report contains. A test holds this list and the
 // report to each other.
 var checkIDs = []string{
-	"mpv", "mpv-version", "runtime-dir", "session", "config", "keys",
-	"cover-art", "credentials", "server", "auth", "auth-mode",
+	"mpv", "mpv-version", "audio-output", "runtime-dir", "session", "config",
+	"keys", "cover-art", "credentials", "server", "auth", "auth-mode",
 }
 
 func runDoctor(ctx context.Context, env Env, args []string) error {
@@ -103,6 +104,7 @@ func diagnose(ctx context.Context, env Env) Report {
 
 	mpv := add(checkMpv(env))
 	add(checkMpvVersion(ctx, env, mpv))
+	add(checkAudioOutput(ctx, env, mpv))
 	add(checkRuntimeDir(env))
 	add(checkSession(env))
 
@@ -194,6 +196,43 @@ func checkMpvVersion(ctx context.Context, env Env, found Result) Result {
 			Fix:     "upgrade mpv to " + mpv.Minimum + " or newer"}
 	}
 	return Result{ID: "mpv-version", Severity: Pass, Summary: line}
+}
+
+// generatedSilence is what the audio-output check plays: silence mpv generates
+// itself at 44.1 kHz, so nothing is heard and no file is read. The rate is the
+// one most music is in, and the one an output is most likely to refuse.
+const generatedSilence = "av://lavfi:anullsrc=r=44100:cl=stereo"
+
+// audioGrace is how long the check gives mpv to play one second of silence and
+// stop. An output that starts does it in about that one second.
+var audioGrace = 5 * time.Second
+
+// checkAudioOutput plays a second of silence and reports whether mpv finished
+// it. An output that accepts a track and never starts leaves mpv holding a
+// position that does not move, which is how a track that will not play looks
+// from inside shanty.
+func checkAudioOutput(ctx context.Context, env Env, found Result) Result {
+	if found.Severity == Fail {
+		return skipped("audio-output", "not checked; mpv was not found")
+	}
+	deadline, cancel := context.WithTimeout(ctx, audioGrace)
+	defer cancel()
+	// The same flags shanty plays with, so the check exercises the same path.
+	_, err := env.Command(deadline, "mpv", "--no-config", "--no-video",
+		"--length=1", "--msg-level=all=error", generatedSilence)
+	if deadline.Err() != nil && ctx.Err() == nil {
+		return Result{ID: "audio-output", Severity: Fail,
+			Summary: "the audio output did not start",
+			Detail:  "mpv took a second of silence and did not finish playing it within " + audioGrace.String(),
+			Fix:     "check the system's audio output, and whether it accepts 44.1 kHz; `mpv " + generatedSilence + "` shows what mpv makes of it"}
+	}
+	if err != nil {
+		return Result{ID: "audio-output", Severity: Warn,
+			Summary: "mpv would not play the silence",
+			Detail:  err.Error(),
+			Fix:     "run `mpv " + generatedSilence + "` by hand and see what it says"}
+	}
+	return Result{ID: "audio-output", Severity: Pass, Summary: "silence played at 44.1 kHz"}
 }
 
 // checkRuntimeDir reports on the runtime directory without creating it.

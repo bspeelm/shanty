@@ -1,6 +1,6 @@
 # The doctor
 
-`shanty doctor` examines your setup and reports on eleven things. Anything that
+`shanty doctor` examines your setup and reports on twelve things. Anything that
 is not working is listed with the command or configuration change that fixes
 it.
 
@@ -31,6 +31,14 @@ enough. shanty needs **0.24.0** or newer: it always starts mpv with
 `--prefetch-playlist`, so that albums play without a gap, and that option
 arrived in 0.24.0. An older mpv is reported as a failure naming the number. A
 version shanty cannot read is a warning rather than a refusal.
+
+**`audio-output`** — whether your audio output actually starts. mpv is given
+one second of generated silence at 44.1 kHz and the check waits for it to
+finish. Nothing is heard. An output that accepts audio and never starts is
+reported as a failure: that is what a track stuck at `0:00` looks like, and
+44.1 kHz is both the rate most music is in and the one an output is most likely
+to refuse. A machine with no audio device at all is a warning rather than a
+failure.
 
 **`runtime-dir`** — the directory that will hold shanty's connection to mpv
 while music is playing. The check confirms the directory is usable and readable
