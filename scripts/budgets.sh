@@ -102,12 +102,20 @@ printf 'prose:         %s lines (budget %s)\n' "$docs" "$MAX_DOC_LINES"
 [ "$docs" -le "$MAX_DOC_LINES" ] || over "over the prose budget -- retire a doc to docs/history/, do not raise the cap."
 
 # --- panic -------------------------------------------------------------------
-# A panic in a TUI takes the terminal with it. Errors are values here.
-panics=$(grep -rn 'panic(' --include='*.go' . 2>/dev/null \
-	| grep -v '_test.go' | grep -v '^\./vendor/' | wc -l)
-printf 'panics:        %s (budget %s)\n' "$panics" "$MAX_PANICS"
-[ "$panics" -le "$MAX_PANICS" ] || { over "panic( in non-test code:"; \
-	grep -rn 'panic(' --include='*.go' . 2>/dev/null | grep -v '_test.go' | grep -v '^\./vendor/' | sed 's/^/    /'; }
+# A panic in a TUI takes the terminal with it. Errors are values here. The
+# files are named by find, which writes a path the same way on every platform.
+NONTEST=$(find . -name '*.go' -not -name '*_test.go' \
+	-not -path './vendor/*' -not -path './dist/*' 2>/dev/null || true)
+if [ -n "$NONTEST" ]; then
+	# shellcheck disable=SC2086
+	panics=$(grep -Hn 'panic(' $NONTEST 2>/dev/null | wc -l | tr -d ' ')
+	printf 'panics:        %s (budget %s)\n' "$panics" "$MAX_PANICS"
+	if [ "$panics" -gt "$MAX_PANICS" ]; then
+		over "panic( in non-test code:"
+		# shellcheck disable=SC2086
+		grep -Hn 'panic(' $NONTEST 2>/dev/null | sed 's/^/    /'
+	fi
+fi
 
 # --- who talks to the network ------------------------------------------------
 # "What does this program say on the network" must have a one-package answer.
@@ -124,7 +132,12 @@ fi
 
 # --- verification has no off switch ------------------------------------------
 # §2: a knob that exists gets turned, and gets pasted into setup guides.
-tls=$(grep -rln 'InsecureSkipVerify' --include='*.go' . 2>/dev/null | grep -v '^\./vendor/' || true)
+ALLGO=$(find . -name '*.go' -not -path './vendor/*' -not -path './dist/*' 2>/dev/null || true)
+tls=''
+if [ -n "$ALLGO" ]; then
+	# shellcheck disable=SC2086
+	tls=$(grep -l 'InsecureSkipVerify' $ALLGO 2>/dev/null || true)
+fi
 if [ -n "$tls" ]; then
 	over "TLS verification bypass present -- there is no off switch (ADR-004):"
 	echo "$tls" | sed 's/^/    /'
