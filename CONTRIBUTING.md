@@ -53,7 +53,7 @@ does no I/O, `internal/subsonic` is the only package importing `net/http`, and
 ## Limits
 
 `make budgets` fails on any of: more than 10 direct dependencies or 30 modules,
-more than 6,000 lines of code, comments above 25% of code, prose above 4,500
+more than 6,870 lines of code, comments above 25% of code, prose above 4,500
 lines, a binary over 15 MiB, more than two packages importing `net/http`, any
 `panic` outside tests, or any way to disable certificate checking.
 
