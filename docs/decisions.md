@@ -290,8 +290,8 @@ it is a contained change rather than a rewrite.
 
 ## ADR-012 — macOS support is not yet described
 
-**Status:** open, and one question below is now answered. Recorded before it
-was needed.
+**Status:** open, and two of the five questions below are now answered.
+Recorded before it was needed.
 
 **Answered: shanty uses XDG paths on every platform, macOS included.** All four
 directories are resolved from the XDG variables by shanty rather than by
@@ -311,7 +311,12 @@ isolation suite to hold, one set of paths in §8 and in the wiki, and
 does not follow the platform convention on macOS, which is a cost paid by a
 program whose configuration is a text file people are expected to edit.
 
-The questions below this line are still open.
+The questions below this line were open when this was recorded. The last of
+them is answered by ADR-024. The other three are not, and closing the issue
+that tracked this record did not settle them: it was closed on a working
+install, which is a verification rather than an answer. The `macos` CI job
+builds and runs the suite on that platform, so the behaviour is exercised; what
+it does not do is decide the three questions below.
 
 Everything decided so far is settled for Linux and applies to macOS in
 intent — one mpv process, one socket, the credential passed over that socket
@@ -343,8 +348,9 @@ first causes a problem:
   made again rather than assumed.
 - A downloaded binary is quarantined by macOS until it is signed or notarised.
   The Homebrew cask strips the attribute on install, which makes that route
-  work. A tarball downloaded by hand still does not run, and signing properly
-  is unanswered.
+  work. A tarball downloaded by hand still does not run. **Answered by
+  ADR-024**, which refuses the signing: the cask is the supported route, and a
+  hand-downloaded tarball requires the user to clear the attribute.
 
 Recorded now because these are architectural questions rather than packaging
 ones. Answering them after the Linux implementation has settled is how a
@@ -1078,5 +1084,74 @@ The estimate was short because the specification was, and nothing here fixes
 that. The next feature will also be larger than its issue says. The answer is
 not a bigger cap but a smaller claim about what an estimate is worth: it sizes
 the code somebody can describe, and the terminal will add more.
+
+---
+## ADR-024 — Distribution stops at the routes that exist: no signing, no manual page, no Arch package, no tap job
+
+**Status:** accepted. Amends PLAN.md §12, which specified four deliverables for
+v0.4, and §11, which listed the CI jobs inaccurately. Closes that milestone.
+
+None of the four is being built. They are recorded together because they were
+decided together, and because a refusal that lives only in a closed issue gets
+re-proposed. Each section below names what would bring the work back.
+
+### Signing and notarising the macOS build
+
+Refused. The cost is a paid Developer ID, three secrets in the release
+workflow, and a notarisation step between goreleaser and the upload. The
+benefit is a route nobody has asked for.
+
+The supported macOS route already works: the Homebrew cask strips the
+quarantine attribute on install. A tarball downloaded in a browser does not
+run until the user clears that attribute themselves, which is the cost being
+accepted rather than paid.
+
+What would bring it back: somebody installing by tarball rather than by cask,
+or a macOS release that cannot strip the attribute. The second is the stronger
+reason, because it would remove the route that makes this refusable.
+
+### A manual page
+
+Refused. The wiki is ten pages covering the commands, the keys, credentials,
+the doctor, installing, the filesystem contract, troubleshooting and a first
+run, and `:wiki` reads them without leaving the program. `cmd/shanty/docs_test.go`
+holds the README and those pages against the real command table and the real
+check ids, so the documentation that exists has a gate. A manual page would be
+a second copy of it with none.
+
+PLAN.md §12 said the rpm and the deb "were both specified to install" one.
+They were not. Neither `packaging/shanty.spec` nor the nfpm section of
+`.goreleaser.yaml` has ever had a man stanza, so the gap was unspecified as
+well as unbuilt. That sentence is removed rather than carried forward.
+
+What would bring it back: a packaging standard that requires one, or somebody
+reaching for `man shanty` and reporting its absence.
+
+### An Arch package
+
+Dropped. The submission route is not open to it at the moment and there is no
+stated end to that, so there is nothing to build against.
+
+PLAN.md §12 asked whether there is an Arch package at all. The answer is no.
+
+What would bring it back: the route reopening. Nothing about the package itself
+is hard; the three existing package definitions already generate the same file
+list from the same binary.
+
+### A job that installs from the Homebrew tap
+
+Refused as specified. CI builds the cask and asserts what it declares, which is
+the binary and all three completions, together with the archive those files come
+out of. Installing from the tap needs a published release, so the job cannot run
+on a pull request, which is where the rest of the gates run.
+
+The install was verified by hand on macOS instead. That is a weaker thing than a
+job, and it is why the promise is removed from §12 rather than left standing: a
+claim with nothing enforcing it is a wish, and §5 is the list of claims with
+gates.
+
+What would bring it back: a release-time job, which would catch a broken cask
+after publication rather than before. That is worth having and is not what §12
+asked for.
 
 ---

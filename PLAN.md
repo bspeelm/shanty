@@ -347,8 +347,11 @@ player.
 
 `ci.yml` at `permissions: contents: read`, with jobs: `check` (lint, vet,
 race-enabled tests, budgets, standard), `isolation` with its ran-count
-assertion, `golden`, `fuzz-brief`, `integration`, `buildroot`, and `crossbuild`
-across Linux and macOS on both architectures.
+assertion, `golden`, `fuzz-brief`, `integration`, `buildroot`, `crossbuild`
+across Linux and macOS on both architectures, `packages`, which builds every
+release artefact and installs the deb, `rpm`, which builds and installs the
+package in a Fedora container the way Copr does, and `macos`, which runs the
+suite on that platform.
 
 Release is goreleaser from a tag: archives, `checksums.txt`, and
 `actions/attest-build-provenance` producing a signature with no private key to
@@ -390,20 +393,22 @@ explains the commands without leaving shanty. And the packages moved here from
 v0.4: dnf, apt and Homebrew each install shanty and mpv together, and CI builds
 and installs every one of them.
 
-**v0.3 — the comforts.** Cover art, using the kitty graphics protocol first
-with sixel and iTerm2 behind the same interface and always a text fallback.
+**v0.3 — the comforts.** Cover art, using the kitty graphics protocol and the
+iTerm2 inline image protocol behind one interface, with a text fallback always.
+Sixel is in the backlog rather than shipped: it needs a palette quantiser and a
+band encoder, which the code budget does not hold.
 
 Synchronised lyrics, palette themes and MPRIS were in this milestone and are
 now in the backlog. Each is wanted by nobody who has said so, and a milestone
 is for what is being built rather than for everything that would be pleasant.
 ADR-021 records the code budget this leaves.
 
-**v0.4 — distribution.** What is left after v0.2 shipped the packages. A signed
-and notarised macOS build, which needs ADR-012 answered first, since signing a
-build whose filesystem behaviour is undecided proves only that it was signed. A
-manual page, which the rpm and the deb were both specified to install and
-neither does. A job that installs from the Homebrew tap rather than reading the
-cask it generated. Whether there is an Arch package at all.
+**v0.4 — distribution. Closed with nothing built.** v0.2 shipped the packages,
+and ADR-024 refuses the four things this milestone was left holding: signing and
+notarising the macOS build, a manual page, an Arch package, and a job that
+installs from the Homebrew tap. Each refusal names what would bring the work
+back. The routes that exist are the distribution: dnf, apt, Homebrew, and the
+install script.
 
 Deferred indefinitely, per §3: local files, a visualiser, downloads, and
 multiple simultaneous servers. Profiles that switch between servers are fine;
@@ -419,8 +424,12 @@ the backlog. The budget half of it is answered — a D-Bus library costs one or
 two modules against 28 of 30 — so what is left is whether the feature is
 wanted, which is not a question a record can settle on its own.
 
-ADR-012, the macOS form of §7 and §8, answered before a release claims to
-support macOS.
+ADR-012, the macOS form of §7 and §8. Two of its five questions are answered:
+XDG paths on every platform, and signing, which ADR-024 refuses. Three are not —
+the socket living in a cache rather than a runtime directory, whether the
+kernel's view of a child's arguments should be checked where there is no
+`/proc`, and whether mpv should inherit the environment where CoreAudio does not
+read it.
 
 The minimum mpv version is settled: **0.24.0**. `--input-ipc-server` arrived in
 0.17.0 and `--prefetch-playlist` in 0.24.0, so the floor is the later of the
