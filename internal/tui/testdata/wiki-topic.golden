@@ -5,7 +5,7 @@
       :playlist
       :playlist create Evening
       :playlist edit Evening
-
+      :playlist rename Evening Watch
 [2m────────────────────────────────────────────────────────────────[0m
 [2mnothing playing[0m
 [1m[0m[2m────────────────────────────────────────────────────────────────[0m

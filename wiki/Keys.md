@@ -208,6 +208,11 @@ While you are editing, `a` and `r` are about the playlist. Everywhere else `a`
 adds to the queue and `A` plays next, as they always do. The last row names the
 playlist you are adding to for as long as you are adding to it.
 
+**`:playlist rename` renames the playlist on screen.** Open one with `gp` and
+`enter`, then `:playlist rename Evening Watch` gives it that name. What you
+type is the new name rather than the old one, so this is the one way to tell
+two playlists sharing a name apart. Run it anywhere else and shanty says so.
+
 `:playlist delete Evening` asks first, naming the playlist and how many tracks
 it holds. Anything but `y` answers no.
 
@@ -320,7 +325,7 @@ what the screen shows, then the server, then the program itself.
 | Command | What it does |
 |---|---|
 | `:search <words>` | find artists, albums and tracks on the server |
-| `:playlist <verb name>` | list them, or create, delete, edit or shuffle one |
+| `:playlist <verb name>` | list them, or create, delete, edit, rename or shuffle one |
 | `:shuffle` | play everything on the server in a random order |
 | `:resume` | carry on from the queue saved on the server |
 | `:art` | show the cover of the album you are looking at, filling the screen |

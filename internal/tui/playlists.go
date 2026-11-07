@@ -11,6 +11,7 @@ var playlistVerbs = map[string]bool{
 	"create":  true,
 	"edit":    true,
 	"delete":  true,
+	"rename":  true,
 	"shuffle": true,
 }
 
@@ -18,6 +19,10 @@ var playlistVerbs = map[string]bool{
 //
 // The name is everything after the verb, spaces and all, because a playlist is
 // called what somebody called it.
+//
+// For every verb but rename the name says which playlist. For rename it is the
+// new name, and the playlist is the one on screen; runCommand resolves that,
+// because the line is all this sees.
 func playlistCommand(arg string) (any, error) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
@@ -30,14 +35,18 @@ func playlistCommand(arg string) (any, error) {
 		return nil, errBadArgument{"playlist", verb, "one of " + verbList()}
 	}
 	if name == "" {
-		return nil, errBadArgument{"playlist " + verb, "", "the name of a playlist"}
+		wanted := "the name of a playlist"
+		if verb == "rename" {
+			wanted = "the new name"
+		}
+		return nil, errBadArgument{"playlist " + verb, "", wanted}
 	}
 	return Playlist{Verb: verb, Name: name}, nil
 }
 
 // verbList names what may follow :playlist, in a fixed order.
 func verbList() string {
-	return "create, delete, edit or shuffle"
+	return "create, delete, edit, rename or shuffle"
 }
 
 // playlistSummary is what the completion row says :playlist does.
