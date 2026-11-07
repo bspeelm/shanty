@@ -117,6 +117,9 @@ type Model struct {
 	// position in it. The caller owns the queue; this is a copy to draw.
 	queued   []queue.Track
 	queuedAt int
+	// statusFailed says the message on the last row is a refusal rather than
+	// a notice, so it can be coloured as one.
+	statusFailed bool
 	// queuedFrom is the playlist the queue was built from, so the list of
 	// playlists can mark the one the music is coming from. It is empty when
 	// the queue came from anything else.

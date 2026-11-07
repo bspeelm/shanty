@@ -43,7 +43,6 @@ const (
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true)
 	selectedStyle = lipgloss.NewStyle().Reverse(true)
-	faintStyle    = lipgloss.NewStyle().Faint(true)
 	statusStyle   = lipgloss.NewStyle().Bold(true)
 )
 
@@ -75,7 +74,7 @@ func (m Model) View() string {
 	// end, and the heading still names the screen esc returns to.
 	if m.showSky {
 		for _, line := range sky(w, visible, m.skyAt) {
-			b.WriteString(faintStyle.Render(line) + "\n")
+			b.WriteString(faint().Render(line) + "\n")
 		}
 	} else if len(m.bigArt) > 0 {
 		for _, line := range m.bigArt {
@@ -98,7 +97,7 @@ func (m Model) View() string {
 	b.WriteString(m.progress(w) + "\n")
 	if m.mode == modeCommand {
 		for _, row := range m.completions(w) {
-			b.WriteString(faintStyle.Render(fit(row, w)) + "\n")
+			b.WriteString(faint().Render(fit(row, w)) + "\n")
 		}
 	}
 	b.WriteString(m.footer(w))
@@ -158,7 +157,7 @@ func (m Model) footer(w int) string {
 		return statusStyle.Render(fit("/"+m.filter+"\u2588", w))
 	}
 	if m.mode == modeConfirm {
-		return statusStyle.Render(fit(Sanitise(m.asking)+"  [y/N]", w))
+		return alarm().Render(fit(Sanitise(m.asking)+"  [y/N]", w))
 	}
 	if m.status == "" {
 		// Editing is a mode, and a mode that cannot be seen is not allowed to
@@ -172,14 +171,17 @@ func (m Model) footer(w int) string {
 			if m.paused {
 				return statusStyle.Render(fit("paused — space resumes · esc leaves", w))
 			}
-			return faintStyle.Render(fit("esc leaves · space pauses", w))
+			return faint().Render(fit("esc leaves · space pauses", w))
 		}
 		if m.editing.ID != "" {
 			return statusStyle.Render(fit(editingHint(m.editing.Name), w))
 		}
-		return faintStyle.Render(fit(helpLine(w), w))
+		return faint().Render(fit(helpLine(w), w))
 	}
 	oneLine := strings.ReplaceAll(m.status, "\n", " · ")
+	if m.statusFailed {
+		return alarm().Render(fit(Sanitise(oneLine), w))
+	}
 	return statusStyle.Render(fit(Sanitise(oneLine), w))
 }
 
@@ -242,13 +244,13 @@ func (m Model) albumFacts() []string {
 	a := m.album
 	facts := []string{titleStyle.Render(Sanitise(a.Name)), Sanitise(a.Artist)}
 	if a.Year > 0 {
-		facts = append(facts, faintStyle.Render(strconv.Itoa(a.Year)))
+		facts = append(facts, faint().Render(strconv.Itoa(a.Year)))
 	}
 	count := plural(len(a.Songs), "track")
 	if a.Duration > 0 {
 		count += " · " + long(time.Duration(a.Duration)*time.Second)
 	}
-	return append(facts, faintStyle.Render(count))
+	return append(facts, faint().Render(count))
 }
 
 // artLines is the cover art rows on the screen showing an album's tracks.
@@ -332,7 +334,7 @@ func (m Model) list(w, visible int) string {
 		case m.screen == ScreenPlaylists:
 			body = "no playlists yet — :playlist create <name> makes one"
 		}
-		return pad(faintStyle.Render(fit("  "+body, w)), visible)
+		return pad(faint().Render(fit("  "+body, w)), visible)
 	}
 
 	start := window(m.cursor[m.screen], rows, visible)
@@ -382,7 +384,7 @@ func (m Model) row(i int) (string, string) {
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[i]
 		if r.kind == kindHeading {
-			return faintStyle.Render(r.name), ""
+			return faint().Render(r.name), ""
 		}
 		return m.star(r.id) + Sanitise(r.name), Sanitise(r.detail)
 	case ScreenPlaylists:
@@ -469,7 +471,7 @@ func (m Model) libraryCount(s Screen) string {
 
 func (m Model) player() string {
 	if m.nowPlaying == "" {
-		return faintStyle.Render("nothing playing")
+		return faint().Render("nothing playing")
 	}
 	// Two columns wide in both states. The pause mark is two cells and the
 	// play mark is one, so a one-column field moved the title every time
@@ -498,8 +500,8 @@ func (m Model) progress(w int) string {
 		done = int(int64(w) * int64(m.position) / int64(m.duration))
 	}
 	done = max(0, min(w, done))
-	return statusStyle.Render(strings.Repeat("━", done)) +
-		faintStyle.Render(strings.Repeat("─", w-done))
+	return played().Render(strings.Repeat("━", done)) +
+		faint().Render(strings.Repeat("─", w-done))
 }
 
 // added marks a track already in the playlist being edited. Nothing is marked
@@ -533,7 +535,7 @@ func (m Model) playing(id string) string {
 		return " "
 	}
 	if m.queued[m.queuedAt].ID == id {
-		return "▶"
+		return mark().Render("▶")
 	}
 	return " "
 }
@@ -634,7 +636,7 @@ func gutter(selected bool) string {
 	return "  "
 }
 
-func rule(w int) string { return faintStyle.Render(strings.Repeat("─", max(1, w))) }
+func rule(w int) string { return faint().Render(strings.Repeat("─", max(1, w))) }
 
 // pad extends body to the given number of lines, so the player line stays in
 // the same place.

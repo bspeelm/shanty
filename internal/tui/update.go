@@ -78,10 +78,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.volume = int(msg)
 		return m, nil
 	case Failed:
-		m.loading, m.status = false, msg.Message
+		m.loading, m.status, m.statusFailed = false, msg.Message, true
 		return m.remember(msg.Message), nil
 	case Notice:
-		m.status = string(msg)
+		m.status, m.statusFailed = string(msg), false
 		return m.remember(string(msg)), nil
 	case StarredChanged:
 		m.starredRows, m.starred = flatten(msg.Results), msg.IDs
