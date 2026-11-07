@@ -1241,3 +1241,64 @@ table unbuilt, then the number was sized to the permission and not to the work,
 and the next record should say so.
 
 ---
+
+## ADR-026 — A visualiser is allowed because it is a clock, and reading the audio stays refused
+
+**Status:** accepted. Amends PLAN.md §3, which listed "A visualiser" among the
+things shanty is not, and §12, which deferred one indefinitely.
+
+§3 says that the things on its list may become worth doing and that they enter
+through this document rather than through a pull request that quietly grows the
+scope. This is that entry.
+
+### What is allowed
+
+A spiral star field drawn over the whole frame. It is a pure function of two
+inputs, elapsed playing time and the frame size, and it returns the characters
+to draw. It calls nothing, reads no state, and produces the same frame for the
+same two numbers, so it is tested the way `internal/queue` is tested.
+
+Opened and closed by `:visualizer`, over whatever screen the user was on.
+
+### What stays refused
+
+Reading the audio. Not deferred, not "reactive later": refused, and this record
+is the answer to a proposal to add it.
+
+Two reasons, and either one is sufficient. mpv exposes no spectrum and no level
+over its control socket, so there is nothing to ask for. The only route to real
+levels is inserting an audio filter into the playback chain, and the whole
+premise of this project is that it does not alter the bytes the server chose
+(ADR-011, and the north star's "never the weakest link"). A client that taps
+the signal to draw a picture has decided that the picture matters more than the
+audio, which is the opposite of what this program is for.
+
+So the door is shut rather than left ajar. A visualiser here is decoration
+driven by a clock, and anybody who wants bars that move with the music wants a
+different program.
+
+### The spelling is deliberate on both sides
+
+The prose says "visualiser" and the command is `:visualizer`. The prose follows
+the spelling used everywhere else in these documents; the command follows what
+the user types, which is the z. Both are intended, and the mismatch is not a
+typo to be tidied away — changing either one breaks a binding or breaks the
+prose, and ADR-020 is why a name is an interface.
+
+### What was refused
+
+**A configuration option for the pattern.** One pattern, no knobs. ADR-001's
+reasoning about options ending up in setup guides applies to decoration as
+much as to security, and a pattern nobody can change is a pattern nobody has
+to document.
+
+**A screen of its own in the browse hierarchy.** It is an overlay over the
+current screen, so leaving it returns the user where they were. A visualiser
+that costs you your place in a list is a visualiser you stop opening.
+
+### What this does not settle
+
+Nothing about cover art. The picture on the album screen is a real thing the
+server sent, and the two features have no code and no argument in common.
+
+---
