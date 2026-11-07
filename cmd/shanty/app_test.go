@@ -45,6 +45,11 @@ func (r *recorder) said() []string {
 func (r *recorder) Load(_ context.Context, url string) error   { return r.note("load %s", url) }
 func (r *recorder) Append(_ context.Context, url string) error { return r.note("append %s", url) }
 func (r *recorder) SetPause(_ context.Context, p bool) error   { return r.note("pause %v", p) }
+
+// TogglePause is the player turning its own pause around. The fake records it
+// and nothing else: what the state becomes is mpv's answer, which a test
+// delivers as an observed property change.
+func (r *recorder) TogglePause(_ context.Context) error { return r.note("toggle pause") }
 func (r *recorder) Seek(_ context.Context, d time.Duration) error {
 	return r.note("seek %s", d)
 }
@@ -264,7 +269,10 @@ func TestPlaybackKeysReachThePlayer(t *testing.T) {
 	}
 
 	said := strings.Join(rec.said(), "\n")
-	for _, want := range []string{"seek 10s", "volume 95", "pause true"} {
+	// The space key asks the player to turn its own pause around rather than
+	// naming a state, so that two presses arriving together cannot both read
+	// the same state and send the same value.
+	for _, want := range []string{"seek 10s", "volume 95", "toggle pause"} {
 		if !strings.Contains(said, want) {
 			t.Errorf("the player never heard %q; it heard:\n%s", want, said)
 		}

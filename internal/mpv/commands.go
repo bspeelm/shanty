@@ -43,6 +43,15 @@ func (e Event) Float() (float64, bool) {
 	return f, true
 }
 
+// Bool decodes a boolean property-change payload.
+func (e Event) Bool() (bool, bool) {
+	var b bool
+	if err := json.Unmarshal(e.Data, &b); err != nil {
+		return false, false
+	}
+	return b, true
+}
+
 // command sends one command and waits for its reply, the player stopping, or
 // the context ending.
 func (p *Player) command(ctx context.Context, args ...any) (json.RawMessage, error) {
@@ -96,10 +105,14 @@ func (p *Player) command(ctx context.Context, args ...any) (json.RawMessage, err
 	}
 }
 
-// Load plays a track, replacing whatever is playing.
+// Load plays a track, replacing whatever is playing, and resumes a player
+// that was paused. pause belongs to the player rather than to a track and
+// survives a load, so without this the track sits at the start unheard.
 func (p *Player) Load(ctx context.Context, url string) error {
-	_, err := p.command(ctx, "loadfile", url, "replace")
-	return err
+	if _, err := p.command(ctx, "loadfile", url, "replace"); err != nil {
+		return err
+	}
+	return p.setProperty(ctx, "pause", false)
 }
 
 // Append adds a track after the current one, so mpv opens it early and the
@@ -134,6 +147,14 @@ func (p *Player) Stop(ctx context.Context) error {
 
 func (p *Player) SetPause(ctx context.Context, paused bool) error {
 	return p.setProperty(ctx, "pause", paused)
+}
+
+// TogglePause turns pause on if it is off and off if it is on. mpv does the
+// turning, so two keypresses arriving before either is answered cannot both
+// read the same state and send the same value.
+func (p *Player) TogglePause(ctx context.Context) error {
+	_, err := p.command(ctx, "cycle", "pause")
+	return err
 }
 
 // SeekTo moves the position to d measured from the start of the track.
