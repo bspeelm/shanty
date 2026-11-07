@@ -1155,3 +1155,89 @@ after publication rather than before. That is worth having and is not what §12
 asked for.
 
 ---
+
+## ADR-025 — The code budget is 7,450, and a redesign is not an increment
+
+**Status:** accepted. Amends PLAN.md §0, and amends ADR-023, which set the cap
+at 6,870 with 135 lines of margin for the corrections a shipped feature
+attracts.
+
+### What the 580 lines are for
+
+The maintainer has approved a redesign of how the program is browsed: a menu
+screen above the artist list, a screen for every album on the server, a
+visualiser (ADR-026), reordering inside a playlist, and a colour pass. The
+parts and their sizes:
+
+| part | lines | what it is |
+|---|---|---|
+| the library screen | 75 | a menu screen above the artist list, and the screen the program starts on |
+| every album on the server | 120 | a new screen and the one Subsonic endpoint for it, `getAlbumList2`, which needs paging |
+| the visualiser | 100 | a pure pattern function and a full-frame overlay |
+| playlist reorder | 110 | a contents-replacing client call, an arm in the fake server, and a staleness guard |
+| delete and the source marker | 45 | deleting by identifier rather than by name, and marking the playlist the queue came from |
+| colour | 35 | three tokens and the golden-profile split |
+| the rest | 15 | a key for the wiki screen, a make alias |
+
+Every number in that table is an estimate made before the work, against this
+repository's own rates. None of it is measured. ADR-022 is the record of an
+estimate of this kind running 50 lines long on a feature a third this size, and
+nothing here makes these numbers better than those were.
+
+### Why 7,450
+
+The table totals 500. The raise is 580, so the margin is 80.
+
+`scripts/budgets.sh` reads 6,935 with the first parts started and none of them
+finished, which is 65 over ADR-023's cap. That 65 is work inside the table
+rather than new work, so it comes out of the 500 and not out of the margin: 515
+of the raise is left for about 435 of estimate.
+
+The 80 is not margin for corrections. ADR-023 criticised ADR-022 for reserving
+136 lines for the corrections a feature attracts, and said that a cap raised for
+a bug fix is a ritual; that refusal is not being revisited. The 80 is margin on
+the estimates themselves, because seven numbers guessed in advance will not all
+be right and the ones that are wrong will be wrong upward. If the work finishes
+inside 7,450 the margin was the estimates being close; if it does not, the
+estimates were wrong and that is the thing to report rather than a number to
+raise again.
+
+### This is a bigger raise than the last three together
+
+6,000 to 6,870 took ADR-021, ADR-022 and ADR-023 to move 870 lines, and each of
+those records argued its own part of it on a measurement. This one moves 580 in
+a single step, on estimates, before the code exists. It is recorded as the
+maintainer's explicit decision to scope an approved redesign, and not as a
+fourth increment of the same argument. A reader who wants to know whether the
+cap is still doing work should compare this record to ADR-022, which is what an
+increment looks like.
+
+### What was refused
+
+**Rounding to 8,000.** ADR-021, ADR-022 and ADR-023 each refused a round
+number above the estimate, and the refusal still holds. 1,065 above the
+measured tree stops reporting anything until long past the point where a look
+is warranted.
+
+**Deciding it after the code existed.** ADR-022 preferred a measured number to
+an estimate and was right to. It is not available here: the work is approved as
+a whole and the budget has to exist before the first part of it lands, or every
+part negotiates the cap on its way in. The honest version is the table above
+with its estimates labelled.
+
+**Raising the prose budget with it.** Prose stands at 3,788 of 4,500 and needs
+nothing. ADR-021 refused this for the same reason and dropped the derivation
+that tied the two numbers together; PLAN.md §0 still claimed 4,500 was 75% of
+the code cap, which stopped being true when the cap first moved, and this record
+removes the sentence.
+
+### What this does not settle
+
+A cap raised by 580 on estimates is a cap that is being trusted to report
+something at the end rather than to constrain anything along the way. What it
+can still report is whether the table was honest. If the redesign lands near
+7,450 the estimates were worth making; if it lands at the cap with parts of the
+table unbuilt, then the number was sized to the permission and not to the work,
+and the next record should say so.
+
+---
