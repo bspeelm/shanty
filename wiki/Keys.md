@@ -29,6 +29,8 @@ them is a list.
 | `A` | Play the selected track after the one playing |
 | `e` | Add to the playlist you are looking at, or leave the one you are adding to |
 | `S` | Shuffle the artist, album or playlist the cursor names |
+| `K` | While reordering a playlist, move the selected track up one place |
+| `J` | While reordering a playlist, move the selected track down one place |
 | `*` | Star the selected artist, album or track, or unstar it |
 
 Pressing back on the artist list goes up to the library, and pressing it on the
@@ -244,8 +246,22 @@ playlist you are adding to for as long as you are adding to it.
 type is the new name rather than the old one, so this is the one way to tell
 two playlists sharing a name apart. Run it anywhere else and shanty says so.
 
+**`:playlist reorder` rearranges the playlist on screen.** `K` and `J` move
+the selected track up and down, `enter` saves the whole arrangement, and `esc`
+forgets it. Nothing is sent to the server until you press `enter`.
+
+It is the one change shanty makes that it checks first. A Subsonic server can
+add a track to a playlist and remove one, but it cannot move one, so the only
+way to express an order is to replace the playlist's whole contents. If the
+playlist changed on the server while you were moving things about, that would
+throw the change away, so shanty reads the playlist back, compares it to what
+your screen was drawn from, and refuses rather than guessing. The order on
+screen goes back to the server's.
+
 `:playlist delete Evening` asks first, naming the playlist and how many tracks
-it holds. Anything but `y` answers no.
+it holds. Anything but `y` answers no. **With no name it deletes the playlist
+you are looking at**, which is the only way to tell two playlists sharing a
+name apart.
 
 If two of your playlists share a name, shanty says so rather than guessing
 which you meant. Rename one on your server.
@@ -356,7 +372,7 @@ what the screen shows, then the server, then the program itself.
 | Command | What it does |
 |---|---|
 | `:search <words>` | find artists, albums and tracks on the server |
-| `:playlist <verb name>` | list them, or create, delete, edit, rename or shuffle one |
+| `:playlist <verb name>` | list them, or create, delete, edit, rename, reorder or shuffle one |
 | `:visualizer` | fill the screen with a turning pattern drawn from the clock |
 | `:shuffle` | play everything on the server in a random order |
 | `:resume` | carry on from the queue saved on the server |

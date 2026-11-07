@@ -164,6 +164,10 @@ func (m Model) footer(w int) string {
 		// Editing is a mode, and a mode that cannot be seen is not allowed to
 		// change what a key does (ADR-019). The artist and album lists carry
 		// no track marks, so this row is the only sign of it there.
+		if m.reordering {
+			return statusStyle.Render(fit("reordering "+Sanitise(m.playlist.Name)+
+				" — K/J move, enter saves, esc discards", w))
+		}
 		if m.showSky {
 			if m.paused {
 				return statusStyle.Render(fit("paused — space resumes · esc leaves", w))
@@ -383,12 +387,25 @@ func (m Model) row(i int) (string, string) {
 		return m.star(r.id) + Sanitise(r.name), Sanitise(r.detail)
 	case ScreenPlaylists:
 		p := m.playlists[i]
-		// A playlist cannot be starred, but the field is held anyway so that
-		// these names sit in the same column as the names on every other list.
-		return "  " + Sanitise(p.Name), plural(p.SongCount, "track")
+		// The mark says the music is coming from this playlist. A playlist
+		// cannot be starred, so the field is the mark and the gap after it,
+		// which keeps these names in the same column as every other list.
+		mark := " "
+		if p.ID != "" && p.ID == m.queuedFrom {
+			mark = "▶"
+		}
+		return mark + " " + Sanitise(p.Name), plural(p.SongCount, "track")
 	case ScreenPlaylist:
-		s := m.playlist.Songs[i]
-		return fmt.Sprintf("%s%s%2d. %s", m.playing(s.ID), m.star(s.ID), i+1, Sanitise(s.Title)),
+		songs := m.playlist.Songs
+		if m.reordering {
+			songs = m.order
+		}
+		s := songs[i]
+		mark := m.playing(s.ID)
+		if m.reordering && i == m.cursor[ScreenPlaylist] {
+			mark = "⇅"
+		}
+		return fmt.Sprintf("%s%s%2d. %s", mark, m.star(s.ID), i+1, Sanitise(s.Title)),
 			Sanitise(s.Artist) + " · " + clock(time.Duration(s.Duration)*time.Second)
 	case ScreenWiki:
 		if m.topic != "" {

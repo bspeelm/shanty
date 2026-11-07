@@ -191,7 +191,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen, m.status, m.filter = ScreenMessages, "", ""
 		return m.selecting(ScreenMessages, 0), nil
 	case QueueChanged:
-		m.queued, m.queuedAt = msg.Tracks, msg.At
+		m.queued, m.queuedAt, m.queuedFrom = msg.Tracks, msg.At, msg.From
 		if m.screen == ScreenQueue {
 			m = m.selecting(ScreenQueue, min(m.cursor[ScreenQueue], max(0, len(msg.Tracks)-1)))
 		}
@@ -321,6 +321,21 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 	// is the only place that has both the typed line and the screen, and
 	// resolving to an identifier means a name shared by two playlists is not
 	// a question anybody has to answer.
+	if p, ok := intent.(Playlist); ok && p.Verb == "reorder" {
+		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
+			m.status = "reorder needs a playlist on screen — gp, enter, then :playlist reorder"
+			return m, nil
+		}
+		return m.startReorder(), nil
+	}
+	if p, ok := intent.(Playlist); ok && p.Verb == "delete" && p.Name == "" {
+		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
+			m.status = "delete needs a playlist on screen, or a name — :playlist delete <name>"
+			return m, nil
+		}
+		return m, emit(DeletePlaylist{ID: m.playlist.ID, Name: m.playlist.Name,
+			Tracks: len(m.playlist.Songs)})
+	}
 	if p, ok := intent.(Playlist); ok && p.Verb == "rename" {
 		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
 			m.status = "rename needs a playlist on screen — gp, enter, then :playlist rename <new name>"
@@ -359,6 +374,67 @@ type skyTurned struct{}
 // pattern rather than a flag that happens to be false.
 func (m Model) turnSky() tea.Cmd {
 	return tea.Tick(skyStep, func(time.Time) tea.Msg { return skyTurned{} })
+}
+
+// startReorder takes a copy of the playlist on screen to move about, and
+// records the order it was drawn from.
+func (m Model) startReorder() Model {
+	m.order = append([]subsonic.Song(nil), m.playlist.Songs...)
+	m.drawnFrom = idsOf(m.order)
+	m.reordering = true
+	m.filter, m.status = "", ""
+	return m.selecting(ScreenPlaylist, 0)
+}
+
+// moveInOrder moves the selected track by one place and follows it with the
+// cursor, so the row being moved stays under the keys moving it.
+func (m Model) moveInOrder(by int) (tea.Model, tea.Cmd) {
+	if !m.reordering {
+		return m, nil
+	}
+	at := m.cursor[ScreenPlaylist]
+	to := at + by
+	if to < 0 || to >= len(m.order) {
+		return m, nil
+	}
+	m.order = append([]subsonic.Song(nil), m.order...)
+	m.order[at], m.order[to] = m.order[to], m.order[at]
+	return m.selecting(ScreenPlaylist, to), nil
+}
+
+// saveReorder asks for the arrangement to be written, carrying the order the
+// screen was drawn from so the caller can refuse a playlist that changed.
+func (m Model) saveReorder() (tea.Model, tea.Cmd) {
+	order, was := idsOf(m.order), m.drawnFrom
+	name, id := m.playlist.Name, m.playlist.ID
+	m.reordering, m.order, m.drawnFrom = false, nil, nil
+	if same(order, was) {
+		m.status = "nothing was moved"
+		return m, nil
+	}
+	return m, emit(ReorderPlaylist{ID: id, Name: name, Songs: order, Was: was})
+}
+
+// idsOf is the identifiers of those tracks, in order.
+func idsOf(songs []subsonic.Song) []string {
+	ids := make([]string, len(songs))
+	for i, s := range songs {
+		ids[i] = s.ID
+	}
+	return ids
+}
+
+// same says whether two orders are the same sequence.
+func same(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // goTo handles the key after g. The queue, playlists and starred screens are
@@ -429,6 +505,9 @@ func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
 // open moves down one screen, or plays the selected track. The album travels
 // with the intent.
 func (m Model) open() (tea.Model, tea.Cmd) {
+	if m.reordering {
+		return m.saveReorder()
+	}
 	if m.rows() == 0 {
 		return m, nil
 	}
@@ -464,7 +543,8 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		m.loading, m.status = true, "opening "+Sanitise(m.playlists[at].Name)
 		return m, emit(OpenPlaylist{ID: m.playlists[at].ID})
 	case ScreenPlaylist:
-		return m, emit(PlayFrom{Album: asAlbum(m.playlist), Index: at})
+		return m, emit(PlayFrom{Album: asAlbum(m.playlist), Index: at,
+			Playlist: m.playlist.ID})
 	case ScreenWiki:
 		if m.topic != "" {
 			return m, nil
@@ -599,6 +679,12 @@ func asAlbum(p subsonic.Playlist) subsonic.Album {
 
 // back moves up one screen. At the top it does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
+	if m.reordering {
+		// The arrangement was never sent, so leaving it is forgetting it.
+		m.reordering, m.order, m.drawnFrom = false, nil, nil
+		m.status = "nothing was moved"
+		return m, nil
+	}
 	if m.showSky {
 		m.showSky = false
 		return m, tea.ClearScreen

@@ -44,8 +44,12 @@ type app struct {
 	client *subsonic.Client
 	player player
 	queue  queue.Queue
-	volume int
-	ctx    context.Context
+	// playingList is the playlist the queue was built from, and is empty when
+	// it was built from anything else. It travels to the interface with every
+	// queue change so the list of playlists can mark the one playing.
+	playingList string
+	volume      int
+	ctx         context.Context
 
 	// detach starts a session that plays on without an interface. It is nil in
 	// a session, which has no interface to leave.
@@ -129,6 +133,9 @@ type (
 	shuffled struct {
 		tracks []subsonic.Song
 		what   string
+		// playlist is the identifier of the playlist shuffled, where one was,
+		// so the list of playlists can mark the one the music comes from.
+		playlist string
 	}
 	// savedQueue is what the server was holding when this started.
 	savedQueue subsonic.PlayQueue
@@ -248,6 +255,16 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.playlistCommand(msg)
 	case tui.RenamePlaylist:
 		return a, a.renamePlaylist(msg)
+	case tui.ReorderPlaylist:
+		return a, a.reorderPlaylist(msg)
+	case tui.DeletePlaylist:
+		// Already resolved to an identifier by the interface, so there is no
+		// name to look up and no pair of playlists to tell apart.
+		return a, emit(tui.Confirm{
+			Question: fmt.Sprintf("delete %q and its %s?", msg.Name,
+				tracksIn(subsonic.Playlist{SongCount: msg.Tracks})),
+			Do: deletePlaylist{id: msg.ID, name: msg.Name},
+		})
 	case tui.EditPlaylist:
 		return a, a.editPlaylist(msg)
 	case tui.Shuffle:
@@ -261,6 +278,7 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.forward(tui.Failed{Message: "there is nothing to shuffle"})
 		}
 		a.queue = queueFrom(subsonic.Album{Songs: msg.tracks}).Shuffle(a.shuffler())
+		a.playingList = msg.playlist
 		next, cmd := a.forward(tui.Notice("shuffling " + msg.what))
 		return next, tea.Batch(cmd, a.playCurrent(), a.queueChanged())
 	case tui.Scan:
@@ -282,6 +300,7 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.PlayFrom:
 		a.queue = queueFrom(msg.Album).Jump(msg.Index)
+		a.playingList = msg.Playlist
 		return a, tea.Batch(a.playCurrent(), a.queueChanged())
 
 	case tui.PlayNext:
@@ -758,7 +777,8 @@ func (a app) search(query string) tea.Cmd {
 
 // queueChanged sends the interface the queue to draw.
 func (a app) queueChanged() tea.Cmd {
-	return emit(tui.QueueChanged{Tracks: a.queue.Tracks(), At: a.queue.At()})
+	return emit(tui.QueueChanged{Tracks: a.queue.Tracks(), At: a.queue.At(),
+		From: a.playingList})
 }
 
 // trackFrom turns a song on an album into a queue entry.
@@ -997,10 +1017,62 @@ func (a app) playlistCommand(msg tui.Playlist) tea.Cmd {
 			if err != nil {
 				return tui.Failed{Message: err.Error()}
 			}
-			return shuffled{tracks: full.Songs, what: full.Name}
+			return shuffled{tracks: full.Songs, what: full.Name, playlist: found.ID}
 		}
 		return nil
 	}
+}
+
+// reorderPlaylist writes a playlist's tracks in a new order, if the server
+// still holds the order the screen was drawn from.
+//
+// The only call that can express an order replaces the whole playlist, so a
+// write from a stale screen would discard whatever another client had added.
+// It is read back first and compared; a difference is refused rather than
+// resolved, because the program cannot know which of the two was wanted.
+func (a app) reorderPlaylist(msg tui.ReorderPlaylist) tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		now, err := client.Playlist(a.ctx, msg.ID)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		if !sameOrder(idsOf(now.Songs), msg.Was) {
+			return tui.Failed{Message: fmt.Sprintf(
+				"%s changed on the server; nothing was moved\n:reload to see it as it is now",
+				msg.Name)}
+		}
+		if err := client.ReplacePlaylist(a.ctx, msg.ID, msg.Songs); err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		full, err := client.Playlist(a.ctx, msg.ID)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return tui.PlaylistLoaded(full)
+	}
+}
+
+// idsOf is the identifiers of those tracks, in order.
+func idsOf(songs []subsonic.Song) []string {
+	ids := make([]string, len(songs))
+	for i, s := range songs {
+		ids[i] = s.ID
+	}
+	return ids
+}
+
+// sameOrder says whether two orders are the same sequence.
+func sameOrder(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // renamePlaylist gives a playlist a new name and reads it back, so the title
@@ -1159,7 +1231,7 @@ func (a app) shuffleThis(msg tui.ShuffleThis) tea.Cmd {
 			if err != nil {
 				return tui.Failed{Message: err.Error()}
 			}
-			return shuffled{tracks: full.Songs, what: full.Name}
+			return shuffled{tracks: full.Songs, what: full.Name, playlist: msg.ID}
 		}
 		return tui.Failed{Message: "shanty does not know how to shuffle " + msg.Scope}
 	}

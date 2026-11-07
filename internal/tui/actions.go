@@ -105,6 +105,18 @@ func Actions() []Action {
 				return m, nil
 			})},
 		{
+			Name:    "playlist-move-up",
+			Summary: "move the selected track up one place, while reordering",
+			Keys:    []string{"K"},
+			do:      modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.moveInOrder(-1) }),
+		},
+		{
+			Name:    "playlist-move-down",
+			Summary: "move the selected track down one place, while reordering",
+			Keys:    []string{"J"},
+			do:      modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.moveInOrder(1) }),
+		},
+		{
 			Name:    "shuffle-selected",
 			Summary: "shuffle the artist, album or playlist the cursor names",
 			Keys:    []string{"S"},

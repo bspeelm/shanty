@@ -19,6 +19,7 @@ Lists your playlists, or does one thing to one of them.
     :playlist create Evening
     :playlist edit Evening
     :playlist rename Evening Watch
+    :playlist reorder
     :playlist delete Evening
     :playlist shuffle Evening
 
@@ -29,6 +30,13 @@ cursor out of it.
 `create` makes an empty playlist. `edit` shows your library with `(A)` beside
 the tracks already in the playlist; `a` adds the selected track and `r` takes
 it out, each reaching the server as you press it. `e` finishes.
+
+`reorder` rearranges the playlist you are looking at: `K` and `J` move the
+selected track, `enter` saves the arrangement and `esc` forgets it. Nothing
+reaches the server until you press `enter`, and if the playlist changed there
+in the meantime the change is refused rather than overwriting it.
+
+`delete` with no name deletes the playlist you are looking at.
 
 `rename` is the one verb whose argument is not a playlist. It renames the
 playlist you are looking at, and what you type is the new name, so open one
