@@ -25,6 +25,7 @@ them is a list.
 | `enter`, `l` or `→` | Open the selected artist or album, or play the selected track |
 | `esc`, `h`, `←` or `backspace` | Go back to the previous screen |
 | `/` | Filter the list you are looking at |
+| `?` | Show the list of commands and what each one does |
 | `a` | Add the selected track to the end of the queue |
 | `A` | Play the selected track after the one playing |
 | `e` | Add to the playlist you are looking at, or leave the one you are adding to |

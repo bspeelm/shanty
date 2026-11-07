@@ -574,9 +574,20 @@ func TestASocketPathTooLongIsRefusedWithTheReason(t *testing.T) {
 func TestWhatMpvSaysReachesTheCaller(t *testing.T) {
 	_, _, notes := stubSaying(t)
 
-	// The child writes its line before it serves the socket, which Start waits
-	// for, so by here it has been written.
-	if got := notes.String(); !strings.Contains(got, stubSays) {
-		t.Errorf("the player's diagnostics are %q, want them to carry %q", got, stubSays)
+	// Waited for rather than read once. The child writes its line before it
+	// serves the socket, and Start waits for the socket -- but that only puts
+	// the bytes in the pipe. Copying them into notes happens on a goroutine of
+	// os/exec's, which need not have run yet. Asserting immediately passed on
+	// an idle machine and failed on a loaded one.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if got := notes.String(); strings.Contains(got, stubSays) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the player's diagnostics are %q, want them to carry %q",
+				notes.String(), stubSays)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

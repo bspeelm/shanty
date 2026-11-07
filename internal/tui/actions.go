@@ -105,6 +105,12 @@ func Actions() []Action {
 				return m, nil
 			})},
 		{
+			Name:    "keys",
+			Summary: "show the list of commands and what each one does",
+			Keys:    []string{"?"},
+			do:      sends(func(int) tea.Msg { return ShowWiki{} }),
+		},
+		{
 			Name:    "playlist-move-up",
 			Summary: "move the selected track up one place, while reordering",
 			Keys:    []string{"K"},

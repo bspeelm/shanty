@@ -559,7 +559,8 @@ func (m Model) viewWidth() int {
 // there are more rather than stopping part way through a word.
 var helpItems = []string{
 	"↑↓ move", "gg top", "G end", "enter open", "esc back", "/ filter",
-	": command", "space pause", "n/p skip", "[ ] seek", "+/- volume", ":q quit",
+	": command", "space pause", "n/p skip", "[ ] seek", "+/- volume",
+	"? keys", ":q quit",
 }
 
 // helpLine is as much of the key help as fits in w, with an ellipsis when
