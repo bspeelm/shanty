@@ -245,6 +245,8 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.editPlaylist(msg)
 	case tui.Shuffle:
 		return a, a.shuffleEverything()
+	case tui.ShuffleThis:
+		return a, a.shuffleThis(msg)
 	case deletePlaylist:
 		return a, a.removePlaylist(msg)
 	case shuffled:
@@ -1062,6 +1064,29 @@ func (a app) editPlaylist(msg tui.EditPlaylist) tea.Cmd {
 	}
 }
 
+// songsByArtist is every track on every album by one artist, with the artist's
+// name.
+//
+// The server lists an artist's albums in one request and will not give up
+// their tracks, so this is a request per album. It is the only shape of fetch
+// in shanty that asks for a whole catalogue rather than the one level a screen
+// is showing, and both shuffles below are built from it.
+func songsByArtist(ctx context.Context, client *subsonic.Client, id string) ([]subsonic.Song, string, error) {
+	full, err := client.Artist(ctx, id)
+	if err != nil {
+		return nil, "", err
+	}
+	var songs []subsonic.Song
+	for _, al := range full.Albums {
+		album, err := client.Album(ctx, al.ID)
+		if err != nil {
+			return nil, "", err
+		}
+		songs = append(songs, album.Songs...)
+	}
+	return songs, full.Name, nil
+}
+
 // shuffleEverything plays the whole library in a random order.
 func (a app) shuffleEverything() tea.Cmd {
 	client := a.client
@@ -1072,19 +1097,41 @@ func (a app) shuffleEverything() tea.Cmd {
 		}
 		var songs []subsonic.Song
 		for _, artist := range artists {
-			full, err := client.Artist(a.ctx, artist.ID)
+			found, _, err := songsByArtist(a.ctx, client, artist.ID)
 			if err != nil {
 				return tui.Failed{Message: err.Error()}
 			}
-			for _, al := range full.Albums {
-				album, err := client.Album(a.ctx, al.ID)
-				if err != nil {
-					return tui.Failed{Message: err.Error()}
-				}
-				songs = append(songs, album.Songs...)
-			}
+			songs = append(songs, found...)
 		}
 		return shuffled{tracks: songs, what: "everything"}
+	}
+}
+
+// shuffleThis plays one artist, album or playlist in a random order.
+func (a app) shuffleThis(msg tui.ShuffleThis) tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		switch msg.Scope {
+		case "artist":
+			songs, name, err := songsByArtist(a.ctx, client, msg.ID)
+			if err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			return shuffled{tracks: songs, what: name}
+		case "album":
+			album, err := client.Album(a.ctx, msg.ID)
+			if err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			return shuffled{tracks: album.Songs, what: album.Name}
+		case "playlist":
+			full, err := client.Playlist(a.ctx, msg.ID)
+			if err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			return shuffled{tracks: full.Songs, what: full.Name}
+		}
+		return tui.Failed{Message: "shanty does not know how to shuffle " + msg.Scope}
 	}
 }
 

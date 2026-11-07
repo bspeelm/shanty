@@ -338,6 +338,39 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// shuffleSelected asks for the collection the cursor names, or the one it is
+// inside, to play in a random order.
+//
+// On a track row it is the album or the playlist holding the track rather than
+// the track itself, because one track has no order to shuffle. :shuffle keeps
+// its own meaning, which is the whole server.
+func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
+	switch m.screen {
+	case ScreenArtists, ScreenAlbums:
+		if id := m.selectedID(); id != "" {
+			scope := "artist"
+			if m.screen == ScreenAlbums {
+				scope = "album"
+			}
+			return m, emit(ShuffleThis{Scope: scope, ID: id})
+		}
+	case ScreenTracks:
+		if m.album.ID != "" {
+			return m, emit(ShuffleThis{Scope: "album", ID: m.album.ID})
+		}
+	case ScreenPlaylists:
+		if m.rows() > 0 {
+			return m, emit(ShuffleThis{Scope: "playlist", ID: m.playlists[m.matches()[m.cursor[m.screen]]].ID})
+		}
+	case ScreenPlaylist:
+		if m.playlist.ID != "" {
+			return m, emit(ShuffleThis{Scope: "playlist", ID: m.playlist.ID})
+		}
+	}
+	m.status = "nothing to shuffle here — press S on an artist, an album or a playlist"
+	return m, nil
+}
+
 // open moves down one screen, or plays the selected track. The album travels
 // with the intent.
 func (m Model) open() (tea.Model, tea.Cmd) {

@@ -20,6 +20,7 @@ work on all three.
 | `a` | Add the selected track to the end of the queue |
 | `A` | Play the selected track after the one playing |
 | `e` | Add to the playlist you are looking at, or leave the one you are adding to |
+| `S` | Shuffle the artist, album or playlist the cursor names |
 | `*` | Star the selected artist, album or track, or unstar it |
 
 Pressing back on the artist list does nothing, because there is nothing above
