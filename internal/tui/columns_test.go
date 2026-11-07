@@ -65,7 +65,7 @@ func onPlaylists(t *testing.T, m Model) Model {
 
 func TestAStarredNameStartsInTheSameColumnAsAnUnstarredOne(t *testing.T) {
 	// starredChanged stars ar-1, the first artist, and leaves the second alone.
-	m := send(t, sized(New()), ArtistsLoaded(library()), starredChanged())
+	m := send(t, loaded(t), starredChanged())
 
 	starred, _ := m.row(0)
 	plain, _ := m.row(1)
@@ -254,8 +254,7 @@ func TestAnEmptyPlaylistsScreenNamesTheCommandThatMakesOne(t *testing.T) {
 }
 
 func TestAPlaylistNameStartsInTheSameColumnAsAnArtistName(t *testing.T) {
-	artists := send(t, sized(New()), ArtistsLoaded(library()))
-	artist, _ := artists.row(1)
+	artist, _ := loaded(t).row(1)
 
 	lists := onPlaylists(t, send(t, sized(New()), PlaylistsLoaded([]subsonic.Playlist{
 		{ID: "pl-1", Name: "Evening", SongCount: 12},

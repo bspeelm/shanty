@@ -235,6 +235,13 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.resumeSaved()
 	case tui.ShowPlaylists:
 		return a.forwardAnd(msg, a.fetchPlaylists())
+	case tui.ShowEveryAlbum:
+		// Asked for once. The list does not change while shanty is open
+		// unless the server is rescanned, and :reload asks again.
+		if len(a.ui.Albums()) > 0 {
+			return a.forward(msg)
+		}
+		return a.forwardAnd(msg, a.fetchAlbums())
 	case tui.OpenPlaylist:
 		return a, a.fetchPlaylist(msg.ID)
 	case tui.Playlist:
@@ -564,6 +571,19 @@ func (a app) fetchArtists() tea.Cmd {
 	}
 }
 
+// fetchAlbums reads every album the server will list. It is paged inside the
+// client, so one message comes back with all of them.
+func (a app) fetchAlbums() tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		albums, err := client.Albums(a.ctx)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return tui.AlbumsLoaded(albums)
+	}
+}
+
 func (a app) fetchArtist(id string) tea.Cmd {
 	client := a.client
 	return func() tea.Msg {
@@ -756,10 +776,20 @@ func trackFrom(album subsonic.Album, s subsonic.Song) queue.Track {
 // when they are next opened anyway.
 func (a app) reload() tea.Cmd {
 	switch a.ui.Screen() {
+	case tui.ScreenLibrary:
+		// The library counts what the screens below it hold, so reloading it
+		// asks for those again. Albums only if they have been fetched once:
+		// the screen is reachable without ever having opened them.
+		if len(a.ui.Albums()) > 0 {
+			return tea.Batch(a.fetchArtists(), a.fetchAlbums())
+		}
+		return a.fetchArtists()
 	case tui.ScreenArtists:
 		return a.fetchArtists()
 	case tui.ScreenAlbums:
 		return a.fetchArtist(a.ui.Artist().ID)
+	case tui.ScreenEveryAlbum:
+		return a.fetchAlbums()
 	case tui.ScreenTracks:
 		return a.fetchAlbum(a.ui.Album().ID)
 	case tui.ScreenStarred:

@@ -156,6 +156,17 @@ func nowPlayingSlipway(d time.Duration, rest ...tea.Msg) []tea.Msg {
 	return append(msgs, rest...)
 }
 
+// everyAlbum is what the server lists when asked for all of them: albums by
+// more than one artist, which is the difference between this screen and one
+// artist's own list.
+func everyAlbum() []subsonic.Album {
+	return []subsonic.Album{
+		{ID: "al-1", Name: "Harbour", Artist: "Aoi", SongCount: 2},
+		{ID: "al-3", Name: "Bail", Artist: "The Bilge Pumps", SongCount: 1},
+		{ID: "al-2", Name: "Low Water", Artist: "Aoi", SongCount: 1},
+	}
+}
+
 func sized(m Model) Model {
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 64, Height: 12})
 	return next.(Model)
@@ -172,7 +183,10 @@ func send(t *testing.T, m Model, msgs ...tea.Msg) Model {
 
 func TestGoldenScreens(t *testing.T) {
 	base := sized(New())
-	artists := send(t, base, ArtistsLoaded(library()))
+	// The program starts on the library, so reaching the artist list is a
+	// keypress rather than the arrival of the artists themselves.
+	loadedAll := send(t, base, ArtistsLoaded(library()))
+	artists := onArtists(t, loadedAll)
 	albums := send(t, artists, ArtistLoaded(library()[0]))
 	tracks := send(t, albums, AlbumLoaded(library()[0].Albums[0]))
 
@@ -180,7 +194,16 @@ func TestGoldenScreens(t *testing.T) {
 		name string
 		m    Model
 	}{
-		{"loading", base},
+		// The first frame of a first run: the library, with no count in yet.
+		{"library-loading", base},
+		// And with them in, which is what it looks like in use.
+		{"library", send(t, loadedAll, AlbumsLoaded(everyAlbum()), starredChanged(),
+			PlaylistsLoaded([]subsonic.Playlist{{ID: "pl-1", Name: "Evening", SongCount: 12}}),
+			QueueChanged{Tracks: queued(), At: 0})},
+		{"every-album", send(t, loadedAll, ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))},
+		{"every-album-starred", send(t, loadedAll, ShowEveryAlbum{},
+			AlbumsLoaded(everyAlbum()), starredChanged())},
+		{"loading", onArtists(t, base)},
 		{"artists", artists},
 		{"artists-cursor-moved", send(t, artists, tea.KeyMsg{Type: tea.KeyDown})},
 		{"albums", albums},
@@ -264,7 +287,9 @@ func TestGoldenScreens(t *testing.T) {
 			}
 			return m
 		}()},
-		{"failed", send(t, base, Failed{Message: "the server refused; check credentials.toml"})},
+		// On an empty artist list, so this stays the empty-and-failed frame it
+		// was written to be. failed-with-a-list is the populated one.
+		{"failed", send(t, onArtists(t, base), Failed{Message: "the server refused; check credentials.toml"})},
 		// The case that had no coverage: a failure while a list is on screen,
 		// which is when most failures happen.
 		{"failed-with-a-list", send(t, artists,

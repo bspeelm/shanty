@@ -259,8 +259,15 @@ func (m Model) reading() bool { return m.screen == ScreenWiki && m.topic != "" }
 
 func (m Model) heading() string {
 	switch m.screen {
+	case ScreenLibrary:
+		return "library"
 	case ScreenAlbums:
 		return Sanitise(m.artist.Name)
+	case ScreenEveryAlbum:
+		if len(m.albums) == 0 {
+			return "every album"
+		}
+		return fmt.Sprintf("every album · %s", plural(len(m.albums), "album"))
 	case ScreenTracks:
 		return Sanitise(m.album.Artist) + " · " + Sanitise(m.album.Name)
 	case ScreenSearch:
@@ -340,9 +347,19 @@ func (m Model) row(i int) (string, string) {
 	case ScreenArtists:
 		a := m.artists[i]
 		return m.star(a.ID) + Sanitise(a.Name), plural(a.AlbumCount, "album")
+	case ScreenLibrary:
+		row := libraryRows[i]
+		// The marker field is held, as it is on every other list, so the names
+		// sit in the same column as the names on the screen a row opens.
+		return "  " + row.name, m.libraryCount(row.screen)
 	case ScreenAlbums:
 		a := m.artist.Albums[i]
 		return m.star(a.ID) + Sanitise(a.Name), plural(a.SongCount, "track")
+	case ScreenEveryAlbum:
+		a := m.albums[i]
+		// The artist travels with the album here. On one artist's album list it
+		// is the heading, and repeating it in every row would say nothing.
+		return m.star(a.ID) + Sanitise(a.Name), Sanitise(a.Artist)
 	case ScreenTracks:
 		s := m.album.Songs[i]
 		return fmt.Sprintf("%s%s%s%2d. %s", m.added(s.ID), m.playing(s.ID), m.star(s.ID), s.Track, Sanitise(s.Title)),
@@ -388,6 +405,38 @@ func (m Model) row(i int) (string, string) {
 		return mark + m.star(t.ID) + Sanitise(t.Title) + " · " + Sanitise(t.Artist), clock(t.Duration)
 	}
 	return "", ""
+}
+
+// libraryCount is how many things a library row's destination holds, or
+// nothing where that screen has not been fetched yet. A count that is not in
+// is blank: the row is where you are going and the number is decoration.
+func (m Model) libraryCount(s Screen) string {
+	switch s {
+	case ScreenPlaylists:
+		if m.playlists == nil {
+			return ""
+		}
+		return strconv.Itoa(len(m.playlists))
+	case ScreenArtists:
+		if m.artists == nil {
+			return ""
+		}
+		return strconv.Itoa(len(m.artists))
+	case ScreenEveryAlbum:
+		if m.albums == nil {
+			return ""
+		}
+		return strconv.Itoa(len(m.albums))
+	case ScreenStarred:
+		if m.starred == nil {
+			return ""
+		}
+		return strconv.Itoa(len(m.starred))
+	case ScreenQueue:
+		// Nothing queued is a count rather than an absence, so it is shown.
+		return strconv.Itoa(len(m.queued))
+	}
+	return ""
 }
 
 func (m Model) player() string {
