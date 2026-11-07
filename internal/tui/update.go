@@ -61,7 +61,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case NowPlaying:
 		m.nowPlaying, m.nowArtist, m.duration = msg.Title, msg.Artist, msg.Duration
-		m.position, m.paused = 0, false
+		m.position = 0
 		return m, nil
 	case Progress:
 		m.position = time.Duration(msg)

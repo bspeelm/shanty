@@ -1156,13 +1156,13 @@ asked for.
 
 ---
 
-## ADR-025 — The code budget is 7,450, and a redesign is not an increment
+## ADR-025 — The code budget is 7,500, and a redesign is not an increment
 
 **Status:** accepted. Amends PLAN.md §0, and amends ADR-023, which set the cap
 at 6,870 with 135 lines of margin for the corrections a shipped feature
 attracts.
 
-### What the 580 lines are for
+### What the 630 lines are for
 
 The maintainer has approved a redesign of how the program is browsed: a menu
 screen above the artist list, a screen for every album on the server, a
@@ -1178,11 +1178,24 @@ parts and their sizes:
 | delete and the source marker | 45 | deleting by identifier rather than by name, and marking the playlist the queue came from |
 | colour | 35 | three tokens and the golden-profile split |
 | the rest | 15 | a key for the wiki screen, a make alias |
+| playback follows the player | 50 | mpv reports its own pause and the interface stops deciding it |
 
 Every number in that table is an estimate made before the work, against this
-repository's own rates. None of it is measured. ADR-022 is the record of an
-estimate of this kind running 50 lines long on a feature a third this size, and
-nothing here makes these numbers better than those were.
+repository's own rates, except the last.
+
+The last row was not estimated at all: it is a bug found while testing the
+redesign, and it is here because the cap had to hold while it was fixed. mpv
+keeps its pause across a load, nothing cleared it, and the interface decided
+its own pause state rather than reading the player's -- so playing a track
+while paused loaded it silently and then blamed the audio output or the server.
+Making the player the source of truth is the fix, and it is 50 lines including
+the observation that carries the state back.
+
+ADR-022 is the record of an estimate of this kind running 50 lines long on a
+feature a third this size, and nothing here makes these numbers better than
+those were. The cap moved from 7,450 to 7,500 for exactly that reason: the work
+measured 7,438 and twelve lines of headroom is not a budget, it is a
+coincidence.
 
 ### Why 7,450
 

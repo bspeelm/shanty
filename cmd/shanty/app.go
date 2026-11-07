@@ -25,6 +25,7 @@ type player interface {
 	Load(ctx context.Context, url string) error
 	Append(ctx context.Context, url string) error
 	SetPause(ctx context.Context, paused bool) error
+	TogglePause(ctx context.Context) error
 	Seek(ctx context.Context, d time.Duration) error
 	SeekTo(ctx context.Context, d time.Duration) error
 	SetVolume(ctx context.Context, percent int) error
@@ -312,7 +313,7 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.playCurrent(), a.queueChanged())
 
 	case tui.TogglePause:
-		return a, a.setPaused(!a.paused())
+		return a, a.togglePause()
 	case tui.SetPaused:
 		return a, a.setPaused(bool(msg))
 	case tui.SkipNext:
@@ -403,6 +404,13 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 		}
 		return a, next
 
+	case e.Name == "property-change" && e.Property == "pause":
+		paused, ok := e.Bool()
+		if !ok {
+			return a, next
+		}
+		return a.forwardAnd(tui.PausedChanged(paused), next)
+
 	case e.Name == "end-file":
 		// Only "eof" means the track finished. Any other reason means the queue has
 		// already moved.
@@ -476,7 +484,7 @@ func (a app) stallSaid(msg stallCheck) (tea.Model, tea.Cmd) {
 	}
 	return a.forward(tui.Failed{Message: fmt.Sprintf(
 		"%s is not playing: press n to skip, or check your audio output"+
-			"\n\nmpv took the track and reported no position for %s. That points at the audio output or the server, not at shanty.",
+			"\n\nmpv took the track and reported no position for %s. Check the audio output first: `shanty doctor` plays a tone through it.",
 		track.Title, stallGrace)})
 }
 
@@ -520,6 +528,12 @@ func (a app) setVolume(to int) (tea.Model, tea.Cmd) {
 		emit(tui.VolumeChanged(volume)))
 }
 
+// togglePause asks mpv to turn its own pause around. The answer arrives as an
+// observed property change, so nothing here decides what the new state is.
+func (a app) togglePause() tea.Cmd {
+	return a.act(func(ctx context.Context) error { return a.player.TogglePause(ctx) })
+}
+
 func (a app) setPaused(paused bool) tea.Cmd {
 	p := a.player
 	return func() tea.Msg {
@@ -530,7 +544,8 @@ func (a app) setPaused(paused bool) tea.Cmd {
 	}
 }
 
-// paused reports what the interface is currently showing.
+// paused reports whether the player is paused. mpv observes the property and
+// reports it, so this is what the player is doing rather than a guess.
 func (a app) paused() bool { return a.ui.Paused() }
 
 // scrobble tells the server a track was played, and keeps the report if it
@@ -642,8 +657,16 @@ func (a app) watchPlayer() tea.Cmd {
 	}
 }
 
+// observePosition asks mpv to report the position and whether it is paused,
+// so the interface shows what the player is doing rather than what it was
+// last told to do.
 func (a app) observePosition() tea.Cmd {
-	return a.act(func(ctx context.Context) error { return a.player.Observe(ctx, "time-pos") })
+	return a.act(func(ctx context.Context) error {
+		if err := a.player.Observe(ctx, "time-pos"); err != nil {
+			return err
+		}
+		return a.player.Observe(ctx, "pause")
+	})
 }
 
 // act runs an operation against the player and turns a failure into a message
