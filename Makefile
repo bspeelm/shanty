@@ -13,7 +13,7 @@ LDFLAGS := -s -w -X main.Version=$(VERSION)
 export GOFLAGS := -mod=readonly
 
 .PHONY: help lint vet test race budgets standard check build install-binary crossbuild clean \
-	vendor srpm release release-tag copr milestone
+	vendor srpm release release-tag copr milestone install
 
 help:
 	@echo "make check       lint, vet, race tests, budgets, standard - the gate"
@@ -27,7 +27,7 @@ help:
 	@echo "make srpm                    build an SRPM here, the way Copr will"
 	@echo "make copr                    ask Copr to build the tag, if the webhook missed it"
 	@echo "make build       build $(BINARY) for this machine"
-	@echo "make install-binary  build it and put it on PATH"
+	@echo "make install     build it and put it on PATH (install-binary is the same rule)"
 	@echo "make crossbuild  every platform the release ships"
 
 lint:
@@ -76,6 +76,10 @@ crossbuild:
 	    GOOS=$${t%/*} GOARCH=$${t#*/} CGO_ENABLED=0 \
 	        go build -trimpath -o /dev/null ./... || exit 1; \
 	done
+
+# install is what people type. install-binary is the name the documentation
+# and the release notes have always used, so both reach the same rule.
+install: install-binary
 
 # Builds shanty and copies it to ~/.local/bin.
 install-binary: build

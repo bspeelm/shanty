@@ -9,7 +9,7 @@ make race       # go test -race
 make budgets    # the size and dependency limits, on their own
 make standard   # conformance against the development standard
 make build      # build ./shanty for this machine
-make install-binary  # build it and put it on PATH
+make install  # build it and put it on PATH
 make crossbuild # every platform a release ships
 ```
 
