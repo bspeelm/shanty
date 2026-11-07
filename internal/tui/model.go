@@ -117,6 +117,17 @@ type Model struct {
 	// position in it. The caller owns the queue; this is a copy to draw.
 	queued   []queue.Track
 	queuedAt int
+	// queuedFrom is the playlist the queue was built from, so the list of
+	// playlists can mark the one the music is coming from. It is empty when
+	// the queue came from anything else.
+	queuedFrom string
+	// reordering says the playlist on screen is being moved about. order is
+	// the arrangement so far, which is local until it is saved, and drawnFrom
+	// is the sequence of identifiers the screen was drawn from, so a server
+	// that changed underneath can be told apart from one that did not.
+	reordering bool
+	order      []subsonic.Song
+	drawnFrom  []string
 
 	// found is what the last search returned, flattened into rows with a
 	// heading before each group. query is what was asked for.
@@ -229,6 +240,12 @@ func (m Model) Albums() []subsonic.Album { return m.albums }
 // ShowingSky says the visualiser is on screen.
 func (m Model) ShowingSky() bool { return m.showSky }
 
+// Playlist is the playlist on screen, with its tracks.
+func (m Model) Playlist() subsonic.Playlist { return m.playlist }
+
+// Reordering says the playlist on screen is being rearranged.
+func (m Model) Reordering() bool { return m.reordering }
+
 func (m Model) Album() subsonic.Album { return m.album }
 
 // ShowingArt reports that a cover is filling the screen, so that a caller
@@ -304,6 +321,9 @@ func (m Model) allRows() int {
 	case ScreenPlaylists:
 		return len(m.playlists)
 	case ScreenPlaylist:
+		if m.reordering {
+			return len(m.order)
+		}
 		return len(m.playlist.Songs)
 	case ScreenWiki:
 		if m.topic != "" {

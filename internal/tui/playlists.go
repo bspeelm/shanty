@@ -11,6 +11,7 @@ var playlistVerbs = map[string]bool{
 	"create":  true,
 	"edit":    true,
 	"delete":  true,
+	"reorder": true,
 	"rename":  true,
 	"shuffle": true,
 }
@@ -34,7 +35,10 @@ func playlistCommand(arg string) (any, error) {
 	if !playlistVerbs[verb] {
 		return nil, errBadArgument{"playlist", verb, "one of " + verbList()}
 	}
-	if name == "" {
+	// delete and reorder need no name: without one they act on the playlist on
+	// screen, which for delete is the only way to tell two playlists sharing a
+	// name apart, and which reorder has no other way of meaning.
+	if name == "" && verb != "delete" && verb != "reorder" {
 		wanted := "the name of a playlist"
 		if verb == "rename" {
 			wanted = "the new name"
@@ -46,7 +50,7 @@ func playlistCommand(arg string) (any, error) {
 
 // verbList names what may follow :playlist, in a fixed order.
 func verbList() string {
-	return "create, delete, edit, rename or shuffle"
+	return "create, delete, edit, rename, reorder or shuffle"
 }
 
 // playlistSummary is what the completion row says :playlist does.

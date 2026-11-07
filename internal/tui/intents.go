@@ -17,6 +17,10 @@ type (
 	PlayFrom   struct {
 		Album subsonic.Album
 		Index int
+		// Playlist is the identifier of the playlist the tracks came from, and
+		// is empty when they came from an album. Both arrive here as an Album,
+		// so without this the caller cannot tell which it was handed.
+		Playlist string
 	}
 	TogglePause struct{}
 	// SetPaused is an absolute pause state. TogglePause is what the space key
@@ -106,6 +110,23 @@ type (
 		// not on screen to be pointed at.
 		At int
 	}
+	// DeletePlaylist asks for the playlist on screen to be deleted, by
+	// identifier. Tracks is how many it holds, so the question can say.
+	DeletePlaylist struct {
+		ID     string
+		Name   string
+		Tracks int
+	}
+	// ReorderPlaylist asks for a playlist's tracks to be put in this order.
+	// Was is the order the screen was drawn from: the caller compares it to
+	// what the server holds and writes nothing if they differ, because the
+	// only call that can express an order replaces the whole playlist.
+	ReorderPlaylist struct {
+		ID    string
+		Name  string
+		Songs []string
+		Was   []string
+	}
 	// RenamePlaylist gives a playlist a new name. It carries the identifier
 	// rather than the old name, because the playlist is the one on screen and
 	// a server's playlist names are not unique.
@@ -183,6 +204,9 @@ type (
 	QueueChanged struct {
 		Tracks []queue.Track
 		At     int
+		// From is the identifier of the playlist the queue was built from, and
+		// is empty when it was built from anything else.
+		From string
 	}
 	Progress      time.Duration
 	PausedChanged bool
