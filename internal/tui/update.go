@@ -285,6 +285,18 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 		m.status = err.Error()
 		return m, nil
 	}
+	// A rename's argument is the new name, and the playlist is the one on
+	// screen -- the rule ADR-019 set for e and r. Resolved here because this
+	// is the only place that has both the typed line and the screen, and
+	// resolving to an identifier means a name shared by two playlists is not
+	// a question anybody has to answer.
+	if p, ok := intent.(Playlist); ok && p.Verb == "rename" {
+		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
+			m.status = "rename needs a playlist on screen — gp, enter, then :playlist rename <new name>"
+			return m, nil
+		}
+		return m, emit(RenamePlaylist{ID: m.playlist.ID, Name: p.Name})
+	}
 	return m, emit(intent)
 }
 

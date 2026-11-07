@@ -18,22 +18,27 @@ Lists your playlists, or does one thing to one of them.
     :playlist
     :playlist create Evening
     :playlist edit Evening
+    :playlist rename Evening Watch
+    :playlist delete Evening
+    :playlist shuffle Evening
 
 `gp` opens the list of playlists and `enter` opens one. From there `e` starts
 adding to that playlist without naming it, and `r` takes the track under the
 cursor out of it.
-    :playlist delete Evening
-    :playlist shuffle Evening
 
 `create` makes an empty playlist. `edit` shows your library with `(A)` beside
 the tracks already in the playlist; `a` adds the selected track and `r` takes
-it out, each reaching the server as you press it. `esc` finishes.
+it out, each reaching the server as you press it. `e` finishes.
+
+`rename` is the one verb whose argument is not a playlist. It renames the
+playlist you are looking at, and what you type is the new name, so open one
+first.
 
 `delete` asks before it acts and names the playlist. Anything but `y` answers
 no.
 
-If two of your playlists share a name, shanty says so rather than guessing.
-Rename one on your server.
+If two of your playlists share a name, shanty says so rather than guessing
+which you mean. Open the one you want and use `rename`.
 
 ## shuffle
 

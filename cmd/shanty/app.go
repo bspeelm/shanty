@@ -239,6 +239,8 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.fetchPlaylist(msg.ID)
 	case tui.Playlist:
 		return a, a.playlistCommand(msg)
+	case tui.RenamePlaylist:
+		return a, a.renamePlaylist(msg)
 	case tui.EditPlaylist:
 		return a, a.editPlaylist(msg)
 	case tui.Shuffle:
@@ -966,6 +968,22 @@ func (a app) playlistCommand(msg tui.Playlist) tea.Cmd {
 			return shuffled{tracks: full.Songs, what: full.Name}
 		}
 		return nil
+	}
+}
+
+// renamePlaylist gives a playlist a new name and reads it back, so the title
+// row says what it is now called rather than what it was.
+func (a app) renamePlaylist(msg tui.RenamePlaylist) tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		if err := client.RenamePlaylist(a.ctx, msg.ID, msg.Name); err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		found, err := client.Playlist(a.ctx, msg.ID)
+		if err != nil {
+			return tui.Failed{Message: err.Error()}
+		}
+		return tui.PlaylistLoaded(found)
 	}
 }
 

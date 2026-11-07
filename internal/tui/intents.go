@@ -93,6 +93,13 @@ type (
 		// not on screen to be pointed at.
 		At int
 	}
+	// RenamePlaylist gives a playlist a new name. It carries the identifier
+	// rather than the old name, because the playlist is the one on screen and
+	// a server's playlist names are not unique.
+	RenamePlaylist struct {
+		ID   string
+		Name string
+	}
 	// ShowWiki asks for the list of commands and what each does.
 	ShowWiki struct{}
 	// ShowMessages asks for what shanty has said this session. It is handled
