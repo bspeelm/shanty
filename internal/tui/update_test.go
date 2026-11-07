@@ -43,7 +43,17 @@ func press(t *testing.T, m Model, key string) (Model, tea.Msg) {
 
 func loaded(t *testing.T) Model {
 	t.Helper()
-	return send(t, sized(New()), ArtistsLoaded(library()))
+	return onArtists(t, send(t, sized(New()), ArtistsLoaded(library())))
+}
+
+// onArtists presses ga, which is how the artist list is reached from the
+// library the program starts on. ArtistsLoaded fills the list without moving
+// to it, so a model that has loaded the library is not yet looking at it.
+func onArtists(t *testing.T, m Model) Model {
+	t.Helper()
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	next, _ = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	return next.(Model)
 }
 
 // Descending emits an intent and nothing else: this package cannot fetch the
@@ -88,17 +98,28 @@ func TestBrowseDescendsAndReturns(t *testing.T) {
 
 // Leaving a music player by pressing left one time too many is a surprise
 // nobody wants mid-album.
+// Back from the artist list reaches the library above it, and the library is
+// the top. The guarantee this protects is unchanged: no number of presses of
+// back closes the program.
 func TestBackAtTheTopDoesNothing(t *testing.T) {
 	m := loaded(t)
+
+	m, msg := press(t, m, "h")
+	if msg != nil {
+		t.Fatalf("back from the artist list emitted %T", msg)
+	}
+	if m.Screen() != ScreenLibrary {
+		t.Fatalf("back from the artist list moved to %s, want the library", m.Screen())
+	}
+
 	for range 3 {
-		var msg tea.Msg
 		m, msg = press(t, m, "h")
 		if msg != nil {
 			t.Fatalf("back at the top emitted %T", msg)
 		}
-	}
-	if m.Screen() != ScreenArtists {
-		t.Errorf("back at the top moved to %s", m.Screen())
+		if m.Screen() != ScreenLibrary {
+			t.Errorf("back at the top moved to %s", m.Screen())
+		}
 	}
 }
 
@@ -200,7 +221,7 @@ func TestPlayingCarriesTheAlbumAndTheIndex(t *testing.T) {
 // An empty list must not be indexable, and pressing enter on nothing must not
 // emit an intent naming a track that does not exist.
 func TestAnEmptyLibraryIsSafeToPressKeysAt(t *testing.T) {
-	m := send(t, sized(New()), ArtistsLoaded(nil))
+	m := onArtists(t, send(t, sized(New()), ArtistsLoaded(nil)))
 	for _, key := range []string{"j", "k", "enter", "G", "g"} {
 		var msg tea.Msg
 		m, msg = press(t, m, key)
@@ -228,8 +249,8 @@ func TestEveryScreenHasAHeadingAndRenders(t *testing.T) {
 			t.Errorf("screen %s rendered nothing", s)
 		}
 	}
-	if len(Screens) != 10 {
-		t.Errorf("Screens lists %d screens; there are ten, so this is a change to the interface", len(Screens))
+	if len(Screens) != 12 {
+		t.Errorf("Screens lists %d screens; there are twelve, so this is a change to the interface", len(Screens))
 	}
 }
 
@@ -1286,9 +1307,9 @@ func TestTheWikiOpensACommandAndComesBack(t *testing.T) {
 		t.Errorf("it did not go back to the list:\n%s", frame)
 	}
 
-	// And again leaves.
+	// And again leaves, for the library the wiki was opened from above.
 	m, _ = press(t, m, "esc")
-	if m.Screen() != ScreenArtists {
+	if m.Screen() != ScreenLibrary {
 		t.Errorf("esc from the list went to %s", m.Screen())
 	}
 }

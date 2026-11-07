@@ -28,8 +28,12 @@ const (
 type Screen int
 
 const (
-	ScreenArtists Screen = iota
+	// ScreenLibrary is first so that it is the zero value, which is the screen
+	// a new model starts on.
+	ScreenLibrary Screen = iota
+	ScreenArtists
 	ScreenAlbums
+	ScreenEveryAlbum
 	ScreenTracks
 	ScreenQueue
 	ScreenSearch
@@ -41,15 +45,20 @@ const (
 )
 
 // Screens lists every screen.
-var Screens = []Screen{ScreenArtists, ScreenAlbums, ScreenTracks, ScreenQueue,
-	ScreenSearch, ScreenStarred, ScreenMessages, ScreenPlaylists, ScreenPlaylist, ScreenWiki}
+var Screens = []Screen{ScreenLibrary, ScreenArtists, ScreenAlbums,
+	ScreenEveryAlbum, ScreenTracks, ScreenQueue, ScreenSearch, ScreenStarred,
+	ScreenMessages, ScreenPlaylists, ScreenPlaylist, ScreenWiki}
 
 func (s Screen) String() string {
 	switch s {
+	case ScreenLibrary:
+		return "library"
 	case ScreenArtists:
 		return "artists"
 	case ScreenAlbums:
 		return "albums"
+	case ScreenEveryAlbum:
+		return "every album"
 	case ScreenTracks:
 		return "tracks"
 	case ScreenQueue:
@@ -78,7 +87,13 @@ type Model struct {
 
 	artists []subsonic.Artist
 	artist  subsonic.Artist
-	album   subsonic.Album
+	// albums is every album on the server, for the screen that lists them all.
+	// It is separate from artist.Albums, which is one artist's.
+	albums []subsonic.Album
+	// fromTracks is the screen an open album was reached from, so that leaving
+	// it returns there rather than always to one artist's album list.
+	fromTracks Screen
+	album      subsonic.Album
 	// art is the cover for album, already rendered, one string per row.
 	art []string
 	// bigArt is a cover filling the screen. While it is set it is all there is
@@ -202,7 +217,11 @@ func (m Model) Editing() subsonic.Playlist { return m.editing }
 
 // Artist and Album are what the screens below the artist list are showing.
 func (m Model) Artist() subsonic.Artist { return m.artist }
-func (m Model) Album() subsonic.Album   { return m.album }
+
+// Albums is every album on the server, as far as it has been fetched.
+func (m Model) Albums() []subsonic.Album { return m.albums }
+
+func (m Model) Album() subsonic.Album { return m.album }
 
 // ShowingArt reports that a cover is filling the screen, so that a caller
 // resizing the window knows to render it again at the new size.
@@ -238,13 +257,34 @@ func (m Model) matches() []int {
 	return out
 }
 
+// libraryRow is one destination on the library screen: what it is called, the
+// screen it opens, and the jump that already reached that screen.
+type libraryRow struct {
+	name   string
+	key    string
+	screen Screen
+}
+
+// libraryRows is what the library offers, in order.
+var libraryRows = []libraryRow{
+	{"Playlists", "p", ScreenPlaylists},
+	{"Artists", "a", ScreenArtists},
+	{"Albums", "b", ScreenEveryAlbum},
+	{"Starred", "s", ScreenStarred},
+	{"Queue", "q", ScreenQueue},
+}
+
 // allRows is how many items the current screen has before filtering.
 func (m Model) allRows() int {
 	switch m.screen {
+	case ScreenLibrary:
+		return len(libraryRows)
 	case ScreenArtists:
 		return len(m.artists)
 	case ScreenAlbums:
 		return len(m.artist.Albums)
+	case ScreenEveryAlbum:
+		return len(m.albums)
 	case ScreenTracks:
 		return len(m.album.Songs)
 	case ScreenQueue:
@@ -270,10 +310,14 @@ func (m Model) allRows() int {
 // list.
 func (m Model) rowName(i int) string {
 	switch m.screen {
+	case ScreenLibrary:
+		return libraryRows[i].name
 	case ScreenArtists:
 		return m.artists[i].Name
 	case ScreenAlbums:
 		return m.artist.Albums[i].Name
+	case ScreenEveryAlbum:
+		return m.albums[i].Name + " " + m.albums[i].Artist
 	case ScreenTracks:
 		return m.album.Songs[i].Title
 	case ScreenQueue:

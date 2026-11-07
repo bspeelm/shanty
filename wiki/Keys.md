@@ -1,12 +1,16 @@
 # Keys
 
-shanty's main path is three screens deep: a list of artists, the albums by one
+shanty opens on the library, which lists your playlists, your artists, every
+album on the server, what you have starred, and the queue, with a count beside
+each. `enter` opens one and `esc` comes back up.
+
+From there the path is three screens deep: a list of artists, the albums by one
 artist, and the tracks on one album. You move down into them and back out
 again.
 
-Beside that path are the queue, your playlists, one playlist, what you have
-starred, search results, this page and the log of what shanty has said. The
-keys below work on all of them, because every one of them is a list.
+The other screens are search results, one playlist, this page and the log of
+what shanty has said. The keys below work on all of them, because every one of
+them is a list.
 
 ## Moving through a list
 
@@ -27,8 +31,9 @@ keys below work on all of them, because every one of them is a list.
 | `S` | Shuffle the artist, album or playlist the cursor names |
 | `*` | Star the selected artist, album or track, or unstar it |
 
-Pressing back on the artist list does nothing, because there is nothing above
-it. This prevents you from quitting the player by pressing back once too often.
+Pressing back on the artist list goes up to the library, and pressing it on the
+library does nothing, because there is nothing above that. No number of presses
+of back will close the player.
 
 Each screen remembers which row you had selected. If you open an album and then
 go back, the album you opened is still highlighted.
@@ -136,10 +141,28 @@ If nothing matches, the screen says so rather than going blank.
 
 | Key | What it does |
 |---|---|
+| `gl` | The library |
 | `ga` | Artists |
+| `gb` | Every album on the server |
 | `gq` | The queue, opened on the track playing |
 | `gp` | Playlists |
 | `gs` | Starred |
+
+## The library and every album
+
+`gl` goes back to the library from anywhere. The count beside a row is blank
+until shanty has asked the server for that list, so a number appearing a moment
+after the screen is drawn is the answer arriving rather than something
+changing.
+
+**Every album on the server is its own screen**, reached from the library's
+Albums row or with `gb`. Each row carries the album and the artist, because
+unlike one artist's own list there is no artist in the heading. `enter` opens
+one, and `esc` comes back to every album rather than to that artist's albums,
+because that is where you were.
+
+Asked for once and kept. `:reload` on that screen asks again, and `:reload` on
+the library asks for the lists its counts are drawn from.
 
 ## Cover art
 
@@ -357,7 +380,7 @@ These command what is left, from any shell:
 | `shanty stop` | End it, and the music with it |
 
 Run `shanty` again and the interface comes back on the track that is playing,
-without a gap in the sound. You start on the artist list rather than the screen
+without a gap in the sound. You start on the library rather than the screen
 you left, because a filter and a cursor belong to a screen rather than to the
 music.
 

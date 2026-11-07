@@ -192,7 +192,10 @@ func TestReloadAsksForWhatTheScreenIsShowing(t *testing.T) {
 		setup    []tea.Msg
 		endpoint string
 	}{
-		{"artists", nil, "getArtists"},
+		// The library is the screen the program starts on, and reloading it
+		// asks for the artists its count is drawn from.
+		{"library", nil, "getArtists"},
+		{"artists", []tea.Msg{tui.ShowMessages{}}, "getArtists"},
 		{"albums", []tea.Msg{tui.ArtistLoaded(subsonic.Artist{ID: "ar-1", Name: "Aoi"})}, "getArtist"},
 		{"tracks", []tea.Msg{tui.AlbumLoaded(subsonic.Album{ID: "al-1", Name: "Harbour"})}, "getAlbum"},
 		{"starred", []tea.Msg{tui.ShowMessages{}, tui.StarredChanged{}}, "getStarred2"},
@@ -201,6 +204,11 @@ func TestReloadAsksForWhatTheScreenIsShowing(t *testing.T) {
 			a, _, srv := wired(t)
 			for _, msg := range tc.setup {
 				a, _ = step(t, a, msg)
+			}
+			if tc.name == "artists" {
+				next, _ := a.ui.Update(keyRunes("g"))
+				next, _ = next.(tui.Model).Update(keyRunes("a"))
+				a.ui = next.(tui.Model)
 			}
 			if tc.name == "starred" {
 				a, _ = step(t, a, tui.ShowMessages{})

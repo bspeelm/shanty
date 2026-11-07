@@ -153,6 +153,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ShowPlaylists:
 		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
 		return m.selecting(ScreenPlaylists, 0), nil
+	case ShowEveryAlbum:
+		m.screen, m.status, m.filter = ScreenEveryAlbum, "", ""
+		if len(m.albums) == 0 {
+			m.loading = true
+		}
+		return m.selecting(ScreenEveryAlbum, 0), nil
+	case AlbumsLoaded:
+		m.albums, m.loading, m.status = msg, false, ""
+		if m.screen != ScreenEveryAlbum {
+			return m, nil
+		}
+		return m.reloaded(ScreenEveryAlbum, plural(len(msg), "album")), nil
 	case ShowWiki:
 		m.screen, m.status, m.filter, m.topic = ScreenWiki, "", "", ""
 		return m.selecting(ScreenWiki, 0), nil
@@ -322,9 +334,15 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "g":
 		return m.moveTo(0).ontoARow(), nil
+	case "l":
+		m.screen, m.status, m.filter = ScreenLibrary, "", ""
+		return m, nil
 	case "a":
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
 		return m, nil
+	case "b":
+		m.screen, m.status, m.filter = ScreenEveryAlbum, "", ""
+		return m.selecting(ScreenEveryAlbum, 0), nil
 	case "p":
 		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
 		return m.selecting(ScreenPlaylists, 0), nil
@@ -379,12 +397,28 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 	}
 	at := m.matches()[m.cursor[m.screen]]
 	switch m.screen {
+	case ScreenLibrary:
+		dest := libraryRows[at]
+		switch dest.screen {
+		case ScreenPlaylists:
+			return m, emit(ShowPlaylists{})
+		case ScreenEveryAlbum:
+			return m, emit(ShowEveryAlbum{})
+		}
+		// The rest are screens a jump already reaches, and the jump places the
+		// cursor as that screen wants it.
+		return m.goTo(dest.key)
 	case ScreenArtists:
 		m.loading, m.status = true, "opening "+Sanitise(m.artists[at].Name)
 		return m, emit(OpenArtist{ID: m.artists[at].ID})
 	case ScreenAlbums:
 		m.loading, m.status = true, "opening "+Sanitise(m.artist.Albums[at].Name)
+		m.fromTracks = ScreenAlbums
 		return m, emit(OpenAlbum{ID: m.artist.Albums[at].ID})
+	case ScreenEveryAlbum:
+		m.loading, m.status = true, "opening "+Sanitise(m.albums[at].Name)
+		m.fromTracks = ScreenEveryAlbum
+		return m, emit(OpenAlbum{ID: m.albums[at].ID})
 	case ScreenTracks:
 		return m, emit(PlayFrom{Album: m.album, Index: at})
 	case ScreenQueue:
@@ -453,6 +487,8 @@ func (m Model) starSelected() (tea.Model, tea.Cmd) {
 		kind, id = StarArtist, m.artists[at].ID
 	case ScreenAlbums:
 		kind, id = StarAlbum, m.artist.Albums[at].ID
+	case ScreenEveryAlbum:
+		kind, id = StarAlbum, m.albums[at].ID
 	case ScreenTracks:
 		kind, id = StarSong, m.album.Songs[at].ID
 	case ScreenQueue:
@@ -532,7 +568,13 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 	}
 	switch m.screen {
 	case ScreenTracks:
-		m.screen, m.status, m.filter = ScreenAlbums, "", ""
+		// An album is reached from one artist's list or from every album, and
+		// back returns to the one it was opened from.
+		up := m.fromTracks
+		if up != ScreenEveryAlbum {
+			up = ScreenAlbums
+		}
+		m.screen, m.status, m.filter = up, "", ""
 	case ScreenAlbums:
 		m.screen, m.status, m.filter = ScreenArtists, "", ""
 	case ScreenPlaylist:
@@ -544,11 +586,15 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 			m.topic, m.status = "", ""
 			return m.selecting(ScreenWiki, 0), nil
 		}
-		m.screen, m.status, m.filter = ScreenArtists, "", ""
-	case ScreenQueue, ScreenSearch, ScreenStarred, ScreenMessages, ScreenPlaylists:
-		// Both are reached from anywhere, so back leaves for the one screen
-		// that is always there rather than wherever it was opened from.
-		m.screen, m.status, m.filter = ScreenArtists, "", ""
+		m.screen, m.status, m.filter = ScreenLibrary, "", ""
+	case ScreenArtists, ScreenEveryAlbum, ScreenQueue, ScreenSearch, ScreenStarred,
+		ScreenMessages, ScreenPlaylists:
+		// Each of these is opened from the library, or reached from anywhere,
+		// so back goes up to the library rather than wherever it was opened
+		// from. On the library itself back does nothing, because there is
+		// nothing above it: that is what stops a key held down closing the
+		// program.
+		m.screen, m.status, m.filter = ScreenLibrary, "", ""
 	}
 	return m, nil
 }

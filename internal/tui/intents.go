@@ -69,6 +69,9 @@ type (
 	Scan struct{}
 	// ShowPlaylists asks for the list of playlists.
 	ShowPlaylists struct{}
+	// ShowEveryAlbum asks for every album on the server. The jump to that
+	// screen only moves to it; this also fetches.
+	ShowEveryAlbum struct{}
 	// Playlist is one thing to do to a playlist, named by what it is called.
 	Playlist struct {
 		Verb string
@@ -123,7 +126,9 @@ type (
 type (
 	ArtistsLoaded []subsonic.Artist
 	ArtistLoaded  subsonic.Artist
-	AlbumLoaded   subsonic.Album
+	// AlbumsLoaded is every album the server will list.
+	AlbumsLoaded []subsonic.Album
+	AlbumLoaded  subsonic.Album
 	// FullArt is a cover rendered to fill the screen, in answer to ShowArt.
 	// It is shown over everything until a key takes it away.
 	FullArt []string
