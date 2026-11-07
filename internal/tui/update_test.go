@@ -464,16 +464,28 @@ func TestPressingColonShowsEveryCommand(t *testing.T) {
 }
 
 func TestTabCompletesAsFarAsTheMatchesAgree(t *testing.T) {
-	m, _ := press(t, loaded(t), ":")
-	m, _ = press(t, m, "v")
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m = next.(Model)
-
 	// One match, and it takes an argument, so the cursor lands where the
 	// argument goes.
-	if m.Line() != "volume " {
-		t.Errorf("tab completed to %q, want %q", m.Line(), "volume ")
+	if got := completeTo(t, "vo"); got != "volume " {
+		t.Errorf("tab on vo completed to %q, want %q", got, "volume ")
 	}
+
+	// Two commands begin with v, so tab stops where they stop agreeing
+	// rather than guessing which was meant. The completion row lists both.
+	if got := completeTo(t, "v"); got != "v" {
+		t.Errorf("tab on v completed to %q, want it left alone at %q", got, "v")
+	}
+}
+
+// completeTo types a command line and presses tab, returning the line after.
+func completeTo(t *testing.T, typed string) string {
+	t.Helper()
+	m, _ := press(t, loaded(t), ":")
+	for _, c := range typed {
+		m, _ = press(t, m, string(c))
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	return next.(Model).Line()
 }
 
 func TestEscapeAbandonsTheCommand(t *testing.T) {

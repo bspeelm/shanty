@@ -40,6 +40,21 @@ no.
 If two of your playlists share a name, shanty says so rather than guessing
 which you mean. Open the one you want and use `rename`.
 
+## visualizer
+
+Fills the screen with a slowly turning pattern: a three-armed spiral in a star
+field, with a ripple running outward through it.
+
+    :visualizer
+
+`gv` opens it too, `esc` puts it away, and the row above the keys still says
+what is playing and how far through it is, so you can leave it up.
+
+It is drawn from the clock and the size of your window. It does not read the
+music: shanty hands every track to mpv and mpv reports no levels back, so a
+pattern that moved with the sound would need an audio filter in the way of the
+audio. Pausing holds the pattern where it is.
+
 ## shuffle
 
 Plays everything on your server in a random order.

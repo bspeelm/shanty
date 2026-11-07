@@ -96,6 +96,11 @@ type Model struct {
 	album      subsonic.Album
 	// art is the cover for album, already rendered, one string per row.
 	art []string
+	// showSky says the visualiser is filling the screen, and skyAt is how far
+	// through its pattern it has turned, in seconds. Nothing is kept between
+	// frames beyond that number, because the pattern is a function of it.
+	showSky bool
+	skyAt   float64
 	// bigArt is a cover filling the screen. While it is set it is all there is
 	// to see, and any key takes it away.
 	bigArt []string
@@ -220,6 +225,9 @@ func (m Model) Artist() subsonic.Artist { return m.artist }
 
 // Albums is every album on the server, as far as it has been fetched.
 func (m Model) Albums() []subsonic.Album { return m.albums }
+
+// ShowingSky says the visualiser is on screen.
+func (m Model) ShowingSky() bool { return m.showSky }
 
 func (m Model) Album() subsonic.Album { return m.album }
 

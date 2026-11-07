@@ -50,6 +50,11 @@ var commands = []command{
 		run:      playlistCommand,
 	},
 	{
+		name:    "visualizer",
+		summary: "fill the screen with a turning pattern drawn from the clock",
+		run:     func(string) (any, error) { return ShowVisualiser{}, nil },
+	},
+	{
 		name:    "shuffle",
 		summary: "play everything on the server in a random order",
 		run:     func(string) (any, error) { return Shuffle{}, nil },

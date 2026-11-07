@@ -203,6 +203,13 @@ func TestGoldenScreens(t *testing.T) {
 		{"every-album", send(t, loadedAll, ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))},
 		{"every-album-starred", send(t, loadedAll, ShowEveryAlbum{},
 			AlbumsLoaded(everyAlbum()), starredChanged())},
+		// The visualiser over the album it was opened from, so the frame shows
+		// that what is playing is still readable underneath it.
+		{"sky", send(t, tracks, nowPlayingSlipway(180*time.Second,
+			Progress(83*time.Second), VolumeChanged(80), ShowVisualiser{})...)},
+		{"sky-paused", send(t, tracks, nowPlayingSlipway(180*time.Second,
+			Progress(83*time.Second), VolumeChanged(80), ShowVisualiser{},
+			PausedChanged(true))...)},
 		{"loading", onArtists(t, base)},
 		{"artists", artists},
 		{"artists-cursor-moved", send(t, artists, tea.KeyMsg{Type: tea.KeyDown})},

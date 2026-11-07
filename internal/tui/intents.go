@@ -39,6 +39,10 @@ type (
 	GoBack    struct{}
 	// ShowArt asks for the cover of the album on screen, as large as it fits.
 	ShowArt struct{}
+	// ShowVisualiser asks for the visualiser to fill the screen. It is handled
+	// by the interface itself: the pattern is drawn from the clock and reads
+	// nothing from the server or the player.
+	ShowVisualiser struct{}
 	// AutoVolume turns loudness levelling on or off, and is remembered.
 	AutoVolume struct{ On bool }
 	// ToggleAutoVolume asks for whichever of the two it is not, because the

@@ -70,9 +70,14 @@ func (m Model) View() string {
 	b.WriteString(titleStyle.Render(fit("shanty · "+m.heading(), w)))
 	b.WriteString("\n" + rule(w) + "\n")
 
-	// A cover filling the screen is all there is to see. The list is not drawn
-	// under it, because there is no room for one and nothing to scroll.
-	if len(m.bigArt) > 0 {
+	// The visualiser fills the screen the way a cover does. The player line and
+	// the progress line below still say what is playing, so it is never a dead
+	// end, and the heading still names the screen esc returns to.
+	if m.showSky {
+		for _, line := range sky(w, visible, m.skyAt) {
+			b.WriteString(faintStyle.Render(line) + "\n")
+		}
+	} else if len(m.bigArt) > 0 {
 		for _, line := range m.bigArt {
 			b.WriteString(line + "\n")
 		}
@@ -159,6 +164,12 @@ func (m Model) footer(w int) string {
 		// Editing is a mode, and a mode that cannot be seen is not allowed to
 		// change what a key does (ADR-019). The artist and album lists carry
 		// no track marks, so this row is the only sign of it there.
+		if m.showSky {
+			if m.paused {
+				return statusStyle.Render(fit("paused — space resumes · esc leaves", w))
+			}
+			return faintStyle.Render(fit("esc leaves · space pauses", w))
+		}
 		if m.editing.ID != "" {
 			return statusStyle.Render(fit(editingHint(m.editing.Name), w))
 		}

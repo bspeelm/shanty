@@ -6,7 +6,7 @@
 [2m────────────────────────────────────────────────────────────────[0m
 [2mnothing playing[0m
 [1m[0m[2m────────────────────────────────────────────────────────────────[0m
-[2m  search <words>   playlist <verb name>   shuffle   resume[0m
-[2m  art   auto-vol <on|off>   wiki   messages   scan   reload[0m
-[2m  volume <0-100>   headless   q[0m
+[2m  search <words>   playlist <verb name>   visualizer[0m
+[2m  shuffle   resume   art   auto-vol <on|off>   wiki[0m
+[2m  messages   scan   reload   volume <0-100>   headless   q[0m
 [1m:█[0m
