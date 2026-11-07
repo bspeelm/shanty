@@ -104,6 +104,12 @@ func Actions() []Action {
 				}
 				return m, nil
 			})},
+		{
+			Name:    "shuffle-selected",
+			Summary: "shuffle the artist, album or playlist the cursor names",
+			Keys:    []string{"S"},
+			do:      modelCmd((Model).shuffleSelected),
+		},
 		{Name: "star", Summary: "star the selected artist, album or track, or unstar it",
 			Keys: []string{"*"}, do: modelCmd((Model).starSelected)},
 

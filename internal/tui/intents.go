@@ -76,6 +76,12 @@ type (
 	}
 	// Shuffle asks for everything on the server to play in a random order.
 	Shuffle struct{}
+	// ShuffleThis asks for one collection to play in a random order. Scope is
+	// "artist", "album" or "playlist", and ID names the one meant.
+	ShuffleThis struct {
+		Scope string
+		ID    string
+	}
 	// OpenPlaylist asks for one playlist's tracks.
 	OpenPlaylist struct{ ID string }
 	// EditPlaylist adds or removes the selected track from the playlist being
