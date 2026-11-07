@@ -31,6 +31,11 @@ type response struct {
 	ScanStatus   *Scan       `json:"scanStatus"`
 	Playlists    *playlists  `json:"playlists"`
 	Playlist     *Playlist   `json:"playlist"`
+	AlbumList    *albumList  `json:"albumList2"`
+}
+
+type albumList struct {
+	Album []Album `json:"album"`
 }
 
 type playlists struct {
@@ -181,6 +186,42 @@ func (c *Client) Album(ctx context.Context, id string) (Album, error) {
 	album := *res.Album
 	sort.SliceStable(album.Songs, func(i, j int) bool { return album.Songs[i].Track < album.Songs[j].Track })
 	return album, nil
+}
+
+// albumPageSize is how many albums one getAlbumList2 request asks for. It is
+// the largest page the protocol allows.
+const albumPageSize = 500
+
+// maxAlbumRequests is the most getAlbumList2 requests one call to Albums
+// makes, which holds the total at maxAlbumRequests * albumPageSize albums.
+const maxAlbumRequests = 100
+
+// Albums returns every album on the server, in the order the server lists them
+// alphabetically by name. It asks for one page after another until a page
+// comes back short of albumPageSize, and stops after maxAlbumRequests
+// requests.
+func (c *Client) Albums(ctx context.Context) ([]Album, error) {
+	var out []Album
+	for i := range maxAlbumRequests {
+		res, err := c.get(ctx, "getAlbumList2", url.Values{
+			"type":   {"alphabeticalByName"},
+			"size":   {strconv.Itoa(albumPageSize)},
+			"offset": {strconv.Itoa(i * albumPageSize)},
+		})
+		if err != nil {
+			return nil, err
+		}
+		// A server past the end of the list may leave the list out
+		// altogether, which is the end rather than an error.
+		if res.AlbumList == nil {
+			break
+		}
+		out = append(out, res.AlbumList.Album...)
+		if len(res.AlbumList.Album) < albumPageSize {
+			break
+		}
+	}
+	return out, nil
 }
 
 // searchLimit is how many of each kind a search asks for. A terminal list

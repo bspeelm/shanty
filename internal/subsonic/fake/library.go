@@ -30,6 +30,12 @@ type response struct {
 	ScanStatus    *scanStatus `json:"scanStatus,omitempty"`
 	Playlists     *playlists  `json:"playlists,omitempty"`
 	Playlist      *playlist   `json:"playlist,omitempty"`
+	AlbumList     *albumList2 `json:"albumList2,omitempty"`
+}
+
+// albumList2 is one page of albums, the way getAlbumList2 returns them.
+type albumList2 struct {
+	Album []album `json:"album"`
 }
 
 type playlists struct {
@@ -165,6 +171,21 @@ func DefaultLibrary() Library {
 			},
 		},
 	}}
+}
+
+// albums returns every album in the library without its tracks, sorted by
+// name, which is the order getAlbumList2 asks for as alphabeticalByName.
+func (l Library) albums() []album {
+	var out []album
+	for _, a := range l.Artists {
+		for _, al := range a.Albums {
+			bare := al
+			bare.Songs = nil
+			out = append(out, bare)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func (l Library) findArtist(id string) (artist, bool) {

@@ -64,6 +64,10 @@ type Malice struct {
 	// ScanAlreadyRunning answers startScan as a server does when one is
 	// already under way.
 	ScanAlreadyRunning bool
+	// AlbumsNeverEnd answers every getAlbumList2 request with a full page,
+	// however far the offset has gone, so a paging client is never told it
+	// has reached the end.
+	AlbumsNeverEnd bool
 }
 
 // oversizeBytes is what OversizeBody pads with.
@@ -108,6 +112,24 @@ type Server struct {
 	// waiting for anything.
 	scanning int
 	scanned  int64
+}
+
+// SetAlbums puts an artist holding that many albums on the server, named so
+// that they sort in the order they were made. It is what a test needs to make
+// getAlbumList2 return more than one page.
+func (s *Server) SetAlbums(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	seeded := artist{ID: "ar-seeded", Name: "Seeded", AlbumCount: n}
+	for i := range n {
+		id := fmt.Sprintf("al-seeded-%04d", i)
+		seeded.Albums = append(seeded.Albums, album{
+			ID: id, Name: fmt.Sprintf("Seeded %04d", i),
+			Artist: seeded.Name, ArtistID: seeded.ID,
+			SongCount: 1, Duration: 100, CoverArt: "mf-" + id,
+		})
+	}
+	s.opt.Library.Artists = append(s.opt.Library.Artists, seeded)
 }
 
 // SetPlayQueue puts a queue on the server as another client would have left
@@ -289,6 +311,26 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.ok(w, response{SearchResult: &found})
+	case "getAlbumList2":
+		size, offset := 10, 0
+		if n, err := strconv.Atoi(q.Get("size")); err == nil && n > 0 {
+			size = n
+		}
+		if n, err := strconv.Atoi(q.Get("offset")); err == nil && n > 0 {
+			offset = n
+		}
+		if s.opt.Malice.AlbumsNeverEnd {
+			s.ok(w, response{AlbumList: &albumList2{Album: endlessAlbums(offset, size)}})
+			return
+		}
+		all := s.opt.Library.albums()
+		if offset >= len(all) {
+			// A server past the end of the list leaves the list out
+			// altogether.
+			s.ok(w, response{})
+			return
+		}
+		s.ok(w, response{AlbumList: &albumList2{Album: all[offset:min(offset+size, len(all))]}})
 	case "getPlaylists":
 		s.mu.Lock()
 		// The tracks are left out, as a server leaves them out of a listing.
@@ -438,6 +480,17 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.fail(w, 0, "Unknown endpoint "+endpoint)
 	}
+}
+
+// endlessAlbums is a full page of albums for the server that never reaches the
+// end of its list. Each carries an id and a name and nothing else.
+func endlessAlbums(offset, size int) []album {
+	page := make([]album, size)
+	for i := range page {
+		n := offset + i
+		page[i] = album{ID: fmt.Sprintf("al-endless-%d", n), Name: fmt.Sprintf("Endless %d", n)}
+	}
+	return page
 }
 
 // hygienic checks the parameters every request must carry, and fails the
