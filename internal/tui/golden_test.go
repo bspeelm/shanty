@@ -140,6 +140,22 @@ func queued() []queue.Track {
 	}
 }
 
+// nowPlayingSlipway is what the program is like while a track from the open
+// album is being played: a queue holding that track, and the bar reading from
+// it. NowPlaying never arrives on its own, because playback runs through the
+// queue -- so a fixture that sends one without the other draws a frame the
+// program cannot be in, and the mark on the playing row would be missing from
+// every golden that is meant to show it.
+func nowPlayingSlipway(d time.Duration, rest ...tea.Msg) []tea.Msg {
+	msgs := []tea.Msg{
+		QueueChanged{Tracks: []queue.Track{
+			{ID: "tr-1", Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
+		}},
+		NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: d},
+	}
+	return append(msgs, rest...)
+}
+
 func sized(m Model) Model {
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 64, Height: 12})
 	return next.(Model)
@@ -208,21 +224,15 @@ func TestGoldenScreens(t *testing.T) {
 		{"queue-finished", onQueue(t, send(t, tracks,
 			QueueChanged{Tracks: queued(), At: 3}))},
 		{"tracks-playing", send(t, tracks,
-			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
-			Progress(83*time.Second),
-			VolumeChanged(80))},
+			nowPlayingSlipway(180*time.Second, Progress(83*time.Second), VolumeChanged(80))...)},
 		{"tracks-at-the-start", send(t, tracks,
-			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second})},
+			nowPlayingSlipway(180*time.Second)...)},
 		{"tracks-at-the-end", send(t, tracks,
-			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
-			Progress(180*time.Second))},
+			nowPlayingSlipway(180*time.Second, Progress(180*time.Second))...)},
 		{"tracks-unknown-length", send(t, tracks,
-			NowPlaying{Title: "Slipway", Artist: "Aoi"},
-			Progress(83*time.Second))},
+			nowPlayingSlipway(0, Progress(83*time.Second))...)},
 		{"tracks-paused", send(t, tracks,
-			NowPlaying{Title: "Slipway", Artist: "Aoi", Duration: 180 * time.Second},
-			Progress(83*time.Second),
-			PausedChanged(true))},
+			nowPlayingSlipway(180*time.Second, Progress(83*time.Second), PausedChanged(true))...)},
 		{"commanding", func() Model {
 			c, _ := artists.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
 			return c.(Model)

@@ -6,7 +6,7 @@
   :resume            carry on from the queue saved on the server
   :art
   :auto-vol <on… level quiet and loud records against each other
-  :wiki                                     explain the commands
 [2m────────────────────────────────────────────────────────────────[0m
 [2mnothing playing[0m
-[2m↑↓ move · gg top · G end · enter open · esc back · / filter · :…[0m
+[1m[0m[2m────────────────────────────────────────────────────────────────[0m
+[2m↑↓ move · gg top · G end · enter open · esc back · / filter …[0m

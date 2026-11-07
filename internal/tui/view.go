@@ -10,12 +10,11 @@ import (
 )
 
 // chromeLines is the number of rows that are not list rows: the title, two
-// rules, the player line and the last row.
-const chromeLines = 5
+// rules, the player line, the progress line and the last row.
+const chromeLines = 6
 
 // chrome is how many rows the frame uses for something other than the list.
-// The progress bar and the list of matching commands each take one when they
-// are showing.
+// The list of matching commands takes one or more while it is showing.
 func (m Model) chrome() int { return m.chromeBase() + len(m.artBlock(m.viewWidth())) }
 
 // chromeBase is every row of the frame that is neither the list nor the cover
@@ -23,9 +22,6 @@ func (m Model) chrome() int { return m.chromeBase() + len(m.artBlock(m.viewWidth
 // from it without asking itself.
 func (m Model) chromeBase() int {
 	n := chromeLines
-	if m.nowPlaying != "" {
-		n++
-	}
 	if m.mode == modeCommand {
 		n += len(m.completions(m.viewWidth()))
 	}
@@ -91,9 +87,10 @@ func (m Model) View() string {
 	}
 	b.WriteString(rule(w) + "\n")
 	b.WriteString(fit(m.player(), w) + "\n")
-	if m.nowPlaying != "" {
-		b.WriteString(m.progress(w) + "\n")
-	}
+	// Drawn whether or not there is music. A progress line that comes and goes
+	// changes how many rows the list has, so starting a track used to shift
+	// every row below the cursor up by one.
+	b.WriteString(m.progress(w) + "\n")
 	if m.mode == modeCommand {
 		for _, row := range m.completions(w) {
 			b.WriteString(faintStyle.Render(fit(row, w)) + "\n")
@@ -165,7 +162,7 @@ func (m Model) footer(w int) string {
 		if m.editing.ID != "" {
 			return statusStyle.Render(fit(editingHint(m.editing.Name), w))
 		}
-		return faintStyle.Render(fit(help, w))
+		return faintStyle.Render(fit(helpLine(w), w))
 	}
 	oneLine := strings.ReplaceAll(m.status, "\n", " · ")
 	return statusStyle.Render(fit(Sanitise(oneLine), w))
@@ -310,6 +307,8 @@ func (m Model) list(w, visible int) string {
 			body = "loading…"
 		case m.filter != "":
 			body = "nothing matches " + Sanitise(m.filter)
+		case m.screen == ScreenPlaylists:
+			body = "no playlists yet — :playlist create <name> makes one"
 		}
 		return pad(faintStyle.Render(fit("  "+body, w)), visible)
 	}
@@ -346,7 +345,7 @@ func (m Model) row(i int) (string, string) {
 		return m.star(a.ID) + Sanitise(a.Name), plural(a.SongCount, "track")
 	case ScreenTracks:
 		s := m.album.Songs[i]
-		return fmt.Sprintf("%s%s%2d. %s", m.added(s.ID), m.star(s.ID), s.Track, Sanitise(s.Title)),
+		return fmt.Sprintf("%s%s%s%2d. %s", m.added(s.ID), m.playing(s.ID), m.star(s.ID), s.Track, Sanitise(s.Title)),
 			clock(time.Duration(s.Duration) * time.Second)
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[i]
@@ -356,10 +355,12 @@ func (m Model) row(i int) (string, string) {
 		return m.star(r.id) + Sanitise(r.name), Sanitise(r.detail)
 	case ScreenPlaylists:
 		p := m.playlists[i]
-		return Sanitise(p.Name), plural(p.SongCount, "track")
+		// A playlist cannot be starred, but the field is held anyway so that
+		// these names sit in the same column as the names on every other list.
+		return "  " + Sanitise(p.Name), plural(p.SongCount, "track")
 	case ScreenPlaylist:
 		s := m.playlist.Songs[i]
-		return fmt.Sprintf("%s%2d. %s", m.star(s.ID), i+1, Sanitise(s.Title)),
+		return fmt.Sprintf("%s%s%2d. %s", m.playing(s.ID), m.star(s.ID), i+1, Sanitise(s.Title)),
 			Sanitise(s.Artist) + " · " + clock(time.Duration(s.Duration)*time.Second)
 	case ScreenWiki:
 		if m.topic != "" {
@@ -378,9 +379,11 @@ func (m Model) row(i int) (string, string) {
 		return Sanitise(strings.ReplaceAll(said.text, "\n", " · ")), said.at.Format("15:04:05")
 	case ScreenQueue:
 		t := m.queued[i]
-		mark := "  "
+		// One column, as on every other list. The gap after it belongs to the
+		// star field.
+		mark := " "
 		if i == m.queuedAt {
-			mark = "▶ "
+			mark = "▶"
 		}
 		return mark + m.star(t.ID) + Sanitise(t.Title) + " · " + Sanitise(t.Artist), clock(t.Duration)
 	}
@@ -391,14 +394,19 @@ func (m Model) player() string {
 	if m.nowPlaying == "" {
 		return faintStyle.Render("nothing playing")
 	}
-	mark := "▶"
+	// Two columns wide in both states. The pause mark is two cells and the
+	// play mark is one, so a one-column field moved the title every time
+	// playback was paused.
+	mark := "▶ "
 	if m.paused {
 		mark = "❚❚"
 	}
 	left := fmt.Sprintf("%s %s · %s", mark, Sanitise(m.nowPlaying), Sanitise(m.nowArtist))
-	right := fmt.Sprintf("%s   vol %d%%", clock(m.position), m.volume)
+	// The volume takes three columns whatever it is, so that reaching 100 does
+	// not drag the elapsed time along with it.
+	right := fmt.Sprintf("%s   vol %3d%%", clock(m.position), m.volume)
 	if m.duration > 0 {
-		right = fmt.Sprintf("%s / %s   vol %d%%", clock(m.position), clock(m.duration), m.volume)
+		right = fmt.Sprintf("%s / %s   vol %3d%%", clock(m.position), clock(m.duration), m.volume)
 	}
 	return columns(left, right, m.viewWidth())
 }
@@ -429,12 +437,26 @@ func (m Model) added(id string) string {
 	return "    "
 }
 
-// star is the mark shown before something the server has starred. Everything
-// else gets a space, so the names in a list stay in one column whether
-// anything is starred or not.
+// star is the mark shown before something the server has starred. It is two
+// columns wide, the mark and the gap after it, so that a starred name is not
+// written against its mark and an unstarred one keeps the same column.
 func (m Model) star(id string) string {
 	if m.starred[id] {
-		return "★"
+		return "★ "
+	}
+	return "  "
+}
+
+// playing is the mark shown against the track being played. The identifier
+// comes from the queue, which is where playback takes it from, so the mark
+// appears on the track wherever it is listed: an album, a playlist or the
+// queue itself.
+func (m Model) playing(id string) string {
+	if id == "" || m.queuedAt < 0 || m.queuedAt >= len(m.queued) {
+		return " "
+	}
+	if m.queued[m.queuedAt].ID == id {
+		return "▶"
 	}
 	return " "
 }
@@ -453,7 +475,32 @@ func (m Model) viewWidth() int {
 	return defaultWidth
 }
 
-const help = "↑↓ move · gg top · G end · enter open · esc back · / filter · : command · space pause · n/p skip · [ ] seek · +/- volume · :q quit"
+// helpItems is the key help, one entry per thing a key does. The footer joins
+// as many as fit, so that a narrow terminal ends on a whole item and says
+// there are more rather than stopping part way through a word.
+var helpItems = []string{
+	"↑↓ move", "gg top", "G end", "enter open", "esc back", "/ filter",
+	": command", "space pause", "n/p skip", "[ ] seek", "+/- volume", ":q quit",
+}
+
+// helpLine is as much of the key help as fits in w, with an ellipsis when
+// something had to be left out. The rest is on the wiki screen.
+func helpLine(w int) string {
+	var b strings.Builder
+	for i, item := range helpItems {
+		next := item
+		if i > 0 {
+			next = " · " + item
+		}
+		// Two columns held back for the ellipsis, so that adding it never
+		// pushes the line over the width it was built to.
+		if lipgloss.Width(b.String())+lipgloss.Width(next)+2 > w {
+			return b.String() + " …"
+		}
+		b.WriteString(next)
+	}
+	return b.String()
+}
 
 // window returns the first row to draw, scrolling only enough to keep the
 // cursor on screen.
