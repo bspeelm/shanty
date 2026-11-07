@@ -1,8 +1,12 @@
 # Keys
 
-shanty has three screens: a list of artists, the albums by one artist, and the
-tracks on one album. You move down into them and back out again. The same keys
-work on all three.
+shanty's main path is three screens deep: a list of artists, the albums by one
+artist, and the tracks on one album. You move down into them and back out
+again.
+
+Beside that path are the queue, your playlists, one playlist, what you have
+starred, search results, this page and the log of what shanty has said. The
+keys below work on all of them, because every one of them is a list.
 
 ## Moving through a list
 
@@ -137,8 +141,6 @@ If nothing matches, the screen says so rather than going blank.
 | `gp` | Playlists |
 | `gs` | Starred |
 
-The playlists screen is not built yet. Pressing its key says so.
-
 ## Cover art
 
 Opening an album shows its cover above the track list, if your terminal can
@@ -185,15 +187,6 @@ the server as you make it, so what the marks show is what is there.
 **`e` finishes.** `esc` moves up a screen as it always does, so you can go back
 to the album list and on to another artist without leaving the playlist. Edit
 mode lasts until you press `e`, however far you browse.
-
-**From a playlist you are looking at, `e` starts.** `gp` and `enter` open one,
-and `e` begins adding to that one without naming it — looking at a playlist is
-knowing which one you mean. `:playlist edit` is for one you are not looking at.
-
-**`r` works there too.** A playlist on screen is a list of what is in it, so
-`r` takes the track under the cursor out without entering edit mode first. If
-the playlist changed since the screen was drawn, the removal is refused rather
-than taking whatever is in that position now.
 
 **From a playlist you are looking at, `e` starts.** `gp` and `enter` open one,
 and `e` begins adding to that one without naming it — looking at a playlist is
