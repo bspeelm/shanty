@@ -68,6 +68,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case PausedChanged:
 		m.paused = bool(msg)
+		// The sky holds while the music is paused and nothing asks for the
+		// next frame, so resuming has to ask again.
+		if m.showSky && !m.paused {
+			return m, m.turnSky()
+		}
 		return m, nil
 	case VolumeChanged:
 		m.volume = int(msg)
@@ -165,6 +170,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.reloaded(ScreenEveryAlbum, plural(len(msg), "album")), nil
+	case ShowVisualiser:
+		m.showSky, m.skyAt = true, 0
+		return m, m.turnSky()
+	case skyTurned:
+		// A tick that arrives after the overlay was dismissed, or while the
+		// music is paused, is the last one: nothing asks for another.
+		if !m.showSky {
+			return m, nil
+		}
+		m.skyAt += skyStep.Seconds()
+		if m.paused {
+			return m, nil
+		}
+		return m, m.turnSky()
 	case ShowWiki:
 		m.screen, m.status, m.filter, m.topic = ScreenWiki, "", "", ""
 		return m.selecting(ScreenWiki, 0), nil
@@ -327,6 +346,21 @@ func (m *Model) take() (int, bool) {
 	return n, true
 }
 
+// skyStep is how long one frame of the visualiser lasts. Twenty a second is
+// slow enough to cost little and fast enough to read as motion.
+const skyStep = 50 * time.Millisecond
+
+// skyTurned asks for the next frame of the visualiser. It is handled here and
+// nowhere else, so nothing outside this package has to know the pattern moves.
+type skyTurned struct{}
+
+// turnSky asks for the next frame after skyStep. Only the handlers that leave
+// the overlay showing call it, so closing the overlay is what stops the
+// pattern rather than a flag that happens to be false.
+func (m Model) turnSky() tea.Cmd {
+	return tea.Tick(skyStep, func(time.Time) tea.Msg { return skyTurned{} })
+}
+
 // goTo handles the key after g. The queue, playlists and starred screens are
 // bound before they exist, so the prefix is whole and says what is missing
 // rather than doing nothing.
@@ -343,6 +377,9 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 	case "b":
 		m.screen, m.status, m.filter = ScreenEveryAlbum, "", ""
 		return m.selecting(ScreenEveryAlbum, 0), nil
+	case "v":
+		m.showSky, m.skyAt = true, 0
+		return m, m.turnSky()
 	case "p":
 		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
 		return m.selecting(ScreenPlaylists, 0), nil
@@ -562,6 +599,10 @@ func asAlbum(p subsonic.Playlist) subsonic.Album {
 
 // back moves up one screen. At the top it does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
+	if m.showSky {
+		m.showSky = false
+		return m, tea.ClearScreen
+	}
 	if len(m.bigArt) > 0 {
 		m.bigArt = nil
 		return m, tea.ClearScreen

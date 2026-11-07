@@ -147,6 +147,7 @@ If nothing matches, the screen says so rather than going blank.
 | `gq` | The queue, opened on the track playing |
 | `gp` | Playlists |
 | `gs` | Starred |
+| `gv` | The visualiser |
 
 ## The library and every album
 
@@ -163,6 +164,19 @@ because that is where you were.
 
 Asked for once and kept. `:reload` on that screen asks again, and `:reload` on
 the library asks for the lists its counts are drawn from.
+
+## The visualiser
+
+`gv` or `:visualizer` fills the screen with a slowly turning pattern: a
+three-armed spiral in a star field, with a ripple running outward through it.
+`esc` puts it away. The row above the keys still says what is playing and how
+far through it is, so the visualiser is somewhere you can leave the screen
+rather than somewhere you have to come back from.
+
+**It does not read the music.** It is drawn from the clock and the size of your
+window. shanty hands every track to mpv, and mpv reports no levels back, so a
+pattern that moved with the sound would mean putting an audio filter in the way
+of the audio. Pausing holds the pattern where it is.
 
 ## Cover art
 
@@ -343,6 +357,7 @@ what the screen shows, then the server, then the program itself.
 |---|---|
 | `:search <words>` | find artists, albums and tracks on the server |
 | `:playlist <verb name>` | list them, or create, delete, edit, rename or shuffle one |
+| `:visualizer` | fill the screen with a turning pattern drawn from the clock |
 | `:shuffle` | play everything on the server in a random order |
 | `:resume` | carry on from the queue saved on the server |
 | `:art` | show the cover of the album you are looking at, filling the screen |

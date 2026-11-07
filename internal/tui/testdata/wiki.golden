@@ -1,11 +1,11 @@
-[1mshanty · wiki · 13 commands[0m
+[1mshanty · wiki · 14 commands[0m
 [2m────────────────────────────────────────────────────────────────[0m
 [7m> :search <words>  find artists, albums and tracks on the server[0m
   :pl… list them, or create, delete, edit, rename or shuffle one
+  :… fill the screen with a turning pattern drawn from the clock
   :shuffle       play everything on the server in a random order
   :resume            carry on from the queue saved on the server
   :art
-  :auto-vol <on… level quiet and loud records against each other
 [2m────────────────────────────────────────────────────────────────[0m
 [2mnothing playing[0m
 [1m[0m[2m────────────────────────────────────────────────────────────────[0m
