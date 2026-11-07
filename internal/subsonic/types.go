@@ -358,6 +358,18 @@ func (c *Client) CreatePlaylist(ctx context.Context, name string) (Playlist, err
 	return *res.Playlist, nil
 }
 
+// ReplacePlaylist sets the tracks of an existing playlist to the given ones in
+// the given order. It replaces the entire contents: a track that is not in the
+// list is no longer in the playlist, and a track may be named more than once.
+// The playlist keeps its identifier and its name.
+func (c *Client) ReplacePlaylist(ctx context.Context, id string, songIDs []string) error {
+	_, err := c.get(ctx, "createPlaylist", url.Values{
+		"playlistId": {id},
+		"songId":     songIDs,
+	})
+	return err
+}
+
 // AddToPlaylist puts a track at the end of a playlist.
 func (c *Client) AddToPlaylist(ctx context.Context, id, songID string) error {
 	_, err := c.get(ctx, "updatePlaylist", url.Values{

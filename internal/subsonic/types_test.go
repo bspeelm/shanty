@@ -1,6 +1,7 @@
 package subsonic_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bspeelm/shanty/internal/subsonic/fake"
@@ -112,5 +113,104 @@ func TestAnErrorListingAlbumsIsReported(t *testing.T) {
 	}
 	if n := albumRequests(srv); n != 1 {
 		t.Errorf("a refusal cost %d requests, want 1", n)
+	}
+}
+
+// TestReplacingAPlaylistReordersIt is what the reorder on screen turns into:
+// one call that sets the whole list.
+func TestReplacingAPlaylistReordersIt(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+	made, err := c.CreatePlaylist(t.Context(), "Evening")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"tr-1", "tr-2", "tr-3"} {
+		if err := c.AddToPlaylist(t.Context(), made.ID, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := c.ReplacePlaylist(t.Context(), made.ID, []string{"tr-3", "tr-1", "tr-2"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Playlist(t.Context(), made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, sg := range got.Songs {
+		ids = append(ids, sg.ID)
+	}
+	if strings.Join(ids, ",") != "tr-3,tr-1,tr-2" {
+		t.Errorf("the playlist holds %v, want tr-3 then tr-1 then tr-2", ids)
+	}
+	if got.Name != "Evening" {
+		t.Errorf("replacing the tracks renamed the playlist to %q", got.Name)
+	}
+}
+
+// TestReplacingAPlaylistWithFewerTracksShortensIt covers the removal half: the
+// tracks left out are gone.
+func TestReplacingAPlaylistWithFewerTracksShortensIt(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+	made, err := c.CreatePlaylist(t.Context(), "Evening")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"tr-1", "tr-2", "tr-3"} {
+		if err := c.AddToPlaylist(t.Context(), made.ID, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := c.ReplacePlaylist(t.Context(), made.ID, []string{"tr-2"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Playlist(t.Context(), made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Songs) != 1 || got.Songs[0].ID != "tr-2" {
+		t.Fatalf("the shortened playlist holds %+v", got.Songs)
+	}
+	if got.SongCount != 1 {
+		t.Errorf("the shortened playlist counts %d tracks", got.SongCount)
+	}
+}
+
+// TestReplacingAPlaylistTheServerDoesNotHaveIsReported keeps the replacing
+// call from quietly making a playlist instead.
+func TestReplacingAPlaylistTheServerDoesNotHaveIsReported(t *testing.T) {
+	c, srv := dial(t, fake.Options{User: user, Password: pass})
+
+	if err := c.ReplacePlaylist(t.Context(), "pl-nope", []string{"tr-1"}); err == nil {
+		t.Fatal("the server accepted a replacement for a playlist it does not have")
+	}
+	if lists := srv.Playlists(); len(lists) != 0 {
+		t.Errorf("the failed replacement left %d playlists behind", len(lists))
+	}
+}
+
+// TestReplacingWithATrackTheServerDoesNotHaveChangesNothing is the other half
+// of issue #6: a rejected replacement must not half-apply.
+func TestReplacingWithATrackTheServerDoesNotHaveChangesNothing(t *testing.T) {
+	c, _ := dial(t, fake.Options{User: user, Password: pass})
+	made, err := c.CreatePlaylist(t.Context(), "Evening")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AddToPlaylist(t.Context(), made.ID, "tr-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.ReplacePlaylist(t.Context(), made.ID, []string{"tr-2", "tr-nope"}); err == nil {
+		t.Fatal("the server accepted a track it does not have")
+	}
+	got, err := c.Playlist(t.Context(), made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Songs) != 1 || got.Songs[0].ID != "tr-1" {
+		t.Errorf("the rejected replacement left %+v", got.Songs)
 	}
 }
