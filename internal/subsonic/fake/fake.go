@@ -349,6 +349,14 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		}
 		s.ok(w, response{Playlist: &p})
 	case "createPlaylist":
+		if id := q.Get("playlistId"); id != "" {
+			if code, why := s.replacePlaylist(id, q["songId"]); code != 0 {
+				s.fail(w, code, why)
+				return
+			}
+			s.ok(w, response{})
+			return
+		}
 		name := q.Get("name")
 		if name == "" {
 			s.fail(w, 10, "Required parameter name is missing")
@@ -635,6 +643,32 @@ func (s *Server) playlistByID(id string) (playlist, bool) {
 		}
 	}
 	return playlist{}, false
+}
+
+// replacePlaylist sets a playlist's tracks to the named ones in that order. It
+// reports a protocol error code and message, or zero when the change was made.
+// A track the library does not have leaves the playlist as it was.
+func (s *Server) replacePlaylist(id string, songIDs []string) (int, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range s.playlists {
+		if s.playlists[i].ID != id {
+			continue
+		}
+		songs := make([]song, 0, len(songIDs))
+		for _, songID := range songIDs {
+			sg, found := s.opt.Library.findSong(songID)
+			if !found {
+				return 70, "Song not found"
+			}
+			songs = append(songs, sg)
+		}
+		s.playlists[i].Songs = songs
+		s.playlists[i].SongCount = len(songs)
+		return 0, ""
+	}
+	return 70, "Playlist not found"
 }
 
 // changePlaylist adds a track, removes one by position, or renames. It reports
