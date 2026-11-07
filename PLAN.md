@@ -146,9 +146,12 @@ off.
 ## §3 What it is not
 
 A local-files player. A download manager. A Jellyfin client. A daemon. An
-auto-updater. A telemetry source. A visualiser. A Lidarr front end. A manager
-of anyone's mpv configuration: shanty starts mpv with `--no-config` and
-explicit flags, and leaves the user's own setup exactly as it found it.
+auto-updater. A telemetry source. A Lidarr front end. A reader of the audio
+itself: the visualiser is a pattern drawn from elapsed time and the frame size,
+and nothing in shanty takes levels or a spectrum off the playback chain
+(ADR-026). A manager of anyone's mpv configuration: shanty starts mpv with
+`--no-config` and explicit flags, and leaves the user's own setup exactly as it
+found it.
 
 "A daemon" means a process that outlives what the user asked for: started at
 login, run by a service manager, or restarted after it dies. shanty does none
@@ -410,9 +413,11 @@ installs from the Homebrew tap. Each refusal names what would bring the work
 back. The routes that exist are the distribution: dnf, apt, Homebrew, and the
 install script.
 
-Deferred indefinitely, per §3: local files, a visualiser, downloads, and
-multiple simultaneous servers. Profiles that switch between servers are fine;
-two connections at once are not.
+Deferred indefinitely, per §3: local files, downloads, and multiple
+simultaneous servers. Profiles that switch between servers are fine; two
+connections at once are not. A visualiser is no longer on that list: ADR-026
+allows a clock-driven one and keeps the refusal of anything that reads the
+audio.
 
 ## §13 Open decisions
 
