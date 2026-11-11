@@ -32,6 +32,7 @@ type player interface {
 	SetReplayGain(ctx context.Context, on bool) error
 	Prefetch(ctx context.Context, url string) error
 	Observe(ctx context.Context, property string) error
+	Hearing(ctx context.Context) (mpv.Hearing, error)
 	Events() <-chan mpv.Event
 	Close() error
 	Detach() error
@@ -123,8 +124,13 @@ const (
 
 // Messages the app sends itself.
 type (
-	playerEvent  mpv.Event
-	playerGone   struct{ err error }
+	playerEvent mpv.Event
+	playerGone  struct{ err error }
+	// heard is one reading of the audio, and ok is false when mpv had none.
+	heard struct {
+		reading mpv.Hearing
+		ok      bool
+	}
 	scrobbled    struct{}
 	detached     struct{}
 	detachFailed struct{ err error }
@@ -197,7 +203,18 @@ func (a app) View() string {
 
 // Update acts on the intents the interface emits and passes everything else
 // to it.
+// Update handles one message, and starts reading the audio when the message
+// put the visualiser on screen.
 func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	showing := a.ui.ShowingSky()
+	next, cmd := a.update(msg)
+	if after, ok := next.(app); ok && !showing && after.ui.ShowingSky() {
+		return after, tea.Batch(cmd, after.listen())
+	}
+	return next, cmd
+}
+
+func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tui.Quit:
 		// Where playback had reached goes to the server before this stops, so
@@ -359,6 +376,18 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case playerEvent:
 		return a.playerSaid(mpv.Event(msg))
+	case heard:
+		// Once the visualiser has gone, the reading is dropped and no other is
+		// asked for.
+		if !a.ui.ShowingSky() {
+			return a, nil
+		}
+		if !msg.ok {
+			return a, a.listen()
+		}
+		r := msg.reading
+		return a.forwardAnd(tui.Heard{Samples: r.Samples, Loudness: r.Loudness,
+			Rate: r.Rate, Position: r.Position}, a.listen())
 	case playerGone:
 		if a.headless {
 			// There is no screen to report this on and nothing left to play.
@@ -655,6 +684,19 @@ func (a app) watchPlayer() tea.Cmd {
 		}
 		return playerEvent(e)
 	}
+}
+
+// listenStep is how often the audio is read while the visualiser is showing.
+const listenStep = 33 * time.Millisecond
+
+// listen reads the audio once, after listenStep.
+func (a app) listen() tea.Cmd {
+	return tea.Tick(listenStep, func(time.Time) tea.Msg {
+		r, err := a.player.Hearing(a.ctx)
+		// No reading is normal before a track's first block is decoded and
+		// while nothing plays. The pattern runs on the clock until one comes.
+		return heard{reading: r, ok: err == nil}
+	})
 }
 
 // observePosition asks mpv to report the position and whether it is paused,

@@ -1315,3 +1315,77 @@ Nothing about cover art. The picture on the album screen is a real thing the
 server sent, and the two features have no code and no argument in common.
 
 ---
+
+## ADR-027 — The visualiser reads loudness from a measuring filter that leaves the audio unchanged
+
+**Status:** accepted. Supersedes the section "What stays refused" of ADR-026.
+The rest of ADR-026 stands. Raises the code budget of ADR-025 from 7,500 to
+7,700 lines.
+
+ADR-026 refused reading the audio for two reasons: mpv reports no levels over
+its socket, and the only way to get levels is to put a filter in the playback
+chain that alters what the server sent. Both were checked against mpv 0.41
+with FFmpeg 9, and neither holds.
+
+- mpv reports what an audio filter measures, through the property
+  `af-metadata/<label>`.
+- The ffmpeg filter `astats` measures the samples that pass through it and
+  passes them on unchanged. With it in the chain, mpv's log shows a 16-bit
+  FLAC going in as `s16` and coming out as `s16`, with no conversion stage
+  enabled.
+
+### What is allowed
+
+mpv is started with one more fixed flag, `--af=@shanty:lavfi=[astats=metadata=1]`,
+so the filter is in place for every track. While the visualiser is showing,
+shanty reads the filter's totals, the sample rate and the playback position
+thirty times a second. It reads nothing while the visualiser is closed.
+
+The filter measures audio about 270 ms before it is heard, which is mpv's
+200 ms buffer plus the output latency. The filter's sample count, which starts
+again at the beginning of each track, gives the point in the track that was
+measured, so each reading is drawn when the playback position reaches that
+point. After a seek the count no longer starts at the beginning of the track,
+and the delay learned before the seek is used.
+
+The visualiser stays a pure function in `internal/tui`. It takes the elapsed
+time, the frame size and a sound made from the readings, and the zero sound
+draws the clock-driven pattern of ADR-026.
+
+### What was measured
+
+A click track, a 10 ms tone every 500 ms, played through the real mpv and the
+real code on PipeWire, at thirty frames a second:
+
+| | drawn minus heard |
+|---|---|
+| from the start of the track | mean 4 ms, range −21 to +31 ms |
+| after a seek | mean 4 ms, range −36 to +59 ms |
+
+23 of the 24 clicks produced a pulse. "Heard" here is mpv's `time-pos`; no
+microphone was used. Bluetooth output and macOS were not measured.
+
+### The code budget
+
+`main` stood at 7,438 lines before this change and the change adds 218: the
+filter and the reading in `internal/mpv`, the placing of readings and the
+sound in `internal/tui`, and the polling in `cmd/shanty`. The total of 7,656
+is over the 7,500 of ADR-025, and the budget is raised to 7,700 to hold it.
+
+### What stays refused
+
+**A filter that changes the samples or their format.** `aspectralstats`,
+which would give a spectrum, makes mpv convert 16-bit audio to float before
+it, and so it is not used.
+
+**Filters and options beyond `astats` with `metadata=1`.** A filter mpv
+cannot create stops all audio, not only the visualiser, so the filter string
+is kept to the one filter and the one option. Which FFmpeg release first
+accepted that option has not been checked against the oldest mpv shanty
+supports.
+
+**A setting to turn the filter off.** ADR-001's reasoning about settings
+applies. The filter does not change what is played, so there is nothing for
+such a setting to protect.
+
+---

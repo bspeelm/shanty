@@ -171,15 +171,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.reloaded(ScreenEveryAlbum, plural(len(msg), "album")), nil
 	case ShowVisualiser:
-		m.showSky, m.skyAt = true, 0
-		return m, m.turnSky()
+		return m.openSky()
+	case Heard:
+		m.ear = m.ear.hear(msg)
+		return m, nil
 	case skyTurned:
 		// A tick that arrives after the overlay was dismissed, or while the
 		// music is paused, is the last one: nothing asks for another.
 		if !m.showSky {
 			return m, nil
 		}
-		m.skyAt += skyStep.Seconds()
+		var level float64
+		var heard bool
+		if m.ear, level, heard = m.ear.take(skyStep.Seconds()); heard {
+			m.sound = m.sound.follow(level)
+		} else {
+			m.sound = m.sound.fade()
+		}
+		m.skyAt += skyStep.Seconds() * (1 + 0.8*m.sound.loud)
 		if m.paused {
 			return m, nil
 		}
@@ -361,9 +370,8 @@ func (m *Model) take() (int, bool) {
 	return n, true
 }
 
-// skyStep is how long one frame of the visualiser lasts. Twenty a second is
-// slow enough to cost little and fast enough to read as motion.
-const skyStep = 50 * time.Millisecond
+// skyStep is how long one frame of the visualiser lasts: thirty a second.
+const skyStep = 33 * time.Millisecond
 
 // skyTurned asks for the next frame of the visualiser. It is handled here and
 // nowhere else, so nothing outside this package has to know the pattern moves.
@@ -374,6 +382,14 @@ type skyTurned struct{}
 // pattern rather than a flag that happens to be false.
 func (m Model) turnSky() tea.Cmd {
 	return tea.Tick(skyStep, func(time.Time) tea.Msg { return skyTurned{} })
+}
+
+// openSky puts the visualiser on screen with nothing heard yet and asks for
+// its first frame.
+func (m Model) openSky() (tea.Model, tea.Cmd) {
+	m.showSky, m.skyAt = true, 0
+	m.ear, m.sound = ear{}, sound{}
+	return m, m.turnSky()
 }
 
 // startReorder takes a copy of the playlist on screen to move about, and
@@ -454,8 +470,7 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 		m.screen, m.status, m.filter = ScreenEveryAlbum, "", ""
 		return m.selecting(ScreenEveryAlbum, 0), nil
 	case "v":
-		m.showSky, m.skyAt = true, 0
-		return m, m.turnSky()
+		return m.openSky()
 	case "p":
 		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
 		return m.selecting(ScreenPlaylists, 0), nil

@@ -33,7 +33,7 @@ code. Numbers may start generous and tighten; they may not silently grow.
 | binary size (linux_amd64, stripped) | 15 MiB | `make budgets` builds exactly that and measures it |
 | packages importing `net/http` | 2 | `internal/subsonic` and its `fake` test server, nothing else |
 | test lines : code lines | ≥ 1 : 3 | `wc -l` over `_test.go` vs the rest; a floor, not a target |
-| code lines | 7,500 | `cmd` and `internal`, non-test, comments and blanks excluded (ADR-025) |
+| code lines | 7,700 | `cmd` and `internal`, non-test, comments and blanks excluded (ADR-027) |
 | comment lines : code lines | 25% | the one **hard** ceiling: over budget removes a comment |
 | live prose | 4,500 lines | every `.md` outside `docs/history/` and `docs/review/` |
 | lockfile-equivalent | go.sum, and `vendor/` derived from it | no second *independent* pinning mechanism; CI regenerates `vendor/` and fails on a difference |
@@ -146,10 +146,10 @@ off.
 ## §3 What it is not
 
 A local-files player. A download manager. A Jellyfin client. A daemon. An
-auto-updater. A telemetry source. A Lidarr front end. A reader of the audio
-itself: the visualiser is a pattern drawn from elapsed time and the frame size,
-and nothing in shanty takes levels or a spectrum off the playback chain
-(ADR-026). A manager of anyone's mpv configuration: shanty starts mpv with
+auto-updater. A telemetry source. A Lidarr front end. A processor of the
+audio: the visualiser reads loudness from a filter that passes every sample
+through unchanged, and nothing in shanty alters what the server sent
+(ADR-027). A manager of anyone's mpv configuration: shanty starts mpv with
 `--no-config` and explicit flags, and leaves the user's own setup exactly as it
 found it.
 
@@ -416,8 +416,8 @@ install script.
 Deferred indefinitely, per §3: local files, downloads, and multiple
 simultaneous servers. Profiles that switch between servers are fine; two
 connections at once are not. A visualiser is no longer on that list: ADR-026
-allows a clock-driven one and keeps the refusal of anything that reads the
-audio.
+allows one, and ADR-027 lets it read loudness through a filter that leaves the
+audio unchanged.
 
 ## §13 Open decisions
 

@@ -73,7 +73,7 @@ func (m Model) View() string {
 	// the progress line below still say what is playing, so it is never a dead
 	// end, and the heading still names the screen esc returns to.
 	if m.showSky {
-		for _, line := range sky(w, visible, m.skyAt) {
+		for _, line := range sky(w, visible, m.skyAt, m.sound) {
 			b.WriteString(faint().Render(line) + "\n")
 		}
 	} else if len(m.bigArt) > 0 {
