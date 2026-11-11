@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"time"
 )
 
 // State is the visualiser between frames: what it has heard, the scene on
@@ -66,10 +67,11 @@ func (s *State) Label() string {
 	return s.cur.label
 }
 
-// Step moves the visualiser on by dt seconds and draws the next frame for a
-// space w cells wide and h tall. track names what is playing; a change of
-// track brings a change of scene.
-func (s *State) Step(w, h int, dt float64, track string) {
+// Step moves the visualiser on by dt seconds and draws the next frame, due at
+// the time now, for a space w cells wide and h tall. track names what is
+// playing; a change of track brings a change of scene. A zero now moves what
+// is heard on by dt instead of by the clock.
+func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	if w <= 0 || h <= 0 {
 		return
 	}
@@ -77,7 +79,7 @@ func (s *State) Step(w, h int, dt float64, track string) {
 		s.resize(w, h)
 	}
 	s.frames++
-	sig := s.lis.step(dt)
+	sig := s.lis.step(dt, now)
 	changed := track != s.track && s.track != ""
 	s.track = track
 

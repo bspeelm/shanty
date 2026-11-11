@@ -23,8 +23,10 @@ type Reading struct {
 	Scale float64
 	// Epoch is the number of samples after which the totals restart.
 	Epoch float64
-	// Position is the playback position when the reading was taken.
+	// Position is the playback position when the reading was taken, and At is
+	// the time on the clock then.
 	Position time.Duration
+	At       time.Time
 }
 
 // Channel is the running totals for one channel.
@@ -62,8 +64,11 @@ type ear struct {
 	epochs int
 	lead   float64
 	// now is the position being heard and taken is how far take has reached,
-	// both in seconds into the track.
+	// both in seconds into the track. pos and at are the position and clock
+	// time of the last reading.
 	now, taken float64
+	pos        float64
+	at         time.Time
 	slices     []slice
 }
 
@@ -77,6 +82,7 @@ func (e *ear) hear(r Reading) {
 	prev, had := e.last, e.have
 	e.last, e.have = r, r.Rate > 0 && len(r.Channels) > 0
 	e.now = r.Position.Seconds()
+	e.pos, e.at = e.now, r.At
 	if !e.have {
 		return
 	}
@@ -153,13 +159,21 @@ func (e *ear) add(prev, r Reading) {
 	e.slices = append(kept, s)
 }
 
-// take moves the position being heard on by step seconds and returns the
-// slices within half a step of it that have not been returned before: the
-// loudest level and bands among them, and their mean air and balance. With
-// none new it returns the newest slice already heard, and false when there is
-// none at all.
-func (e *ear) take(step float64) (slice, bool) {
-	if e.have {
+// take sets the position being heard for a frame drawn at the time now, and
+// returns the slices within half a step of it that have not been returned
+// before: the loudest level and bands among them, and their mean air and
+// balance. With none new it returns the newest slice already heard, and false
+// when there is none at all.
+//
+// The position is the last reading's plus the time since it was taken, so a
+// reading or a frame that waited in line is not drawn late. Without clock
+// times the position moves on by step instead.
+func (e *ear) take(step float64, now time.Time) (slice, bool) {
+	switch {
+	case !e.have:
+	case !now.IsZero() && !e.at.IsZero():
+		e.now = math.Max(e.now, e.pos+now.Sub(e.at).Seconds())
+	default:
 		e.now += step
 	}
 	until := e.now + step/2

@@ -104,6 +104,8 @@ type Model struct {
 	sky      *sky.State
 	skySeed  uint64
 	skyOpens uint64
+	// skyLast is when the last frame of the visualiser was due.
+	skyLast time.Time
 	// bigArt is a cover filling the screen. While it is set it is all there is
 	// to see, and any key takes it away.
 	bigArt []string

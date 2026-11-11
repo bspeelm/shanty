@@ -1,6 +1,9 @@
 package sky
 
-import "math"
+import (
+	"math"
+	"time"
+)
 
 // Signals is what the music is doing on one frame. Every field but Tempo,
 // Beat, Section and Balance runs from 0 to 1.
@@ -97,12 +100,12 @@ const (
 	historyStep = 0.1
 )
 
-// step moves the signals on by dt seconds.
-func (l *listener) step(dt float64) Signals {
+// step moves the signals on by dt seconds, for a frame drawn at now.
+func (l *listener) step(dt float64, now time.Time) Signals {
 	l.clock += dt
 	s := &l.sig
 	s.Section = false
-	in, heard := l.ear.take(dt)
+	in, heard := l.ear.take(dt, now)
 	if !heard {
 		in = slice{}
 	}

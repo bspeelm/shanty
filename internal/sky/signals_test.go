@@ -3,6 +3,7 @@ package sky
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 // onsetTrain is n frames at dt seconds of onset strength with a spike every
@@ -59,7 +60,7 @@ func listen(l *listener, tr *track, from, secs float64, bass, treble func(t floa
 		b, h := bass(at), treble(at)
 		diff := b*band(bassHz, trackRate) + h*band(trebleHz, trackRate)
 		l.ear.hear(tr.block(dt, both(b+h), both(diff), 0, at-0.27))
-		out = append(out, l.step(dt))
+		out = append(out, l.step(dt, time.Time{}))
 	}
 	return out
 }

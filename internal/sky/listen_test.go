@@ -144,22 +144,22 @@ func TestNothingIsHeardBeforeThePositionReachesIt(t *testing.T) {
 	var e ear
 	e.hear(tr.block(0.4, both(0), both(0), 0, 0.13))
 	e.hear(tr.block(0.1, both(0.1), both(0), 0, 0.23))
-	if _, heard := e.take(0); heard {
+	if _, heard := e.take(0, time.Time{}); heard {
 		t.Fatal("audio 0.2 s ahead of the speakers was drawn before it was heard")
 	}
 	e.now = 0.46
-	if s, heard := e.take(0); !heard || s.level == 0 {
+	if s, heard := e.take(0, time.Time{}); !heard || s.level == 0 {
 		t.Errorf("once it was reached, take gave %+v, %v", s, heard)
 	}
 }
 
 func TestAShortPeakBetweenTwoFramesIsStillDrawn(t *testing.T) {
 	e := ear{now: 1, slices: []slice{{at: 0.90, level: 0.2}, {at: 0.93, level: 0.9}, {at: 0.96, level: 0.2}}}
-	s, _ := e.take(0)
+	s, _ := e.take(0, time.Time{})
 	if s.level != 0.9 {
 		t.Errorf("take gave %.2f, want the peak of 0.90", s.level)
 	}
-	if s, _ := e.take(0); s.level != 0.2 {
+	if s, _ := e.take(0, time.Time{}); s.level != 0.2 {
 		t.Errorf("the next frame gave %.2f, want the newest level 0.20", s.level)
 	}
 }
@@ -171,7 +171,7 @@ func TestThePositionMovesOnWithTheFramesBetweenReadings(t *testing.T) {
 	e.hear(tr.block(0.1, both(0.1), both(0), 0, 0.23)) // heard at 0.45 s
 	frames := 0
 	for heard := false; !heard && frames < 10; frames++ {
-		_, heard = e.take(0.033)
+		_, heard = e.take(0.033, time.Time{})
 	}
 	// Frame 7 reaches 0.23 + 7 × 0.033 + half a frame = 0.478 s, the first
 	// within half a frame of 0.45 s.
@@ -187,5 +187,25 @@ func TestSilenceIsTheBottomOfTheScale(t *testing.T) {
 		if got := levelOf(power(tc.db), -50, -5); math.Abs(got-tc.want) > 1e-9 {
 			t.Errorf("%v dB is level %.3f, want %.3f", tc.db, got, tc.want)
 		}
+	}
+}
+
+func TestAReadingHandledLateIsStillDrawnWhereItIsHeard(t *testing.T) {
+	var tr track
+	var e ear
+	clock := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
+	r := tr.block(0.4, both(0), both(0), 0, 0.13)
+	r.At = clock
+	e.hear(r)
+	r = tr.block(0.1, both(0.1), both(0), 0, 0.23) // heard at 0.45 s
+	r.At = clock.Add(100 * time.Millisecond)
+	// However long the reading waited before it was handled, a frame drawn
+	// 220 ms after mpv gave the position draws 0.23 s + 0.22 s = 0.45 s.
+	e.hear(r)
+	if _, heard := e.take(0.033, r.At.Add(220*time.Millisecond)); !heard {
+		t.Fatalf("at %.3f s the slice at 0.45 s was not drawn", e.now)
+	}
+	if math.Abs(e.now-0.45) > 1e-9 {
+		t.Errorf("the position heard was %.3f s, want 0.450 s", e.now)
 	}
 }

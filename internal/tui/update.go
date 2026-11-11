@@ -187,8 +187,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.showSky {
 			return m, nil
 		}
+		dt := skyStep.Seconds()
+		if !m.skyLast.IsZero() && !msg.at.IsZero() {
+			dt = min(max(msg.at.Sub(m.skyLast).Seconds(), 0), 0.1)
+		}
+		m.skyLast = msg.at
 		w, h := m.skySize()
-		m.sky.Step(w, h, skyStep.Seconds(), m.nowPlaying)
+		m.sky.Step(w, h, dt, msg.at, m.nowPlaying)
 		if m.paused {
 			return m, nil
 		}
@@ -375,13 +380,13 @@ const skyStep = 33 * time.Millisecond
 
 // skyTurned asks for the next frame of the visualiser. It is handled here and
 // nowhere else, so nothing outside this package has to know the pattern moves.
-type skyTurned struct{}
+type skyTurned struct{ at time.Time }
 
 // turnSky asks for the next frame after skyStep. Only the handlers that leave
 // the overlay showing call it, so closing the overlay is what stops the
 // pattern rather than a flag that happens to be false.
 func (m Model) turnSky() tea.Cmd {
-	return tea.Tick(skyStep, func(time.Time) tea.Msg { return skyTurned{} })
+	return tea.Tick(skyStep, func(at time.Time) tea.Msg { return skyTurned{at: at} })
 }
 
 // openSky puts the visualiser on screen with nothing heard yet and asks for
@@ -389,8 +394,9 @@ func (m Model) turnSky() tea.Cmd {
 func (m Model) openSky() (tea.Model, tea.Cmd) {
 	m.skyOpens++
 	m.showSky, m.sky = true, sky.New(m.skySeed+m.skyOpens)
+	m.skyLast = time.Time{}
 	w, h := m.skySize()
-	m.sky.Step(w, h, skyStep.Seconds(), m.nowPlaying)
+	m.sky.Step(w, h, skyStep.Seconds(), time.Time{}, m.nowPlaying)
 	return m, m.turnSky()
 }
 
