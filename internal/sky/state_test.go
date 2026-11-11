@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -24,7 +25,7 @@ func play(s *State, tr *track, from, secs float64, w, h int) {
 		}
 		diff := bass*band(bassHz, trackRate) + hats*band(trebleHz, trackRate)
 		s.Hear(tr.block(dt, both(bass+hats), both(diff), 0.05, at-0.27))
-		s.Step(w, h, dt, "track")
+		s.Step(w, h, dt, time.Time{}, "track")
 	}
 }
 
@@ -55,7 +56,7 @@ func TestDifferentSeedsMakeDifferentScenes(t *testing.T) {
 	combos := map[string]bool{}
 	for seed := range uint64(20) {
 		s := New(seed)
-		s.Step(40, 10, 1.0/30, "")
+		s.Step(40, 10, 1.0/30, time.Time{}, "")
 		combos[s.cur.combo()+s.cur.label] = true
 	}
 	if len(combos) < 10 {
@@ -65,7 +66,7 @@ func TestDifferentSeedsMakeDifferentScenes(t *testing.T) {
 
 func TestAboutOneSceneInFifteenIsRare(t *testing.T) {
 	s := New(3)
-	s.Step(40, 10, 1.0/30, "")
+	s.Step(40, 10, 1.0/30, time.Time{}, "")
 	rare := 0
 	const n = 3000
 	for range n {
@@ -81,7 +82,7 @@ func TestAboutOneSceneInFifteenIsRare(t *testing.T) {
 
 func TestARecentCombinationIsNotDrawnAgain(t *testing.T) {
 	s := New(5)
-	s.Step(40, 10, 1.0/30, "")
+	s.Step(40, 10, 1.0/30, time.Time{}, "")
 	repeats := 0
 	var last []string
 	for range 200 {
@@ -131,7 +132,7 @@ func TestEveryWayOfDrawingFillsTheSpaceExactly(t *testing.T) {
 		for _, size := range [][2]int{{1, 1}, {7, 3}, {80, 24}, {203, 61}} {
 			w, h := size[0], size[1]
 			s := New(1)
-			s.Step(w, h, 1.0/30, "")
+			s.Step(w, h, 1.0/30, time.Time{}, "")
 			s.cur.glyphs = g
 			for _, colour := range []bool{true, false} {
 				lines := text(s.Render(colour))
@@ -166,7 +167,7 @@ func TestWithoutColourNothingIsColoured(t *testing.T) {
 
 func TestARareSceneShowsItsNameAndThenHidesIt(t *testing.T) {
 	s := New(4)
-	s.Step(60, 12, 1.0/30, "")
+	s.Step(60, 12, 1.0/30, time.Time{}, "")
 	s.cur = rareScene(rand.New(rand.NewPCG(1, 1)))
 	s.label = 0
 	last := s.Render(false).Lines[11]
@@ -208,7 +209,7 @@ func BenchmarkFrame(b *testing.B) {
 	play(s, &tr, 0, 1, 200, 60)
 	b.ResetTimer()
 	for b.Loop() {
-		s.Step(200, 60, 1.0/30, "track")
+		s.Step(200, 60, 1.0/30, time.Time{}, "track")
 		s.Render(true)
 	}
 }

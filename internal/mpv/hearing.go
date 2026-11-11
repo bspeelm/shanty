@@ -41,8 +41,10 @@ type Hearing struct {
 	// the value of a full-scale sample in the units of Channel.Difference.
 	Rate  int
 	Scale float64
-	// Position is the playback position at the moment of the reading.
+	// Position is the playback position at the moment of the reading, and At
+	// is the time on the clock when mpv reported it.
 	Position time.Duration
+	At       time.Time
 }
 
 // Channel is the filter's totals for one channel.
@@ -76,7 +78,10 @@ func (p *Player) Hearing(ctx context.Context) (Hearing, error) {
 	if err != nil {
 		return Hearing{}, err
 	}
-	return hearingFrom(meta, params, pos)
+	at := time.Now()
+	h, err := hearingFrom(meta, params, pos)
+	h.At = at
+	return h, err
 }
 
 // hearingFrom builds a Hearing from the three property values mpv returned.

@@ -705,7 +705,7 @@ func heardFrom(r mpv.Hearing) tui.Heard {
 		channels[i] = sky.Channel{Loudness: c.Loudness, Difference: c.Difference, Crossings: c.Crossings}
 	}
 	return tui.Heard{Samples: r.Samples, Channels: channels, Rate: r.Rate, Scale: r.Scale,
-		Epoch: mpv.EpochSamples, Position: r.Position}
+		Epoch: mpv.EpochSamples, Position: r.Position, At: r.At}
 }
 
 // observePosition asks mpv to report the position and whether it is paused,
