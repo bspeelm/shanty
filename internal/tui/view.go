@@ -46,9 +46,9 @@ var (
 	statusStyle   = lipgloss.NewStyle().Bold(true)
 )
 
-// View renders the frame. Every string from the server passes through
-// Sanitise on the way.
-func (m Model) View() string {
+// skySize is the width of the frame and the number of rows between its
+// heading and its footer, which the visualiser fills.
+func (m Model) skySize() (int, int) {
 	w, h := m.width, m.height
 	if w <= 0 {
 		w = defaultWidth
@@ -56,7 +56,13 @@ func (m Model) View() string {
 	if h <= 0 {
 		h = defaultHeight
 	}
-	visible := max(1, h-m.chrome())
+	return w, max(1, h-m.chrome())
+}
+
+// View renders the frame. Every string from the server passes through
+// Sanitise on the way.
+func (m Model) View() string {
+	w, visible := m.skySize()
 
 	var b strings.Builder
 	// A picture the terminal is holding is taken away before a screen that is
@@ -73,8 +79,8 @@ func (m Model) View() string {
 	// the progress line below still say what is playing, so it is never a dead
 	// end, and the heading still names the screen esc returns to.
 	if m.showSky {
-		for _, line := range sky(w, visible, m.skyAt, m.sound) {
-			b.WriteString(faint().Render(line) + "\n")
+		for _, line := range paintSky(m.sky.Render(colour), w, visible) {
+			b.WriteString(line + "\n")
 		}
 	} else if len(m.bigArt) > 0 {
 		for _, line := range m.bigArt {

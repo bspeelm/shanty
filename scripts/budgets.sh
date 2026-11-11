@@ -18,7 +18,7 @@ MAX_DIRECT_DEPS=10
 MAX_MODULES=30
 MAX_PANICS=0
 MAX_HTTP_PACKAGES=2
-MAX_CODE_LINES=7700          # ADR-027
+MAX_CODE_LINES=9600          # ADR-028
 MAX_COMMENT_RATIO=25        # hard ceiling: over budget retires prose, never raises this
 MAX_DOC_LINES=4500          # unchanged by ADR-021; prose needs none of it
 MAX_BINARY_BYTES=15728640   # 15 MiB, linux_amd64, stripped
@@ -158,6 +158,19 @@ if command -v go >/dev/null 2>&1 && [ -d internal/tui ]; then
 		echo "$tuiio" | awk '{print "    " $1}' | sort -u
 	else
 		printf 'tui i/o:       none\n'
+	fi
+fi
+
+# internal/sky draws the visualiser for internal/tui and is held to the same
+# rule (ADR-028).
+if command -v go >/dev/null 2>&1 && [ -d internal/sky ]; then
+	skyio=$(go list -mod=readonly -f '{{.ImportPath}} {{join .Imports " "}}' ./internal/sky/... 2>/dev/null \
+		| grep -E ' (net/http|net|os|os/exec)($| )' || true)
+	if [ -n "$skyio" ]; then
+		over "internal/sky does I/O (ADR-028):"
+		echo "$skyio" | awk '{print "    " $1}' | sort -u
+	else
+		printf 'sky i/o:       none\n'
 	fi
 fi
 

@@ -49,13 +49,11 @@ func TestTheVisualiserKeepsAskingForTheNextFrame(t *testing.T) {
 	next, cmd := m.Update(ShowVisualiser{})
 	m = next.(Model)
 
-	was := m.skyAt
-	for range 3 {
+	for i := range 3 {
 		m, cmd = turn(t, m, cmd)
-		if m.skyAt <= was {
-			t.Fatalf("the pattern did not advance: %v then %v", was, m.skyAt)
+		if got := m.sky.Frames(); got != i+2 {
+			t.Fatalf("after opening and %d frames the visualiser had drawn %d", i+1, got)
 		}
-		was = m.skyAt
 	}
 }
 
@@ -101,15 +99,15 @@ func TestPausingHoldsThePatternAndResumingStartsItAgain(t *testing.T) {
 		t.Error("the pattern asked for another frame while the music was paused")
 	}
 
-	stopped := m.skyAt
+	stopped := m.sky.Frames()
 	resumed, cmd := m.Update(PausedChanged(false))
 	m = resumed.(Model)
 	if cmd == nil {
 		t.Fatal("resuming did not start the pattern turning again")
 	}
 	m, _ = turn(t, m, cmd)
-	if m.skyAt <= stopped {
-		t.Errorf("the pattern did not advance after resuming: %v then %v", stopped, m.skyAt)
+	if m.sky.Frames() <= stopped {
+		t.Errorf("the pattern did not advance after resuming: %v then %v", stopped, m.sky.Frames())
 	}
 }
 

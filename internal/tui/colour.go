@@ -2,7 +2,8 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// The three colours the interface uses, and no others. accent means this is
+// The three colours the interface uses, and no others outside the visualiser,
+// which draws in palettes of its own (ADR-028). accent means this is
 // the music: the mark on the track playing and the part of the progress line
 // already played. warning means a question that cannot be undone or a refusal.
 // muted is what faint already says, named rather than left to a terminal's own

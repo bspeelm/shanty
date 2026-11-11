@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/queue"
+	"github.com/bspeelm/shanty/internal/sky"
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
@@ -96,13 +97,13 @@ type Model struct {
 	album      subsonic.Album
 	// art is the cover for album, already rendered, one string per row.
 	art []string
-	// showSky says the visualiser is filling the screen, and skyAt is how far
-	// through its pattern it has turned, in seconds. ear holds the readings
-	// of the audio and sound is what the pattern draws from them.
-	showSky bool
-	skyAt   float64
-	ear     ear
-	sound   sound
+	// showSky says the visualiser is filling the screen and sky is its state.
+	// Each time it opens it is seeded from skySeed and skyOpens, so that it
+	// starts somewhere new.
+	showSky  bool
+	sky      *sky.State
+	skySeed  uint64
+	skyOpens uint64
 	// bigArt is a cover filling the screen. While it is set it is all there is
 	// to see, and any key takes it away.
 	bigArt []string

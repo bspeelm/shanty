@@ -64,7 +64,7 @@ func (r *recorder) Observe(_ context.Context, p string) error {
 	return r.note("observe %s", p)
 }
 func (r *recorder) Hearing(context.Context) (mpv.Hearing, error) {
-	return mpv.Hearing{Samples: 4410, Loudness: -12, Rate: 44100, Position: 0}, r.note("hearing")
+	return mpv.Hearing{Samples: 4410, Channels: []mpv.Channel{{Loudness: -12}}, Rate: 44100, Scale: 32768}, r.note("hearing")
 }
 func (r *recorder) Events() <-chan mpv.Event { return r.events }
 func (r *recorder) Detach() error            { return r.note("detach") }
