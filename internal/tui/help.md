@@ -80,6 +80,17 @@ time, so they do not repeat in the same order. Now and then a scene is a
 single classic algorithm on its own, and its name shows in the corner for a
 few seconds.
 
+It follows the shape of the music as well as its sound. A climb in a song
+gathers the picture in, darker and closer; when it breaks or drops, light
+blooms out; a quiet passage is allowed to be dark and still. The picture
+breathes slowly with the phrases. While it is open, shanty measures the song
+playing and the next one ahead of time, so it can build towards a drop before
+you hear it and change scene as a new section begins.
+
+Some scenes are landscapes: a lake under the moon, a sea at dawn, a storm, an
+aurora. Their light and weather follow the music: cloud gathers as it builds,
+light breaks through as it resolves, snow and stars come in the quiet.
+
 Pausing holds the picture where it is.
 
 ## shuffle

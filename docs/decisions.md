@@ -1631,3 +1631,51 @@ There is no setting to turn measuring off, for the reasons ADR-001 gives
 about settings.
 
 ---
+
+## ADR-031 — The visualiser follows the shape of the music, and draws landscapes
+
+**Status:** accepted. Builds on ADR-028 to ADR-030. Raises the code budget
+from 10,800 to 12,500 lines.
+
+### Tension, release and hush
+
+Three signals describe the shape of the music rather than its sound: tension
+rises with a sustained climb in level, busyness and treble; release fires
+when built tension falls away or a drop lands; hush is the level well below
+the track's average. They can be routed like any signal. Exposure aims at
+0.4, dips towards 0.2 in a hush and lifts on a release. A vignette closes in
+under tension. A bloom of bright parts is strong only on a release or at the
+track's loudest. A breath over four or eight bars moves exposure and feedback
+by a few percent. Calm and Flow damp how far kicks and snaps move parameters.
+
+### Playing to the plan
+
+With the plan of ADR-030, tension follows the plan's builds, a drop or the
+climax sets off a release as it is heard, the light settles two seconds
+before a hush, and a scene change starts a change's length before the next
+section so that it completes on it. A plan that arrives part of the way
+through a track, or a seek, starts from where playback is. Through the real
+mpv, on a generated track with a build from 9 s and a drop at 20 s, tension
+passed 0.5 at 14.5 s and the release fired at 20.02 s.
+
+### Landscapes
+
+Four settings — a lake under the moon, a sea at dawn or dusk, a storm, and
+an aurora — are composed in depth: sky, sun or moon, stars, cloud, ridges,
+water reflecting what is above it, and weather. Tension gathers cloud and
+dims the light; release breaks it through and sends embers or fireflies up;
+a hush stills the water and brings snow and stars. They are drawn in the
+field's own pixels, so warps do not bend the horizon, and a scene with one is
+arranged around it: it is the first layer at a steady weight, the layers over
+it are lighter, its feedback is still, and its exposure follows its own
+brightness. A scene whose landscape leaves is arranged as before. Measured
+over 1,000 scenes each, a landscape appears in 37% for Calm, 41% for Flow,
+17% for Grit and 7% for Drive.
+
+### Measured
+
+Over 72,000 soaked frames every value was within range; the median frame was
+5.0 ms and the worst 30.3 ms, from a scene without a landscape. The jerk
+metric is unchanged for every component that existed before.
+
+---

@@ -31,8 +31,9 @@ type layer struct {
 	presence float64
 	goal     float64
 	// quiet is set once the layer's weight has been lowered to sit over a
-	// landscape.
+	// landscape, and loud is its weight's base from before.
 	quiet bool
+	loud  float64
 }
 
 // scene is a set of layers drawn through a set of warps, with feedback from
@@ -61,6 +62,8 @@ type scene struct {
 	paletteAt              float64
 	label                  string
 	clock                  float64
+	// grounded is set while the scene is arranged around a landscape.
+	grounded bool
 	// char is the character the scene was made or last changed for; zero
 	// when it was made before the music had been heard.
 	char Character
@@ -212,8 +215,10 @@ func (s *scene) ground() {
 	copy(s.layers[1:i+1], s.layers[:i])
 	s.layers[0] = land
 	land.blend, land.weight, land.quiet = blendAdd, param{base: landWeight}, true
+	s.grounded = true
 	for _, l := range s.layers[1:] {
 		if !l.quiet {
+			l.loud = l.weight.base
 			l.weight.base *= 0.5
 			if denseKind(l.name) {
 				l.weight.base *= 0.6
@@ -329,7 +334,24 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 	s.keep.base = st.keep[0] + (st.keep[1]-st.keep[0])*rng.Float64()
 	if land {
 		s.ground()
+	} else if s.grounded {
+		s.unground(rng, st)
 	}
+}
+
+// unground undoes ground once a scene's landscape has gone: the layers take
+// back their weights, and the feedback moves again.
+func (s *scene) unground(rng *rand.Rand, st *style) {
+	s.grounded = false
+	for _, l := range s.layers {
+		if l.quiet && !isLandscape(l.name) {
+			l.weight.base, l.quiet = l.loud, false
+		}
+	}
+	base := s.keep.base
+	s.keep = st.param(rng)
+	s.keep.base = base
+	s.zoom, s.turn = st.param(rng), st.param(rng)
 }
 
 // How far the character must move from the one a scene was made for before a
