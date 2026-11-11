@@ -64,14 +64,19 @@ func TestDifferentSeedsMakeDifferentScenes(t *testing.T) {
 	}
 }
 
+// even is a character with equal weight on every axis.
+var even = Character{0.25, 0.25, 0.25, 0.25}
+
 func TestAboutOneSceneInFifteenIsRare(t *testing.T) {
 	s := New(3)
 	s.Step(40, 10, 1.0/30, time.Time{}, "")
+	st := styleFor(even)
 	rare := 0
 	const n = 3000
 	for range n {
-		s.cur = s.make(Signals{})
-		if s.cur.label != "" {
+		s.cur, s.next = s.make(Signals{}, st, even), nil
+		s.change(Signals{}, st, even, false)
+		if s.next != nil && s.next.label != "" {
 			rare++
 		}
 	}
@@ -86,7 +91,7 @@ func TestARecentCombinationIsNotDrawnAgain(t *testing.T) {
 	repeats := 0
 	var last []string
 	for range 200 {
-		sc := s.make(Signals{})
+		sc := s.make(Signals{}, styleFor(even), even)
 		if sc.label == "" && slices.Contains(last, sc.combo()) {
 			repeats++
 		}
@@ -106,23 +111,35 @@ func TestANewSectionBringsANewScene(t *testing.T) {
 	s := New(11)
 	var tr track
 	play(s, &tr, 0, 2, 40, 10)
-	first := s.cur
+	first, combo := s.cur, s.cur.combo()
 	s.lis.sig.Section = true
 	s.lis.quiet = 20
 	s.lis.short = [3]float64{1, 1, 1}
 	play(s, &tr, 2, 12, 40, 10)
-	if s.cur == first {
+	if s.cur == first && s.cur.combo() == combo {
 		t.Error("a change of section left the same scene on screen")
+	}
+}
+
+func TestTheFirstSceneGivesWayOnceTheMusicIsKnown(t *testing.T) {
+	s := New(13)
+	var tr track
+	play(s, &tr, 0, 2, 40, 10)
+	first, combo := s.cur, s.cur.combo()
+	play(s, &tr, 2, 23, 40, 10)
+	if s.cur == first && s.cur.combo() == combo {
+		t.Error("the first scene was still on screen after twenty-five seconds")
 	}
 }
 
 func TestASteadyTrackKeepsItsSceneForAWhile(t *testing.T) {
 	s := New(13)
 	var tr track
-	play(s, &tr, 0, 2, 40, 10)
-	first := s.cur
-	play(s, &tr, 2, 20, 40, 10)
-	if s.cur != first {
+	// Past the first scene and the change that follows it.
+	play(s, &tr, 0, 30, 40, 10)
+	sc, combo := s.cur, s.cur.combo()
+	play(s, &tr, 30, 20, 40, 10)
+	if s.cur != sc || s.cur.combo() != combo {
 		t.Error("the scene changed within twenty seconds of steady music")
 	}
 }
@@ -168,7 +185,7 @@ func TestWithoutColourNothingIsColoured(t *testing.T) {
 func TestARareSceneShowsItsNameAndThenHidesIt(t *testing.T) {
 	s := New(4)
 	s.Step(60, 12, 1.0/30, time.Time{}, "")
-	s.cur = rareScene(rand.New(rand.NewPCG(1, 1)))
+	s.cur = rareScene(rand.New(rand.NewPCG(1, 1)), styleFor(even), even)
 	s.label = 0
 	last := s.Render(false).Lines[11]
 	if got := last[len(last)-1]; got.Fg != Label || !strings.Contains(got.Text, s.cur.label) {

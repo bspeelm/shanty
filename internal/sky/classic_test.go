@@ -175,3 +175,26 @@ func TestABubbleSortFinishesSorted(t *testing.T) {
 		t.Errorf("the sort finished with %v", bars)
 	}
 }
+
+func TestReactionStaysBoundedThroughRepeatedKicks(t *testing.T) {
+	s := ready(1)
+	f := &s.f
+	f.couple, f.rng, f.dt = 1, rand.New(rand.NewPCG(1, 1)), 1.0/30
+	f.env = make([]float64, f.fw*f.fh)
+	for i := range f.env {
+		f.env[i] = 1
+	}
+	f.warp(nil, nil)
+	r := &reaction{}
+	buf := make([]float64, f.fw*f.fh)
+	for i := range 300 {
+		// A kick that stays high for several frames, eight times a second.
+		f.sig = Signals{Kick: float64(i % 4 / 2), Bass: 1, Air: 1}
+		r.draw(f, [4]float64{0, 0.5, 0.5, 0.5}, float64(i)/30, buf)
+	}
+	for i := range r.a {
+		if r.a[i] < 0 || r.a[i] > 1 || r.b[i] < 0 || r.b[i] > 1 {
+			t.Fatalf("after 300 frames a cell held %v and %v", r.a[i], r.b[i])
+		}
+	}
+}

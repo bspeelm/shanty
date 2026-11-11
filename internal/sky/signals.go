@@ -91,6 +91,8 @@ type listener struct {
 	tempo    tempo
 	history  []float64
 	historyT float64
+	meter    characterMeter
+	char     Character
 }
 
 // historyLen is how many levels the history keeps, one every historyStep
@@ -132,6 +134,7 @@ func (l *listener) step(dt float64, now time.Time) Signals {
 	s.Busy = follow(s.Busy, math.Min(float64(len(l.hits))/24, 1), 0.1, 0.05)
 
 	s.Tempo, s.Phase, s.Beat = l.tempo.step(onset, dt)
+	l.char = l.meter.step(*s, l.tempo.sure, kick, onset, dt)
 	l.section(dt)
 	l.remember(dt)
 	return *s

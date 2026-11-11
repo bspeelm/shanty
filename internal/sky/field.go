@@ -24,12 +24,26 @@ type frame struct {
 	rng     *rand.Rand
 	// xs and ys are every pixel's coordinates after the scene's warps.
 	xs, ys []float64
+	// env is the scene's last frame, fw by fh, and couple is how strongly the
+	// layer being drawn reacts to it, from 0 to 1.
+	env    []float64
+	couple float64
+}
+
+// envAt returns the brightness of the last frame at (x, y) in the field's own
+// units, or 0 where there is none.
+func (f *frame) envAt(x, y float64) float64 {
+	if len(f.env) != f.fw*f.fh {
+		return 0
+	}
+	return bilinear(f.env, f.fw, f.fh, x*f.radius+f.cx, y*f.radius/f.aspect+f.cy)
 }
 
 // warp works out xs and ys for the given warps and their values. A pixel's
 // coordinates are in the field's own units, where the unit circle fills the
-// shorter side.
-func (f *frame) warp(warps []warp, values [][4]float64) {
+// shorter side. Each warp is applied as far as its amount, so that one coming
+// or going bends the coordinates only part of the way.
+func (f *frame) warp(warps []*warp, values [][4]float64) {
 	n := f.fw * f.fh
 	if len(f.xs) != n {
 		f.xs, f.ys = make([]float64, n), make([]float64, n)
@@ -39,7 +53,8 @@ func (f *frame) warp(warps []warp, values [][4]float64) {
 			x := (float64(px) - f.cx) / f.radius
 			y := (float64(py) - f.cy) * f.aspect / f.radius
 			for i, w := range warps {
-				x, y = w.apply(x, y, values[i])
+				wx, wy := w.apply(x, y, values[i])
+				x, y = x+(wx-x)*w.amount, y+(wy-y)*w.amount
 			}
 			f.xs[py*f.fw+px], f.ys[py*f.fw+px] = x, y
 		}
@@ -104,6 +119,16 @@ type warp struct {
 	n     int
 	p     [2]param
 	clock float64
+	// v holds the gliding parameter values. amount is how far the warp is
+	// applied and goal what amount is moving towards: 1 while it belongs to
+	// the scene, 0 while it is leaving. aim is where clock is heading when
+	// turning is stepped on the beat, and beat the beat it last stepped on.
+	v      [2]float64
+	ready  bool
+	amount float64
+	goal   float64
+	aim    float64
+	beat   int
 }
 
 // apply bends (x, y) given the warp's two parameter values and its clock,
@@ -178,7 +203,7 @@ func glide(v, target, dt, tau float64) float64 {
 // bilinear samples a w by h picture at (sx, sy) in cells, blending the four
 // cells around it. Outside the picture it is 0.
 func bilinear(v []float64, w, h int, sx, sy float64) float64 {
-	if sx < 0 || sy < 0 || sx > float64(w-1) || sy > float64(h-1) {
+	if !(sx >= 0 && sy >= 0 && sx <= float64(w-1) && sy <= float64(h-1)) {
 		return 0
 	}
 	x0, y0 := int(sx), int(sy)

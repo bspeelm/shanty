@@ -70,7 +70,7 @@ func TestALayersWeightRisesQuicklyAndFallsSlowly(t *testing.T) {
 	s := New(1)
 	s.Step(40, 10, 1.0/30, zeroTime, "")
 	rng := rand.New(rand.NewPCG(1, 1))
-	l := newLayer(rng, kinds[2])
+	l := newLayer(rng, kinds[2], styleFor(Character{Calm: 1}))
 	l.weight = param{base: 0, src: [2]int{srcKick, srcKick}, depth: [2]float64{1, 0}}
 	sc := &scene{palette: newPalette(rng), layers: []*layer{l}}
 	frame := func(kick float64) float64 {

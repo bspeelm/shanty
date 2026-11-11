@@ -1486,3 +1486,99 @@ A setting to choose scenes, layers or palettes, for the reasons in ADR-026.
 A spectrum from a filter that converts the audio, as in ADR-027.
 
 ---
+
+## ADR-029 — Scenes grow into one another and follow the character of the music
+
+**Status:** accepted. Amends ADR-028's director. Raises the code budget from
+9,600 to 10,800 lines.
+
+ADR-028's director replaced one scene with an unrelated one, chosen the same
+way for any music. This record makes scenes grow out of one another, lets
+layers react to one another, and shapes every choice by the character of the
+music.
+
+### Character, not genre
+
+Genre cannot be told from the signals ADR-028 derives: vocals and guitars read
+as bass, and rock and classical music differ in them mostly by hiss and
+dynamics. So nothing here names a genre. Four continuous weights that add up
+to 1 describe how the music has sounded over the last twelve seconds:
+
+| weight | high when | typical of |
+|---|---|---|
+| Calm | few hits, little change, no beat | ambient, drone |
+| Drive | steady tempo, regular kicks, little change in level | techno, house |
+| Grit | bright and hissing, dense hits at uneven times | rock, metal |
+| Flow | wide dynamics and swells, soft attacks | classical, acoustic |
+
+They are worked out from the tempo's confidence, the regularity of kicks, how
+busy the music is, its brightness, the spread and the swell of its level over
+twelve seconds, and the sharpness of its hits. Measuring starts three seconds
+into a track, so that the level rising from silence is not read as a swell,
+and the weights are taken to describe the music thirteen seconds after that.
+
+Through the real mpv, generated tracks of each kind read as: four-on-the-floor
+kicks at 128 BPM, Drive 0.60; a sustained chord, Calm 0.86; distorted tones
+with uneven noise hits, Grit 0.60; slow swells of a chord, Flow 0.83.
+
+### Style
+
+Each weight has a profile: which components, signals, warps and ways of
+drawing it favours, how quickly parameters glide, how long scenes last and
+take to change, how long trails are, whether turning steps on the beat, and
+the family, saturation and contrast of its palettes. The profiles are blended
+by the weights after squaring them, so that the strongest leads clearly and a
+mixture still blends.
+
+### Scenes grow into one another
+
+A change most often keeps one to three of a scene's layers, which carry on
+exactly where they were — a Game of Life board, a flock or a Lorenz trail is
+not restarted — while one or two fade out and one or two fade in over the
+style's change time. A warp may fold in or out gradually, the palette moves to
+a turned copy of itself or to a new one, and the way of drawing sometimes
+dissolves to another. A scene that has drifted from the character it was made
+for keeps only one layer when it changes.
+
+A new scene fades in instead when the music has moved far from the character
+the scene was made for (a distance over 0.5 once the character has settled),
+on a change of track, for a rare scene, and one change in eight otherwise.
+The first scene, made before anything has been heard, lasts only until the
+character has settled.
+
+### Layers borrow from one another
+
+Each layer reads the scene's last frame, as strongly as a coupling drawn when
+it is made. The Game of Life comes alive where the frame is bright on a kick,
+boids steer towards brightness, ants turn on bright cells, fire is fed from
+the lower part of the frame, reaction–diffusion feeds faster where it is
+bright, rings and sparks start at the brightest point, stars speed through
+bright regions, and trails linger there.
+
+Three components were added for the characters that had fewest: a flow field
+of particles (Calm, Flow), a grid of tiles that changes pattern on each beat
+(Drive), and bursts of sparks on each snap (Grit).
+
+### Permutations
+
+Counting structure only — ordered sets of two to four of 23 components with
+their blends, sequences of one to three warps, and four ways of drawing — there
+are about 10¹¹ distinct scenes, before signal routings, parameter values,
+couplings and palettes. What a viewer sees as variety comes from scenes
+growing out of one another and from the music's character, not from that
+number.
+
+### Measured
+
+A soak of 60 seeds, 40 seconds each across the four kinds of
+track (72,000 frames, 192 scenes made, 25 fades between scenes), drew every
+value within range. At 160 by 48 a frame took a median of 4.5 ms, 10.8 ms at
+the 99th percentile and 19.6 ms at worst, during a fade. The change between
+frames during a scene's growth was 0.14 at the 99th percentile against 0.10
+for a scene at rest.
+
+### The code budget
+
+The count is 10,238 lines, and the budget is raised to 10,800.
+
+---
