@@ -18,6 +18,11 @@ type layer struct {
 	tone   float64
 	clock  float64
 	buf    []float64
+	// v and w are the parameter values and weight drawn with, which glide
+	// towards what the signals ask for rather than jumping there.
+	v     [4]float64
+	w     float64
+	ready bool
 }
 
 // scene is a set of layers drawn through a set of warps, with feedback from
@@ -26,12 +31,20 @@ type scene struct {
 	layers []*layer
 	warps  []warp
 	// keep, zoom and turn set how much of the last frame shows through and
-	// how it is moved before it does.
-	keep, zoom, turn param
-	glyphs           glyphs
-	palette          []RGB
-	label            string
-	clock            float64
+	// how it is moved before it does. bend sets how far the first layer
+	// pushes the coordinates of the layers drawn over it.
+	keep, zoom, turn, bend param
+	// fb holds the gliding values of keep, zoom, turn and bend, and wv0 the
+	// gliding values of the warps' parameters.
+	fb      [4]float64
+	wv0     [][2]float64
+	ready   bool
+	bx      []float64
+	by      []float64
+	glyphs  glyphs
+	palette []RGB
+	label   string
+	clock   float64
 	// gain scales the frame so that its mean brightness stays near
 	// exposure, whatever the layers add up to.
 	gain        float64
@@ -75,6 +88,8 @@ func newScene(rng *rand.Rand, mood Signals) *scene {
 	s.keep = randomParam(rng)
 	s.keep.base = 0.3 + 0.5*(1-energy)
 	s.zoom, s.turn = randomParam(rng), randomParam(rng)
+	s.bend = randomParam(rng)
+	s.bend.base = 0.1 * rng.Float64()
 	return s
 }
 
@@ -151,44 +166,121 @@ func (s *scene) mutate(rng *rand.Rand) {
 	}
 }
 
+// How quickly parameters follow their signals, in seconds. A layer's weight
+// rises faster than it falls, so that a beat still lands.
+const (
+	paramGlide = 0.12
+	riseGlide  = 0.03
+	fallGlide  = 0.15
+)
+
 // step draws the scene's next frame into value and tone.
 func (s *scene) step(f *frame) {
 	n := f.fw * f.fh
 	if len(s.value) != n {
 		s.value, s.tone, s.last = make([]float64, n), make([]float64, n), make([]float64, n)
+		s.bx, s.by = make([]float64, n), make([]float64, n)
 	}
 	s.clock += f.dt
 	sig, clock := f.sig, s.clock
+	if len(s.wv0) != len(s.warps) {
+		s.wv0 = make([][2]float64, len(s.warps))
+	}
 	s.wv = s.wv[:0]
 	for i := range s.warps {
 		w := &s.warps[i]
-		v0, v1 := w.p[0].value(sig, clock), w.p[1].value(sig, clock)
+		for j := range 2 {
+			target := w.p[j].value(sig, clock)
+			if !s.ready {
+				s.wv0[i][j] = target
+			}
+			s.wv0[i][j] = glide(s.wv0[i][j], target, f.dt, paramGlide)
+		}
+		v0, v1 := s.wv0[i][0], s.wv0[i][1]
 		w.clock += f.dt * (v1 - 0.5) * 1.5
 		s.wv = append(s.wv, [4]float64{v0, v1, w.clock})
 	}
+	for i, p := range []param{s.keep, s.zoom, s.turn, s.bend} {
+		target := p.value(sig, clock)
+		if !s.ready {
+			s.fb[i] = target
+		}
+		s.fb[i] = glide(s.fb[i], target, f.dt, paramGlide)
+	}
+	s.ready = true
 	f.warp(s.warps, s.wv)
+	xs, ys := f.xs, f.ys
 
 	clear(s.value)
 	clear(s.tone)
-	for _, l := range s.layers {
+	for k, l := range s.layers {
 		if len(l.buf) != n {
 			l.buf = make([]float64, n)
 		}
-		var v [4]float64
-		for i := range v {
-			v[i] = l.p[i].value(sig, clock)
+		for i := range l.v {
+			target := l.p[i].value(sig, clock)
+			if !l.ready {
+				l.v[i] = target
+			}
+			l.v[i] = glide(l.v[i], target, f.dt, paramGlide)
 		}
-		l.clock += f.dt * (0.2 + 1.8*v[0])
-		l.comp.draw(f, v, l.clock, l.buf)
-		w := l.weight.value(sig, clock)
+		target := l.weight.value(sig, clock)
+		switch {
+		case !l.ready:
+			l.w = target
+		case target > l.w:
+			l.w = glide(l.w, target, f.dt, riseGlide)
+		default:
+			l.w = glide(l.w, target, f.dt, fallGlide)
+		}
+		l.ready = true
+		l.clock += f.dt * (0.2 + 1.8*l.v[0])
+		l.comp.draw(f, l.v, l.clock, l.buf)
 		for i, b := range l.buf {
-			b *= w
+			b *= l.w
 			s.value[i] = l.blend.mix(s.value[i], b)
 			s.tone[i] += (l.tone - s.tone[i]) * b
 		}
+		if k == 0 {
+			s.bendFrom(f, l.buf, xs, ys)
+		}
 	}
+	f.xs, f.ys = xs, ys
 	s.feedback(f, sig)
 	s.expose()
+}
+
+// bendFrom pushes the coordinates the later layers are drawn at outward where
+// the first layer is bright and inward where it is dark, so that they move
+// through it rather than over it.
+func (s *scene) bendFrom(f *frame, base, xs, ys []float64) {
+	k := s.fb[3] * 0.6
+	for i, b := range base {
+		d := 1 + k*(b-0.5)
+		s.bx[i], s.by[i] = xs[i]*d, ys[i]*d
+	}
+	f.xs, f.ys = s.bx, s.by
+}
+
+// feedback lets the last frame show through, moved by the scene's zoom and
+// turn and pushed outward by a kick, wherever it is brighter than the new one.
+func (s *scene) feedback(f *frame, sig Signals) {
+	keep := 0.3 + 0.55*s.fb[0]
+	if s.label != "" {
+		keep = 0
+	}
+	zoom := 0.96 + 0.06*s.fb[1] + 0.03*sig.Kick
+	sn, cs := math.Sincos((s.fb[2] - 0.5) * 0.08)
+	for py := range f.fh {
+		for px := range f.fw {
+			dx, dy := (float64(px)-f.cx)/zoom, (float64(py)-f.cy)*f.aspect/zoom
+			sx := dx*cs - dy*sn + f.cx
+			sy := (dx*sn+dy*cs)/f.aspect + f.cy
+			i := py*f.fw + px
+			s.value[i] = math.Max(s.value[i], bilinear(s.last, f.fw, f.fh, sx, sy)*keep)
+		}
+	}
+	copy(s.last, s.value)
 }
 
 // exposure is the mean brightness a frame is scaled towards.
@@ -211,28 +303,4 @@ func (s *scene) expose() {
 	for i, v := range s.value {
 		s.value[i] = clamp01(v * s.gain)
 	}
-}
-
-// feedback lets the last frame show through, moved by the scene's zoom and
-// turn, wherever it is brighter than the new one.
-func (s *scene) feedback(f *frame, sig Signals) {
-	keep := 0.3 + 0.55*s.keep.value(sig, s.clock)
-	if s.label != "" {
-		keep = 0
-	}
-	zoom := 0.96 + 0.06*s.zoom.value(sig, s.clock)
-	sn, cs := math.Sincos((s.turn.value(sig, s.clock) - 0.5) * 0.08)
-	for py := range f.fh {
-		for px := range f.fw {
-			dx, dy := (float64(px)-f.cx)/zoom, (float64(py)-f.cy)*f.aspect/zoom
-			sx := dx*cs - dy*sn + f.cx
-			sy := (dx*sn+dy*cs)/f.aspect + f.cy
-			ix, iy := int(sx+0.5), int(sy+0.5)
-			i := py*f.fw + px
-			if ix >= 0 && iy >= 0 && ix < f.fw && iy < f.fh {
-				s.value[i] = math.Max(s.value[i], s.last[iy*f.fw+ix]*keep)
-			}
-		}
-	}
-	copy(s.last, s.value)
 }

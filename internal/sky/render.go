@@ -92,16 +92,36 @@ func colourAt(v, tone float64) int {
 	return min(max(i, 1), paletteSize-1)
 }
 
-// render draws value and tone, both fw by fh, as h lines w cells wide. When
-// colour is false every run is None and half blocks are drawn as shades.
-func render(value, tone []float64, fw, fh, w, h int, g glyphs, colour bool) [][]Run {
-	if g == glyphHalf && !colour {
+// look is how a frame is turned into characters: from glyphs to next, with
+// the share of cells already drawn as next given by fade, and shift moving
+// every cell along the palette.
+type look struct {
+	glyphs, next glyphs
+	fade, shift  float64
+	colour       bool
+}
+
+// glyphsAt returns how cell (c, r) is drawn. During a fade each cell changes
+// at its own moment, so the change sweeps across the frame as a dissolve.
+func (k look) glyphsAt(c, r int) glyphs {
+	g := k.glyphs
+	if hash(c, r) < k.fade {
+		g = k.next
+	}
+	if g == glyphHalf && !k.colour {
 		g = glyphShade
 	}
+	return g
+}
+
+// render draws value and tone, both fw by fh, as h lines w cells wide. When
+// colour is off every run is None and half blocks are drawn as shades.
+func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
+	colour := k.colour
 	sample := func(sx, sy float64) (float64, float64) {
 		px := min(int(sx*float64(fw)), fw-1)
 		py := min(int(sy*float64(fh)), fh-1)
-		return value[py*fw+px], tone[py*fw+px]
+		return value[py*fw+px], clamp01(tone[py*fw+px] + k.shift)
 	}
 	lines := make([][]Run, h)
 	for r := range h {
@@ -109,6 +129,7 @@ func render(value, tone []float64, fw, fh, w, h int, g glyphs, colour bool) [][]
 		for c := range w {
 			x0, y0 := float64(c)/float64(w), float64(r)/float64(h)
 			cw, ch := 1/float64(w), 1/float64(h)
+			g := k.glyphsAt(c, r)
 			switch g {
 			case glyphBraille:
 				bits, peak, ptone := 0, 0.0, 0.0

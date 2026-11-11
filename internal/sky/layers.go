@@ -129,9 +129,22 @@ func (s *splat) begin(f *frame, keep float64) {
 	}
 }
 
+// plot draws a point of brightness v at (x, y), shared between the four
+// pixels around it so that a moving point moves smoothly.
 func (s *splat) plot(f *frame, x, y, v float64) {
-	if i, ok := f.pixel(x, y); ok {
-		s.v[i] = math.Max(s.v[i], v)
+	px := x*f.radius + f.cx
+	py := y*f.radius/f.aspect + f.cy
+	x0, y0 := math.Floor(px), math.Floor(py)
+	fx, fy := px-x0, py-y0
+	for _, c := range [4][3]float64{
+		{x0, y0, (1 - fx) * (1 - fy)}, {x0 + 1, y0, fx * (1 - fy)},
+		{x0, y0 + 1, (1 - fx) * fy}, {x0 + 1, y0 + 1, fx * fy},
+	} {
+		ix, iy := int(c[0]), int(c[1])
+		if ix >= 0 && iy >= 0 && ix < f.fw && iy < f.fh {
+			i := iy*f.fw + ix
+			s.v[i] = math.Max(s.v[i], v*math.Sqrt(c[2]))
+		}
 	}
 }
 
@@ -147,10 +160,7 @@ func (s *splat) line(f *frame, x0, y0, x1, y1, v float64) {
 // show draws the splat into buf through the warps.
 func (s *splat) show(f *frame, buf []float64) {
 	f.fill(buf, func(x, y float64) float64 {
-		if i, ok := f.pixel(x, y); ok {
-			return s.v[i]
-		}
-		return 0
+		return bilinear(s.v, f.fw, f.fh, x*f.radius+f.cx, y*f.radius/f.aspect+f.cy)
 	})
 }
 
