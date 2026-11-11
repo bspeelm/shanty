@@ -88,6 +88,9 @@ func (l *life) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 		}
 		l.place(shape, f.rng.IntN(l.w), f.rng.IntN(l.h))
 	}
+	if f.sig.Kick > 0.6 && f.couple > 0 {
+		l.seedFrom(f)
+	}
 	l.carry += f.dt * (4 + 20*v[0])
 	for ; l.carry >= 1; l.carry-- {
 		l.alive = lifeStep(l.alive, l.w, l.h)
@@ -101,6 +104,20 @@ func (l *life) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 		}
 	}
 	l.show(f, buf)
+}
+
+// seedFrom brings cells to life where the last frame was bright, as many as
+// the layer is coupled.
+func (l *life) seedFrom(f *frame) {
+	ex, ey := float64(f.fw)/f.radius, float64(f.fh)*f.aspect/f.radius
+	for y := range l.h {
+		for x := range l.w {
+			e := f.envAt((float64(x)/float64(l.w)-0.5)*ex, (float64(y)/float64(l.h)-0.5)*ey)
+			if e > 0.6 && f.rng.Float64() < f.couple*0.3 {
+				l.alive[y*l.w+x] = true
+			}
+		}
+	}
 }
 
 func (l *life) place(shape [][2]int, x, y int) {
@@ -198,8 +215,10 @@ type fire struct{ grid }
 func (g *fire) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 	g.fit(f, 4000)
 	feed := 0.4 + 0.6*f.sig.Level + 0.5*f.sig.Kick
+	ex, ey := float64(f.fw)/f.radius, float64(f.fh)*f.aspect/f.radius
 	for x := range g.w {
-		g.v[(g.h-1)*g.w+x] = clamp01(feed * f.rng.Float64() * 1.4)
+		e := f.envAt((float64(x)/float64(g.w)-0.5)*ex, 0.4*ey)
+		g.v[(g.h-1)*g.w+x] = clamp01((feed + f.couple*e) * f.rng.Float64() * 1.4)
 	}
 	cool := 0.02 + 0.08*(1-v[1])
 	for y := 0; y < g.h-1; y++ {
@@ -302,9 +321,15 @@ func (a *ants) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 	if f.sig.Kick > 0.7 && len(a.ants) < 12 {
 		a.ants = append(a.ants, [3]int{f.rng.IntN(a.w), f.rng.IntN(a.h), f.rng.IntN(4)})
 	}
+	ex, ey := float64(f.fw)/f.radius, float64(f.fh)*f.aspect/f.radius
 	for range 2 + int(30*v[0]) {
 		for i := range a.ants {
 			a.ants[i] = antStep(a.black, a.w, a.h, a.ants[i])
+			ant := &a.ants[i]
+			e := f.envAt((float64(ant[0])/float64(a.w)-0.5)*ex, (float64(ant[1])/float64(a.h)-0.5)*ey)
+			if e > 0.6 && f.rng.Float64() < f.couple*0.2 {
+				ant[2] = (ant[2] + 1) % 4
+			}
 		}
 	}
 	for i, b := range a.black {
@@ -340,6 +365,8 @@ func antStep(black []bool, w, h int, ant [3]int) [3]int {
 type reaction struct {
 	grid
 	a, b []float64
+	// kicked is set while a kick lasts, so that each kick seeds once.
+	kicked bool
 }
 
 func (r *reaction) draw(f *frame, v [4]float64, clock float64, buf []float64) {
@@ -349,7 +376,8 @@ func (r *reaction) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 			r.a[i] = 1
 		}
 	}
-	if f.sig.Kick > 0.6 || clock < f.dt*2 {
+	kick := f.sig.Kick > 0.6
+	if (kick && !r.kicked) || clock < f.dt*2 {
 		cx, cy := f.rng.IntN(r.w), f.rng.IntN(r.h)
 		for dy := -2; dy <= 2; dy++ {
 			for dx := -2; dx <= 2; dx++ {
@@ -357,9 +385,19 @@ func (r *reaction) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 			}
 		}
 	}
+	r.kicked = kick
 	feed := 0.03 + 0.02*f.sig.Bass
 	kill := 0.058 + 0.006*f.sig.Air
 	gw, gh := r.w, r.h
+	ex, ey := float64(f.fw)/f.radius, float64(f.fh)*f.aspect/f.radius
+	extra := make([]float64, gw*gh)
+	if f.couple > 0 {
+		for y := range gh {
+			for x := range gw {
+				extra[y*gw+x] = 0.015 * f.couple * f.envAt((float64(x)/float64(gw)-0.5)*ex, (float64(y)/float64(gh)-0.5)*ey)
+			}
+		}
+	}
 	for range 2 + int(6*v[0]) {
 		na, nb := make([]float64, len(r.a)), make([]float64, len(r.b))
 		for y := range gh {
@@ -370,8 +408,11 @@ func (r *reaction) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 						c[((y+1)%gh)*gw+x] + c[((y-1+gh)%gh)*gw+x] - 4*c[i]
 				}
 				abb := r.a[i] * r.b[i] * r.b[i]
-				na[i] = r.a[i] + 0.2*lap(r.a) - abb + feed*(1-r.a[i])
-				nb[i] = r.b[i] + 0.1*lap(r.b) + abb - (feed+kill)*r.b[i]
+				fe := feed + extra[i]
+				// The two chemicals are kept between 0 and 1, as they are in
+				// the model, which keeps each step stable.
+				na[i] = clamp01(r.a[i] + 0.2*lap(r.a) - abb + fe*(1-r.a[i]))
+				nb[i] = clamp01(r.b[i] + 0.1*lap(r.b) + abb - (fe+kill)*r.b[i])
 			}
 		}
 		r.a, r.b = na, nb
@@ -466,6 +507,13 @@ func (b *flock) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 			nb[3] += (cy/k*pull + (vy/k-me[3])*0.5 + ay*0.02) * f.dt * 4
 		}
 		nb[2], nb[3] = nb[2]-me[0]*f.dt*0.5, nb[3]-me[1]*f.dt*0.5
+		if f.couple > 0 {
+			const h = 0.05
+			gx := f.envAt(me[0]+h, me[1]) - f.envAt(me[0]-h, me[1])
+			gy := f.envAt(me[0], me[1]+h) - f.envAt(me[0], me[1]-h)
+			nb[2] += gx / (2 * h) * f.couple * f.dt * 3
+			nb[3] += gy / (2 * h) * f.couple * f.dt * 3
+		}
 		if s := math.Hypot(nb[2], nb[3]); s > 0 {
 			nb[2], nb[3] = nb[2]/s*speed, nb[3]/s*speed
 		}

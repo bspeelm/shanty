@@ -61,14 +61,24 @@ Each scene is made of a few layers, such as spirals, tunnels, rings,
 star fields, flocks, fractals and cellular automata, drawn through mirrors,
 twists and kaleidoscopes, in a palette of its own. The bass, the treble, the
 hiss, the stereo balance, the beat and how busy the music is each drive part
-of the scene, and which part changes from scene to scene. What it draws is
-lined up with what you hear.
+of the scene, and which part changes from scene to scene. Layers also react
+to one another: a flock is drawn towards what is bright, the Game of Life
+grows where the picture is lit. What it draws is lined up with what you hear.
 
-The scene changes when the music changes character, when the track changes,
-and every minute or two otherwise, fading from one to the next on the beat.
-Scenes are made fresh each time, so they do not repeat in the same order.
-Now and then a scene is a single classic algorithm on its own, and its name
-shows in the corner for a few seconds.
+It listens for the character of the music and draws to suit it. Quiet,
+sustained music gets slow, deep-coloured scenes with long trails; a steady
+dance beat gets bright, hard-edged scenes that step on the beat; loud, bright,
+busy music gets fire, sparks and flocks in hot colours; music that swells and
+falls gets flowing lines and figures in warm colours. Most music is a mixture,
+and the scenes are too. It takes about fifteen seconds of a track to judge.
+
+Scenes grow into one another: some layers stay, carrying on where they were,
+while others fade out and new ones fade in, and the colours and the way of
+drawing shift across. When the music changes character, or a new track sounds
+quite different, a new scene fades in instead. Scenes are made fresh each
+time, so they do not repeat in the same order. Now and then a scene is a
+single classic algorithm on its own, and its name shows in the corner for a
+few seconds.
 
 Pausing holds the picture where it is.
 

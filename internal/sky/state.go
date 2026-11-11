@@ -34,15 +34,17 @@ type State struct {
 	frames  int
 }
 
-// The bounds on how long a scene stays before the director moves on, and how
-// long a crossfade takes, in seconds.
+// The shortest crossfade between two scenes, in seconds, and how long a rare
+// scene shows its name.
 const (
-	sceneMin = 45
-	sceneMax = 120
 	fadeMin  = 4
-	fadeMax  = 8
-	// labelFor is how long a rare scene shows its name.
 	labelFor = 5
+	// firstLife is how long the first scene lasts, in seconds: long enough
+	// for the character to settle.
+	firstLife = settleAfter + 1
+	// driftChange is how far the music's character may move from the one
+	// the scene on screen was made for before it is replaced.
+	driftChange = 0.5
 )
 
 // New returns a visualiser whose scenes are drawn from seed.
@@ -55,6 +57,9 @@ func (s *State) Hear(r Reading) { s.lis.ear.hear(r) }
 
 // Frames is how many frames Step has drawn.
 func (s *State) Frames() int { return s.frames }
+
+// Character is how the music has sounded over the last several seconds.
+func (s *State) Character() Character { return s.lis.char }
 
 // Signals is what the music was doing on the last frame.
 func (s *State) Signals() Signals { return s.lis.sig }
@@ -82,28 +87,41 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	sig := s.lis.step(dt, now)
 	changed := track != s.track && s.track != ""
 	s.track = track
+	if changed {
+		s.lis.meter.restart()
+	}
+	char := s.lis.char
+	st := styleFor(char)
 
 	if s.cur == nil {
-		s.cur = s.make(sig)
+		s.cur = s.make(sig, st, char)
 		s.label = 0
+		// The first scene is made before the music's character is known, so
+		// it gives way soon to one that is made with it.
+		s.life = firstLife
 	}
 	s.age += dt
 	s.label += dt
-	if s.next == nil {
-		if sig.Section || changed || s.age > s.life {
+	if s.next == nil && !s.cur.changing() {
+		// Music that has turned out unlike what the scene was made for is a
+		// reason to start afresh: the first scene, made before anything was
+		// heard; a new track; or a track that changes its nature.
+		moved := s.age > 8 && s.lis.meter.settled() && s.cur.char.distance(char) > driftChange
+		if sig.Section || changed || moved || s.age > s.life {
 			s.waiting += dt
-			if sig.Tempo == 0 || (sig.Beat%4 == 0 && sig.Phase < 0.2) || s.waiting > 3 || changed {
-				s.next = s.make(sig)
-				s.fade, s.fadeLen = 0, fadeMin+(fadeMax-fadeMin)*s.sims.Float64()
-				if changed {
-					s.fadeLen = fadeMin
-				}
+			bars := 4
+			if st.lock > 0.5 {
+				bars = 16
+			}
+			onBar := sig.Tempo == 0 || (sig.Beat%bars == 0 && sig.Phase < 0.2)
+			if onBar || s.waiting > 8 || changed {
+				s.change(sig, st, char, changed || moved)
 			}
 		}
 	}
 	if sig.Tempo > 0 && sig.Beat%8 == 0 && sig.Beat != s.moved && sig.Kick > 0.7 {
 		s.moved = sig.Beat
-		s.cur.mutate(s.sims)
+		s.cur.mutate(s.sims, st)
 	}
 
 	s.f.dt, s.f.sig, s.f.history, s.f.rng = dt, sig, s.lis.history, s.sims
@@ -143,29 +161,61 @@ func (s *State) resize(w, h int) {
 	s.value, s.tone = make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)
 }
 
-// make draws a new scene. One in fifteen is a rare scene, never two in a row,
-// and a combination of components seen in the last six scenes is drawn again.
-func (s *State) make(mood Signals) *scene {
+// change moves on from the current scene. Most often the scene grows into
+// the next in place, keeping some of its layers. It starts afresh, fading
+// across to a new scene, when fresh is set, when the scene was made for a
+// character far from the music's now or before the music was heard, for a
+// rare scene, after a rare scene, and one time in eight otherwise, so that
+// no line of scenes runs for ever.
+func (s *State) change(sig Signals, st *style, c Character, fresh bool) {
+	rng := s.rng()
+	s.age, s.waiting = 0, 0
+	s.life = st.life[0] + (st.life[1]-st.life[0])*rng.Float64()
+	rare := s.cur.label == "" && rng.IntN(15) == 0
+	unlike := s.cur.char == (Character{}) || s.cur.char.distance(c) > freshChange
+	if fresh || unlike || rare || s.cur.label != "" || rng.IntN(8) == 0 {
+		if rare {
+			s.next = rareScene(rng, st, c)
+		} else {
+			s.next = s.make(sig, st, c)
+		}
+		s.fade, s.fadeLen = 0, math.Max(fadeMin, st.morph/2)
+		return
+	}
+	s.cur.evolve(rng, st, c)
+	s.remember(s.cur.combo())
+}
+
+// rng returns a random source for the next scene, drawn from the seed, the
+// track and how many scenes have been made.
+func (s *State) rng() *rand.Rand {
 	s.made++
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(s.track)) // writing to a hash cannot fail
-	rng := rand.New(rand.NewPCG(s.seed^h.Sum64(), s.made))
-	s.age, s.life = 0, sceneMin+(sceneMax-sceneMin)*rng.Float64()
-	if (s.cur == nil || s.cur.label == "") && rng.IntN(15) == 0 {
-		return rareScene(rng)
-	}
+	return rand.New(rand.NewPCG(s.seed^h.Sum64(), s.made))
+}
+
+// make draws a new scene in the given style, avoiding a combination of
+// components seen in the last six scenes.
+func (s *State) make(mood Signals, st *style, c Character) *scene {
+	rng := s.rng()
+	s.age, s.life = 0, st.life[0]+(st.life[1]-st.life[0])*rng.Float64()
 	var sc *scene
 	for range 6 {
-		sc = newScene(rng, mood)
+		sc = newScene(rng, st, c, mood)
 		if !slices.Contains(s.recent, sc.combo()) {
 			break
 		}
 	}
-	s.recent = append(s.recent, sc.combo())
+	s.remember(sc.combo())
+	return sc
+}
+
+func (s *State) remember(combo string) {
+	s.recent = append(s.recent, combo)
 	if len(s.recent) > 6 {
 		s.recent = s.recent[1:]
 	}
-	return sc
 }
 
 // Render returns the last frame drawn by Step as a picture w by h. Without
@@ -175,12 +225,12 @@ func (s *State) Render(colour bool) Picture {
 		return Picture{}
 	}
 	sig := s.lis.sig
-	k := look{glyphs: s.cur.glyphs, next: s.cur.glyphs, colour: colour,
-		shift: 0.15 * (sig.Treble - sig.Bass)}
+	k := look{glyphs: s.cur.glyphs, next: s.cur.toGlyphs, fade: smooth(0, 1, s.cur.glyphsAt),
+		colour: colour, shift: 0.15 * (sig.Treble - sig.Bass)}
 	palette := s.cur.palette
 	if s.next != nil {
 		t := smooth(0, 1, s.fade)
-		k.next, k.fade = s.next.glyphs, t
+		k.glyphs, k.next, k.fade = s.cur.drawnGlyphs(), s.next.drawnGlyphs(), t
 		palette = blendPalettes(s.cur.palette, s.next.palette, t)
 	}
 	lines := render(s.value, s.tone, s.f.fw, s.f.fh, s.w, s.h, k)

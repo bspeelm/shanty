@@ -93,5 +93,5 @@ func periodOf(onsets []float64, dt float64) (float64, float64) {
 	if d := a - 2*b + c; d < 0 {
 		bestLag += 0.5 * (a - c) / d
 	}
-	return 60 / (bestLag * dt), clamp01(best)
+	return math.Min(math.Max(60/(bestLag*dt), 60), 180), clamp01(best)
 }
