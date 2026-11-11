@@ -45,6 +45,7 @@ program gives it.
 | [`internal/backlog`](internal/backlog) | the plays a server would not accept, kept until it will |
 | [`internal/cover`](internal/cover) | cover art on disk, and what turns it into something a terminal shows |
 | [`internal/tui`](internal/tui) | the screens; renders and emits intents, does no I/O |
+| [`internal/sky`](internal/sky) | the visualiser: signals from the audio, scenes and their rendering; does no I/O |
 
 Three rules hold that shape, and `make budgets` enforces all three: `internal/tui`
 does no I/O, `internal/subsonic` is the only package importing `net/http`, and

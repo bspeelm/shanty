@@ -1389,3 +1389,100 @@ applies. The filter does not change what is played, so there is nothing for
 such a setting to protect.
 
 ---
+
+## ADR-028 — The visualiser is a director of scenes in its own package, drawn in its own colours
+
+**Status:** accepted. Amends ADR-026, whose single pattern with no settings
+becomes a set of scenes drawn at random, and ADR-027, whose filter string
+changes. Raises the code budget from 7,700 to 9,600 lines.
+
+ADR-027 made the visualiser follow the loudness of the music. Watched with real
+music, one spiral following one number held attention for a short time. This
+record replaces the pattern with scenes built from components, driven by
+several signals, and changed as the music changes.
+
+### What is heard
+
+The filter becomes
+`asetnsamples=n=1024:p=0,astats=metadata=1:reset=64`. It still passes every
+sample through unchanged, and a 16-bit FLAC still goes in and out of it as
+`s16`. Cutting the audio into equal blocks and restarting the totals every 64
+blocks keeps the totals small enough that the difference between two readings
+is precise, and lets the count of samples be carried across each restart, so
+the point in the track a reading describes is still known.
+
+From the totals for each channel — the RMS level, the RMS of the difference
+between neighbouring samples, and the count of zero crossings — `internal/sky`
+works out, for the stretch between two readings:
+
+- **Bass and treble**, by treating the sound as one low and one high tone:
+  the level gives their sum and the difference gives a sum weighted towards
+  the high one, which is enough to solve for both. A kick drum reads as bass
+  and a hi-hat as treble; a mid-range sound reads as mostly bass.
+- **Air**, the share of samples that cross zero, which rises with hiss and
+  cymbals.
+- **Balance**, from the two channels' levels.
+
+From those over time it follows a kick and a snap (sharp rises in bass and
+treble), how busy the music is, the tempo and the beat (an autocorrelation of
+the hits over the last eight seconds), and changes of section (the last two
+seconds differing sharply from the last twenty).
+
+Measured through the real mpv with generated test files: a 40 Hz kick read as
+bass 0.83 and treble 0.13; 7 kHz noise as bass 0 and treble 0.89; a panned
+tone moved the balance from −1 to 1; a 120 BPM click was heard as 120.2 BPM,
+and its hits were drawn a mean of 10 ms after they were heard (range −16 to
++38 ms).
+
+### What is drawn
+
+A scene is two to four layers drawn through one to three warps, with feedback
+from its own last frame, one of four ways of drawing cells (shade blocks,
+ASCII, braille dots and half blocks) and a palette. Each parameter of each
+layer and warp follows one or two signals chosen at random, so the same layer
+answers to the bass in one scene and to the balance in the next.
+
+The layers are ten fields and figures (spiral, rings, plasma, tunnel, star
+field, orbits, cells, lattice, terrain, sun) and ten classic algorithms
+(Conway's Game of Life, a Julia set, the Lorenz attractor, the fire effect,
+elementary cellular automata, Langton's ant, Gray–Scott reaction–diffusion,
+the chaos game, boids and Fourier epicycles). About one scene in fifteen is
+a single classic algorithm on its own — Life, rule 110, the ant, a maze
+carving itself, or a bubble sort — and shows its name for five seconds.
+
+A director changes scene on a change of section, a change of track, or after
+45 to 120 seconds, fading over four to eight seconds and starting on the bar
+when the tempo is known. It does not draw a combination of layers used in
+the last six scenes, and on a strong kick every eight beats it redraws one
+parameter. Scene choice leans on the music: busy and loud moments favour
+layers that fill the frame, quiet ones favour points, lines and long trails.
+
+The field is at most 36,000 pixels whatever the size of the terminal, and the
+renderers sample it. On this machine a 200 by 60 frame measured 1 to 7 ms
+across 40 scenes.
+
+### Where it lives
+
+All of it is in `internal/sky`, which does no I/O. `make budgets` checks its
+imports the way it checks `internal/tui`'s. Everything it draws follows from a
+seed and the readings it is given, which is how its tests run. The seed is
+taken from the clock when shanty starts.
+
+### Colour
+
+The visualiser draws in palettes of its own, made per scene, which is an
+exception to the three colours of the rest of the interface. The escape
+sequences come from lipgloss, so they match what the terminal supports.
+Golden files are drawn without colour, as before.
+
+### The code budget
+
+The branch this builds on stood at 7,656 lines. With this change it is 9,439,
+and the budget is raised to 9,600.
+
+### What stays refused
+
+A setting to choose scenes, layers or palettes, for the reasons in ADR-026.
+A spectrum from a filter that converts the audio, as in ADR-027.
+
+---

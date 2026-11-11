@@ -16,6 +16,7 @@ import (
 	"github.com/bspeelm/shanty/internal/cover"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/queue"
+	"github.com/bspeelm/shanty/internal/sky"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/tui"
 )
@@ -190,7 +191,7 @@ func (a app) Init() tea.Cmd {
 	}
 	return tea.Batch(a.fetchArtists(), a.watchPlayer(), a.observePosition(),
 		a.fetchStarred(), func() tea.Msg { return a.flushBacklog() }, a.fetchSaved(),
-		levelling)
+		levelling, emit(tui.SkySeed(time.Now().UnixNano())))
 }
 
 // View renders the interface. A session has no terminal to render to.
@@ -385,9 +386,7 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.ok {
 			return a, a.listen()
 		}
-		r := msg.reading
-		return a.forwardAnd(tui.Heard{Samples: r.Samples, Loudness: r.Loudness,
-			Rate: r.Rate, Position: r.Position}, a.listen())
+		return a.forwardAnd(heardFrom(msg.reading), a.listen())
 	case playerGone:
 		if a.headless {
 			// There is no screen to report this on and nothing left to play.
@@ -697,6 +696,16 @@ func (a app) listen() tea.Cmd {
 		// while nothing plays. The pattern runs on the clock until one comes.
 		return heard{reading: r, ok: err == nil}
 	})
+}
+
+// heardFrom converts a reading from mpv into the form the visualiser takes.
+func heardFrom(r mpv.Hearing) tui.Heard {
+	channels := make([]sky.Channel, len(r.Channels))
+	for i, c := range r.Channels {
+		channels[i] = sky.Channel{Loudness: c.Loudness, Difference: c.Difference, Crossings: c.Crossings}
+	}
+	return tui.Heard{Samples: r.Samples, Channels: channels, Rate: r.Rate, Scale: r.Scale,
+		Epoch: mpv.EpochSamples, Position: r.Position}
 }
 
 // observePosition asks mpv to report the position and whether it is paused,
