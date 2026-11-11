@@ -101,6 +101,10 @@ type app struct {
 	// in tests, and whenever this process attached to a player it did not
 	// start.
 	notes *diagnostics
+	// analyser measures tracks ahead of playback while the visualiser shows,
+	// and is nil where nothing does. foresight is what it has measured.
+	analyser  analyser
+	foresight *foresight
 }
 
 // Cover art is drawn in a box this many cells across and down. mpv is not
@@ -176,7 +180,8 @@ func newApp(ctx context.Context, client *subsonic.Client, p player, cfg config.C
 			ui = next.(tui.Model)
 		}
 	}
-	return app{ui: ui, client: client, player: p, volume: 100, ctx: ctx}
+	return app{ui: ui, client: client, player: p, volume: 100, ctx: ctx,
+		foresight: &foresight{plans: map[string]*sky.Plan{}}}
 }
 
 func (a app) Init() tea.Cmd {
@@ -204,13 +209,18 @@ func (a app) View() string {
 
 // Update acts on the intents the interface emits and passes everything else
 // to it.
-// Update handles one message, and starts reading the audio when the message
-// put the visualiser on screen.
+// Update handles one message. When the message put the visualiser on screen
+// it starts reading the audio and measuring tracks ahead, and when it took
+// the visualiser away it cancels the measuring.
 func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	showing := a.ui.ShowingSky()
 	next, cmd := a.update(msg)
-	if after, ok := next.(app); ok && !showing && after.ui.ShowingSky() {
-		return after, tea.Batch(cmd, after.listen())
+	after, ok := next.(app)
+	switch {
+	case ok && !showing && after.ui.ShowingSky():
+		return after, tea.Batch(cmd, after.listen(), after.foresee())
+	case ok && showing && !after.ui.ShowingSky() && after.foresight != nil:
+		after.foresight.cancel()
 	}
 	return next, cmd
 }
@@ -374,6 +384,8 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.nowPlaying(msg)
 	case stallCheck:
 		return a.stallSaid(msg)
+	case foreseen:
+		return a.sawAhead(msg)
 
 	case playerEvent:
 		return a.playerSaid(mpv.Event(msg))
@@ -474,7 +486,8 @@ func (a app) nowPlaying(msg tui.NowPlaying) (tea.Model, tea.Cmd) {
 		return a.forward(msg)
 	}
 	a.watch++
-	return a.forwardAnd(msg, a.watchStall(a.watch, 0))
+	next, cmd := a.forwardAnd(msg, a.watchStall(a.watch, 0))
+	return next, tea.Batch(cmd, next.(app).foresee())
 }
 
 // watchStall asks, after stallGrace, whether playback has moved on from a

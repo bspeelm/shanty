@@ -13,6 +13,13 @@ import (
 // Heard is one reading of the audio, passed to the visualiser.
 type Heard sky.Reading
 
+// Foresight is the plan of a track, measured ahead of playback, for the
+// visualiser. Track is the title the track is shown under while it plays.
+type Foresight struct {
+	Track string
+	Plan  *sky.Plan
+}
+
 // paintSky turns a picture of the visualiser into w by h lines of text, with
 // its colours when the picture has them.
 func paintSky(p sky.Picture, w, h int) []string {

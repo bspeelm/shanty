@@ -33,6 +33,9 @@ type State struct {
 	post    post
 	label   float64
 	frames  int
+
+	// foresight holds the plans of tracks measured ahead of playback.
+	foresight foresightState
 }
 
 // The shortest crossfade between two scenes, in seconds, and how long a rare
