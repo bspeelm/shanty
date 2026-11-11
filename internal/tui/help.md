@@ -58,10 +58,11 @@ field, with a ripple running outward through it.
 `gv` opens it too, `esc` puts it away, and the row above the keys still says
 what is playing and how far through it is, so you can leave it up.
 
-It is drawn from the clock and the size of your window. It does not read the
-music: shanty hands every track to mpv and mpv reports no levels back, so a
-pattern that moved with the sound would need an audio filter in the way of the
-audio. Pausing holds the pattern where it is.
+It moves with the music. Louder passages spread the spiral further out and
+turn it faster, and a beat sends a bright ripple outward. What it draws is
+lined up with what you hear. Until the first moment of a track has been
+measured, the pattern turns at its own pace. Pausing holds the pattern where
+it is.
 
 ## shuffle
 

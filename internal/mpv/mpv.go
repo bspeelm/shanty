@@ -75,9 +75,10 @@ type Player struct {
 // Start launches mpv and connects to its socket. The flags are fixed:
 // --no-config so the user’s own mpv configuration is not read, --no-video,
 // --idle so it waits for a track, --prefetch-playlist so the next track is
-// opened early, and --term-status-msg= to silence the position line mpv would
+// opened early, --term-status-msg= to silence the position line mpv would
 // otherwise repeat several times a second, which is the only thing standing
-// between Diagnostics and what mpv has to say.
+// between Diagnostics and what mpv has to say, and --af with the measuring
+// filter that Hearing reads.
 func Start(ctx context.Context, opt Options) (*Player, error) {
 	binary := opt.Binary
 	if binary == "" {
@@ -102,6 +103,7 @@ func Start(ctx context.Context, opt Options) (*Player, error) {
 		"--idle=yes",
 		"--prefetch-playlist=yes",
 		"--term-status-msg=",
+		"--af="+listenFilter,
 		"--input-ipc-server="+opt.Socket,
 	)
 	// The environment is inherited because PipeWire, PulseAudio and ALSA read

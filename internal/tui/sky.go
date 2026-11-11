@@ -11,10 +11,12 @@ const skyAspect = 2.10
 
 // sky renders one frame of the visualiser: a three-armed logarithmic spiral
 // turning in a fixed star field, with a ripple running outward and a finer
-// structure drifting the other way. It reads no audio; the frame depends only
-// on the size given and the elapsed time t in seconds. The result is h lines,
-// each w columns wide, and is nil when w or h is not positive.
-func sky(w, h int, t float64) []string {
+// structure drifting the other way. The frame depends only on the size given,
+// the elapsed time t in seconds and the sound s. A louder sound spreads the
+// spiral further out, and a pulse strengthens the ripple and brightens the
+// whole frame. The zero sound draws the pattern from t alone. The result is h
+// lines, each w columns wide, and is nil when w or h is not positive.
+func sky(w, h int, t float64, s sound) []string {
 	if w <= 0 || h <= 0 {
 		return nil
 	}
@@ -32,12 +34,12 @@ func sky(w, h int, t float64) []string {
 			th := math.Atan2(dy, dx)
 
 			v := math.Sin(3*th+2.20*math.Log(rad+1)-1.10*t) +
-				0.60*math.Sin(rad*0.45-1.70*t) +
+				(0.60+1.20*s.pulse)*math.Sin(rad*0.45-1.70*t) +
 				0.40*math.Sin(5*th+0.60*t)
 
 			v = v/2 + 0.5
-			amp := 1 / (1 + rad/(radius*0.62))
-			lvl := math.Min(math.Max(v*amp*1.80, 0), 0.999)
+			amp := 1 / (1 + rad/(radius*(0.62+0.40*s.loud)))
+			lvl := math.Min(math.Max(v*amp*(1.80+0.60*s.pulse), 0), 0.999)
 			i := int(lvl * 5)
 			switch {
 			case i > 0:

@@ -97,10 +97,12 @@ type Model struct {
 	// art is the cover for album, already rendered, one string per row.
 	art []string
 	// showSky says the visualiser is filling the screen, and skyAt is how far
-	// through its pattern it has turned, in seconds. Nothing is kept between
-	// frames beyond that number, because the pattern is a function of it.
+	// through its pattern it has turned, in seconds. ear holds the readings
+	// of the audio and sound is what the pattern draws from them.
 	showSky bool
 	skyAt   float64
+	ear     ear
+	sound   sound
 	// bigArt is a cover filling the screen. While it is set it is all there is
 	// to see, and any key takes it away.
 	bigArt []string
