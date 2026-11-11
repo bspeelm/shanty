@@ -33,7 +33,7 @@ code. Numbers may start generous and tighten; they may not silently grow.
 | binary size (linux_amd64, stripped) | 15 MiB | `make budgets` builds exactly that and measures it |
 | packages importing `net/http` | 2 | `internal/subsonic` and its `fake` test server, nothing else |
 | test lines : code lines | ≥ 1 : 3 | `wc -l` over `_test.go` vs the rest; a floor, not a target |
-| code lines | 7,700 | `cmd` and `internal`, non-test, comments and blanks excluded (ADR-027) |
+| code lines | 9,600 | `cmd` and `internal`, non-test, comments and blanks excluded (ADR-028) |
 | comment lines : code lines | 25% | the one **hard** ceiling: over budget removes a comment |
 | live prose | 4,500 lines | every `.md` outside `docs/history/` and `docs/review/` |
 | lockfile-equivalent | go.sum, and `vendor/` derived from it | no second *independent* pinning mechanism; CI regenerates `vendor/` and fails on a difference |
@@ -147,7 +147,7 @@ off.
 
 A local-files player. A download manager. A Jellyfin client. A daemon. An
 auto-updater. A telemetry source. A Lidarr front end. A processor of the
-audio: the visualiser reads loudness from a filter that passes every sample
+audio: the visualiser reads levels from a filter that passes every sample
 through unchanged, and nothing in shanty alters what the server sent
 (ADR-027). A manager of anyone's mpv configuration: shanty starts mpv with
 `--no-config` and explicit flags, and leaves the user's own setup exactly as it
@@ -205,6 +205,7 @@ and `teatest` provides golden-file rendering tests without a harness.
 | every HTTP client has a timeout | `TestClientTimeouts`, by reflection over the client |
 | no `panic(` outside tests | `make budgets` |
 | `internal/tui` does no I/O | `make budgets` greps its imports for `net`, `os`, `os/exec` |
+| `internal/sky` does no I/O | `make budgets` greps its imports for `net`, `os`, `os/exec` (ADR-028) |
 | this project meets the standard it claims | `make standard`, inside `make check` |
 | no way to disable certificate verification | a grep for `InsecureSkipVerify` in `make budgets`, and ADR-004 |
 | no frame carries a terminal control sequence | `TestNoFrameEverCarriesAnEscape` |

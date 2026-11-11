@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/sky"
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
@@ -173,7 +174,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ShowVisualiser:
 		return m.openSky()
 	case Heard:
-		m.ear = m.ear.hear(msg)
+		if m.sky != nil {
+			m.sky.Hear(sky.Reading(msg))
+		}
+		return m, nil
+	case SkySeed:
+		m.skySeed = uint64(msg)
 		return m, nil
 	case skyTurned:
 		// A tick that arrives after the overlay was dismissed, or while the
@@ -181,14 +187,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.showSky {
 			return m, nil
 		}
-		var level float64
-		var heard bool
-		if m.ear, level, heard = m.ear.take(skyStep.Seconds()); heard {
-			m.sound = m.sound.follow(level)
-		} else {
-			m.sound = m.sound.fade()
-		}
-		m.skyAt += skyStep.Seconds() * (1 + 0.8*m.sound.loud)
+		w, h := m.skySize()
+		m.sky.Step(w, h, skyStep.Seconds(), m.nowPlaying)
 		if m.paused {
 			return m, nil
 		}
@@ -387,8 +387,10 @@ func (m Model) turnSky() tea.Cmd {
 // openSky puts the visualiser on screen with nothing heard yet and asks for
 // its first frame.
 func (m Model) openSky() (tea.Model, tea.Cmd) {
-	m.showSky, m.skyAt = true, 0
-	m.ear, m.sound = ear{}, sound{}
+	m.skyOpens++
+	m.showSky, m.sky = true, sky.New(m.skySeed+m.skyOpens)
+	w, h := m.skySize()
+	m.sky.Step(w, h, skyStep.Seconds(), m.nowPlaying)
 	return m, m.turnSky()
 }
 

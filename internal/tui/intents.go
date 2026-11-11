@@ -45,7 +45,10 @@ type (
 	ShowArt struct{}
 	// ShowVisualiser asks for the visualiser to fill the screen. The interface
 	// draws it; the caller sends Heard readings for as long as it is showing.
+	// SkySeed is the number the visualiser's scenes are drawn from, sent once
+	// when the program starts.
 	ShowVisualiser struct{}
+	SkySeed        uint64
 	// AutoVolume turns loudness levelling on or off, and is remembered.
 	AutoVolume struct{ On bool }
 	// ToggleAutoVolume asks for whichever of the two it is not, because the

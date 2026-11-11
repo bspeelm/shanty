@@ -50,19 +50,27 @@ which you mean. Open the one you want and use `rename`.
 
 ## visualizer
 
-Fills the screen with a slowly turning pattern: a three-armed spiral in a star
-field, with a ripple running outward through it.
+Fills the screen with moving pictures that follow the music.
 
     :visualizer
 
 `gv` opens it too, `esc` puts it away, and the row above the keys still says
 what is playing and how far through it is, so you can leave it up.
 
-It moves with the music. Louder passages spread the spiral further out and
-turn it faster, and a beat sends a bright ripple outward. What it draws is
-lined up with what you hear. Until the first moment of a track has been
-measured, the pattern turns at its own pace. Pausing holds the pattern where
-it is.
+Each scene is made of a few layers, such as spirals, tunnels, rings,
+star fields, flocks, fractals and cellular automata, drawn through mirrors,
+twists and kaleidoscopes, in a palette of its own. The bass, the treble, the
+hiss, the stereo balance, the beat and how busy the music is each drive part
+of the scene, and which part changes from scene to scene. What it draws is
+lined up with what you hear.
+
+The scene changes when the music changes character, when the track changes,
+and every minute or two otherwise, fading from one to the next on the beat.
+Scenes are made fresh each time, so they do not repeat in the same order.
+Now and then a scene is a single classic algorithm on its own, and its name
+shows in the corner for a few seconds.
+
+Pausing holds the picture where it is.
 
 ## shuffle
 
