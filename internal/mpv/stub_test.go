@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +29,12 @@ const (
 	environFile = "environ"
 	// stubSays is the line the stub prints, shaped like mpv's own.
 	stubSays = "AO: [stub] 44100Hz stereo 2ch s16"
+	// endEnv is the reason an analysing stub gives for the end of a track,
+	// and "never" makes it never end one.
+	endEnv = "SHANTY_TEST_STUB_END"
+	// measured is what an analysing stub prints when a track is loaded: the
+	// recorded output of the real filter.
+	measured = "testdata/ametadata.txt"
 )
 
 func TestMain(m *testing.M) {
@@ -117,10 +124,34 @@ func stubMain() {
 				})
 				mu.Lock()
 				fmt.Fprintf(conn, "%s\n", out)
+				if len(msg.Command) > 0 && msg.Command[0] == "loadfile" && slices.Contains(os.Args, "--ao=null") {
+					measure(conn)
+				}
 				mu.Unlock()
 			}
 		}()
 	}
+}
+
+// measure is an analysing stub's answer to a track: the audio format, the
+// recorded filter output on standard output, and then the end of the file.
+func measure(conn net.Conn) {
+	reason := os.Getenv(endEnv)
+	if reason == "never" {
+		return
+	}
+	if reason == "" {
+		reason = "eof"
+	}
+	fmt.Fprintln(conn, `{"event":"property-change","id":1,"name":"audio-params","data":{"format":"s16","samplerate":44100,"channel-count":2}}`)
+	if reason == "eof" {
+		b, err := os.ReadFile(measured)
+		if err != nil {
+			os.Exit(6)
+		}
+		_, _ = os.Stdout.Write(b)
+	}
+	fmt.Fprintf(conn, "{\"event\":\"end-file\",\"reason\":%q}\n", reason)
 }
 
 // shortDir is a directory whose path is short enough to hold a socket.
