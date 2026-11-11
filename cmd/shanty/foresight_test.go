@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/mpv"
+	"github.com/bspeelm/shanty/internal/sky"
 	"github.com/bspeelm/shanty/internal/tui"
 )
 
@@ -190,5 +192,26 @@ func TestWithoutAnAnalyserNothingIsMeasured(t *testing.T) {
 		case foreseen, tui.Foresight:
 			t.Errorf("with no analyser the app sent %#v", m)
 		}
+	}
+}
+
+func TestOnlyTheLatestTwoHundredPlansAreKept(t *testing.T) {
+	f := &foresight{plans: map[string]*sky.Plan{}}
+	for i := range foresightKept + 50 {
+		f.keep(fmt.Sprint("tr-", i), &sky.Plan{})
+	}
+	if len(f.plans) != foresightKept || len(f.order) != foresightKept {
+		t.Fatalf("after %d tracks %d plans were kept, want %d", foresightKept+50, len(f.plans), foresightKept)
+	}
+	if _, held := f.plans["tr-0"]; held {
+		t.Error("the oldest plan was kept")
+	}
+	if _, held := f.plans[fmt.Sprint("tr-", foresightKept+49)]; !held {
+		t.Error("the newest plan was dropped")
+	}
+	// Keeping a track again replaces its plan without counting it twice.
+	f.keep(fmt.Sprint("tr-", foresightKept+49), nil)
+	if len(f.order) != foresightKept {
+		t.Errorf("keeping a track again left %d in the order, want %d", len(f.order), foresightKept)
 	}
 }
