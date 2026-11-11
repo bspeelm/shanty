@@ -119,3 +119,25 @@ func TestWithoutAPlanTheSignalsAreThoseHeard(t *testing.T) {
 		t.Error("a visualiser with no plan acted on one")
 	}
 }
+
+func TestAPlanArrivingPartWayThroughDoesNotSetOffTheCuesBehindIt(t *testing.T) {
+	s := New(3)
+	var tr track
+	play(s, &tr, 0, 30, 40, 10)
+	s.Foresee("track", &Plan{Cues: []Cue{{At: 10, Kind: CueDrop, Strength: 1}, {At: 20, Kind: CueClimax, Strength: 1}}})
+	play(s, &tr, 30, 0.5, 40, 10)
+	if got := s.foresight.pulse; got != 0 {
+		t.Errorf("a plan arriving at 30 s set off a release of %.2f for cues at 10 s and 20 s", got)
+	}
+}
+
+func TestASeekPastADropDoesNotSetItOff(t *testing.T) {
+	p := &Plan{Cues: []Cue{{At: 40, Kind: CueDrop, Strength: 1}}}
+	s, tr := planned(p, 10)
+	// A seek: the next readings say playback is at 60 s.
+	*tr = track{}
+	play(s, tr, 60, 0.5, 40, 10)
+	if got := s.foresight.pulse; got != 0 {
+		t.Errorf("seeking from 10 s to 60 s set off a release of %.2f for the drop at 40 s", got)
+	}
+}
