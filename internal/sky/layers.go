@@ -46,6 +46,10 @@ var kinds = []kind{
 	{"flow", false, false, func(r *rand.Rand) component { return &flow{} }},
 	{"grid", true, false, func(r *rand.Rand) component { return &beatGrid{} }},
 	{"sparks", false, false, func(r *rand.Rand) component { return &sparks{} }},
+	{"night lake", true, false, func(r *rand.Rand) component { return newLandscape(r, settings["night lake"]) }},
+	{"dawn sea", true, false, func(r *rand.Rand) component { return newLandscape(r, settings["dawn sea"]) }},
+	{"storm", true, false, func(r *rand.Rand) component { return newLandscape(r, settings["storm"]) }},
+	{"aurora", true, false, func(r *rand.Rand) component { return newLandscape(r, settings["aurora"]) }},
 }
 
 type spiral struct{ arms float64 }

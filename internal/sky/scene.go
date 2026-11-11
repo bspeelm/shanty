@@ -30,6 +30,9 @@ type layer struct {
 	// 0 while it is leaving.
 	presence float64
 	goal     float64
+	// quiet is set once the layer's weight has been lowered to sit over a
+	// landscape.
+	quiet bool
 }
 
 // scene is a set of layers drawn through a set of warps, with feedback from
@@ -100,8 +103,17 @@ func newScene(rng *rand.Rand, st *style, c Character, mood Signals) *scene {
 	for len(s.layers) < count {
 		s.layers = append(s.layers, newLayer(rng, pickKind(rng, st, s), st))
 	}
+	land := s.landed()
+	if land {
+		s.glyphs = landGlyphs(rng, st, s.glyphs)
+		s.toGlyphs = s.glyphs
+	}
 	s.layers[0].blend = blendAdd
-	for range 1 + rng.IntN(3) {
+	warps := 1 + rng.IntN(3)
+	if land {
+		warps = 1
+	}
+	for range warps {
 		s.warps = append(s.warps, newWarp(rng, st))
 	}
 	s.keep = st.param(rng)
@@ -109,6 +121,9 @@ func newScene(rng *rand.Rand, st *style, c Character, mood Signals) *scene {
 	s.zoom, s.turn = st.param(rng), st.param(rng)
 	s.bend = st.param(rng)
 	s.bend.base = 0.1 * rng.Float64()
+	if land {
+		s.ground()
+	}
 	for _, l := range s.layers {
 		l.presence = 1
 	}
@@ -157,10 +172,15 @@ func newWarp(rng *rand.Rand, st *style) *warp {
 }
 
 // pickKind draws a component the scene does not already have, weighted by
-// the style.
+// the style. A scene with a landscape in it, arriving, staying or leaving,
+// is not given another.
 func pickKind(rng *rand.Rand, st *style, s *scene) kind {
+	land := slices.ContainsFunc(s.layers, func(l *layer) bool { return isLandscape(l.name) })
 	weights := make([]float64, len(kinds))
 	for i, k := range kinds {
+		if land && isLandscape(k.name) {
+			continue
+		}
 		if !slices.ContainsFunc(s.layers, func(l *layer) bool { return l.name == k.name }) {
 			weights[i] = st.kindWeight(k.name)
 		}
@@ -168,12 +188,71 @@ func pickKind(rng *rand.Rand, st *style, s *scene) kind {
 	return kinds[pick(rng, weights)]
 }
 
-// mutate redraws one parameter of one layer.
+// landed reports whether the scene has a landscape that is staying or
+// arriving.
+func (s *scene) landed() bool {
+	return slices.ContainsFunc(s.layers, func(l *layer) bool { return l.goal > 0 && isLandscape(l.name) })
+}
+
+// landWeight is the steady weight a landscape is drawn at.
+const landWeight = 0.9
+
+// ground sets a scene up around the landscape in it. The landscape becomes
+// the first layer, added at a steady weight, so that every other layer is
+// drawn over it. The other layers are drawn at half their weight, or less
+// than a third for those that fill the frame, and any drawn by difference is
+// drawn by screen instead. The feedback neither zooms nor turns, and lets
+// less of the last frame through.
+func (s *scene) ground() {
+	i := slices.IndexFunc(s.layers, func(l *layer) bool { return l.goal > 0 && isLandscape(l.name) })
+	if i < 0 {
+		return
+	}
+	land := s.layers[i]
+	copy(s.layers[1:i+1], s.layers[:i])
+	s.layers[0] = land
+	land.blend, land.weight, land.quiet = blendAdd, param{base: landWeight}, true
+	for _, l := range s.layers[1:] {
+		if !l.quiet {
+			l.weight.base *= 0.5
+			if denseKind(l.name) {
+				l.weight.base *= 0.6
+			}
+			l.quiet = true
+		}
+		if l.blend == blendDifference {
+			l.blend = blendScreen
+		}
+	}
+	s.keep = param{base: 0.3 * s.keep.base}
+	s.zoom, s.turn = param{base: 2.0 / 3}, param{base: 0.5}
+}
+
+// denseKind reports whether the component of the given name fills the frame.
+func denseKind(name string) bool {
+	i := slices.IndexFunc(kinds, func(k kind) bool { return k.name == name })
+	return i >= 0 && kinds[i].dense
+}
+
+// landGlyphs returns g when it is braille or half blocks, and otherwise one
+// of the two drawn by the style's weights.
+func landGlyphs(rng *rand.Rand, st *style, g glyphs) glyphs {
+	if g == glyphBraille || g == glyphHalf {
+		return g
+	}
+	if pick(rng, []float64{st.glyphs[glyphBraille], st.glyphs[glyphHalf]}) == 0 {
+		return glyphBraille
+	}
+	return glyphHalf
+}
+
+// mutate redraws one parameter of one layer. A landscape's weight stays
+// steady.
 func (s *scene) mutate(rng *rand.Rand, st *style) {
 	l := s.layers[rng.IntN(len(s.layers))]
 	if i := rng.IntN(5); i < 4 {
 		l.p[i] = st.param(rng)
-	} else {
+	} else if !isLandscape(l.name) {
 		base := l.weight.base
 		l.weight = st.param(rng)
 		l.weight.base = base
@@ -238,11 +317,19 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 		s.toPalette = st.palette(rng, c)
 	}
 	s.paletteAt = 0
-	if far || rng.Float64() < 0.35 {
+	land := s.landed()
+	redraw := far || rng.Float64() < 0.35
+	if g := s.drawnGlyphs(); redraw || land && g != glyphBraille && g != glyphHalf {
 		s.glyphs = s.drawnGlyphs()
 		s.toGlyphs, s.glyphsAt = glyphs(pick(rng, st.glyphs[:])), 0
+		if land {
+			s.toGlyphs = landGlyphs(rng, st, s.toGlyphs)
+		}
 	}
 	s.keep.base = st.keep[0] + (st.keep[1]-st.keep[0])*rng.Float64()
+	if land {
+		s.ground()
+	}
 }
 
 // How far the character must move from the one a scene was made for before a
@@ -327,6 +414,7 @@ func (s *scene) step(f *frame) {
 	clear(s.value)
 	clear(s.tone)
 	bent := false
+	land, lit := 0.0, 0.0
 	for _, l := range s.layers {
 		if len(l.buf) != n {
 			l.buf = make([]float64, n)
@@ -352,10 +440,24 @@ func (s *scene) step(f *frame) {
 		f.couple = l.couple
 		l.comp.draw(f, l.v, l.clock, l.buf)
 		w := l.w * l.presence
-		for i, b := range l.buf {
-			b *= w
-			s.value[i] = l.blend.mix(s.value[i], b)
-			s.tone[i] += (l.tone - s.tone[i]) * b
+		if own := tonesOf(l.comp, n); own != nil {
+			// A layer with its own tones sets the tone of every pixel as
+			// far as it is present.
+			sum := 0.0
+			for i, b := range l.buf {
+				sum += b
+				s.value[i] = l.blend.mix(s.value[i], b*w)
+				s.tone[i] += (own[i] - s.tone[i]) * w
+			}
+			if l.presence > land {
+				land, lit = l.presence, w*sum/float64(n)
+			}
+		} else {
+			for i, b := range l.buf {
+				b *= w
+				s.value[i] = l.blend.mix(s.value[i], b)
+				s.tone[i] += (l.tone - s.tone[i]) * b
+			}
 		}
 		if !bent && l.goal > 0 {
 			s.bendFrom(f, l.buf, xs, ys)
@@ -364,7 +466,29 @@ func (s *scene) step(f *frame) {
 	}
 	f.xs, f.ys, f.env = xs, ys, nil
 	s.feedback(f, sig)
-	s.expose(exposureFor(sig))
+	// As far as a landscape is present, the frame is exposed towards the
+	// landscape's own mean brightness and half of what the layers over it
+	// add, moved by the music as exposureFor moves the usual exposure.
+	target := exposureFor(sig)
+	if land > 0 {
+		all := 0.0
+		for _, v := range s.value {
+			all += v
+		}
+		own := lit + 0.5*math.Max(all/float64(n)-lit, 0)
+		target += (target/exposure*own - target) * land
+	}
+	s.expose(target)
+}
+
+// tonesOf returns a component's own tones when it has n of them, or nil.
+func tonesOf(c component, n int) []float64 {
+	if t, ok := c.(toner); ok {
+		if own := t.tones(); len(own) == n {
+			return own
+		}
+	}
+	return nil
 }
 
 // How quickly a layer's weight follows its signals, in seconds: it rises
