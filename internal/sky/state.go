@@ -31,6 +31,7 @@ type State struct {
 	value   []float64
 	tone    []float64
 	post    post
+	sig     Signals
 	label   float64
 	frames  int
 
@@ -65,8 +66,9 @@ func (s *State) Frames() int { return s.frames }
 // Character is how the music has sounded over the last several seconds.
 func (s *State) Character() Character { return s.lis.char }
 
-// Signals is what the music was doing on the last frame.
-func (s *State) Signals() Signals { return s.lis.sig }
+// Signals is what the music was doing on the last frame, as the frame was
+// drawn: heard, and shaped by the track's plan when there is one.
+func (s *State) Signals() Signals { return s.sig }
 
 // Label is the name of the rare scene on screen, or empty.
 func (s *State) Label() string {
@@ -96,6 +98,12 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	}
 	char := s.lis.char
 	st := styleFor(char)
+	sig, section, planned := s.foresee(sig, st, dt)
+	s.sig = sig
+	// With a plan, the plan's sections replace those heard live.
+	if s.plan() != nil {
+		sig.Section = false
+	}
 
 	if s.cur == nil {
 		s.cur = s.make(sig, st, char)
@@ -111,15 +119,18 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 		// reason to start afresh: the first scene, made before anything was
 		// heard; a new track; or a track that changes its nature.
 		moved := s.age > 8 && s.lis.meter.settled() && s.cur.char.distance(char) > driftChange
-		if sig.Section || changed || moved || s.age > s.life {
+		if sig.Section || changed || moved || planned || s.age > s.life {
 			s.waiting += dt
 			bars := 4
 			if st.lock > 0.5 {
 				bars = 16
 			}
 			onBar := sig.Tempo == 0 || (sig.Beat%bars == 0 && sig.Phase < 0.2)
-			if onBar || s.waiting > 8 || changed {
+			if onBar || s.waiting > 8 || changed || planned {
 				s.change(sig, st, char, changed || moved)
+				if planned {
+					s.foresight.section = section
+				}
 			}
 		}
 	}

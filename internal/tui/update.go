@@ -180,7 +180,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case Foresight:
 		if m.sky != nil {
-			m.sky.Foresee(msg.Track, msg.Plan)
+			m.sky.Foresee(skyTrack(msg.Title, msg.Artist), msg.Plan)
 		}
 		return m, nil
 	case SkySeed:
@@ -198,7 +198,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.skyLast = msg.at
 		w, h := m.skySize()
-		m.sky.Step(w, h, dt, msg.at, m.nowPlaying)
+		m.sky.Step(w, h, dt, msg.at, skyTrack(m.nowPlaying, m.nowArtist))
 		if m.paused {
 			return m, nil
 		}
@@ -401,7 +401,7 @@ func (m Model) openSky() (tea.Model, tea.Cmd) {
 	m.showSky, m.sky = true, sky.New(m.skySeed+m.skyOpens)
 	m.skyLast = time.Time{}
 	w, h := m.skySize()
-	m.sky.Step(w, h, skyStep.Seconds(), time.Time{}, m.nowPlaying)
+	m.sky.Step(w, h, skyStep.Seconds(), time.Time{}, skyTrack(m.nowPlaying, m.nowArtist))
 	return m, m.turnSky()
 }
 

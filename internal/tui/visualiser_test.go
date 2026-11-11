@@ -13,11 +13,11 @@ import (
 func TestAPlanReachesTheVisualiserWithoutChangingTheScreen(t *testing.T) {
 	plan := sky.NewPlan(nil)
 	closed := loaded(t)
-	if next, cmd := closed.Update(Foresight{Track: "Slipway", Plan: plan}); cmd != nil || next.(Model).View() != closed.View() {
+	if next, cmd := closed.Update(Foresight{Title: "Slipway", Artist: "Aoi", Plan: plan}); cmd != nil || next.(Model).View() != closed.View() {
 		t.Error("a plan with the visualiser closed changed something")
 	}
 	open := send(t, loaded(t), ShowVisualiser{})
-	if next, cmd := open.Update(Foresight{Track: "Slipway", Plan: plan}); cmd != nil || next.(Model).View() != open.View() {
+	if next, cmd := open.Update(Foresight{Title: "Slipway", Artist: "Aoi", Plan: plan}); cmd != nil || next.(Model).View() != open.View() {
 		t.Error("a plan with the visualiser open asked for something or redrew it")
 	}
 }
