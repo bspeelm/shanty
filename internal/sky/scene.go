@@ -62,8 +62,9 @@ type scene struct {
 	// when it was made before the music had been heard.
 	char Character
 	// glide is how quickly parameters follow their signals, morph how long
-	// a change takes, and lock how strongly turning steps on the beat.
-	glide, morph, lock float64
+	// a change takes, lock how strongly turning steps on the beat, and hits
+	// how strongly Kick and Snap move parameters.
+	glide, morph, lock, hits float64
 	// gain scales the frame so that its mean brightness stays near
 	// exposure, whatever the layers add up to.
 	gain        float64
@@ -90,7 +91,7 @@ func (s *scene) combo() string {
 func newScene(rng *rand.Rand, st *style, c Character, mood Signals) *scene {
 	energy := clamp01(0.6*mood.Level + 0.6*mood.Busy)
 	g := glyphs(pick(rng, st.glyphs[:]))
-	s := &scene{glyphs: g, toGlyphs: g, glide: st.glide, morph: st.morph, lock: st.lock, char: c}
+	s := &scene{glyphs: g, toGlyphs: g, glide: st.glide, morph: st.morph, lock: st.lock, hits: st.hits, char: c}
 	s.palette = st.palette(rng, c)
 	count := 2 + rng.IntN(2)
 	if energy > 0.4 {
@@ -130,7 +131,7 @@ func rareScene(rng *rand.Rand, st *style, c Character) *scene {
 		g = glyphShade
 	}
 	return &scene{palette: st.palette(rng, c), glyphs: g, toGlyphs: g, label: k.name,
-		layers: []*layer{l}, glide: st.glide, morph: st.morph, char: c}
+		layers: []*layer{l}, glide: st.glide, morph: st.morph, hits: st.hits, char: c}
 }
 
 func newLayer(rng *rand.Rand, k kind, st *style) *layer {
@@ -190,7 +191,7 @@ func (s *scene) mutate(rng *rand.Rand, st *style) {
 // character's.
 func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 	far := s.char.distance(c) > farChange
-	s.glide, s.morph, s.lock, s.char = st.glide, st.morph, st.lock, c
+	s.glide, s.morph, s.lock, s.hits, s.char = st.glide, st.morph, st.lock, st.hits, c
 	var staying []*layer
 	for _, l := range s.layers {
 		if l.goal > 0 {
@@ -279,8 +280,12 @@ func (s *scene) step(f *frame) {
 	if s.glide == 0 {
 		s.glide, s.morph = 0.12, 6
 	}
+	if s.hits == 0 {
+		s.hits = 1
+	}
 	s.clock += f.dt
 	sig, clock := f.sig, s.clock
+	sig.Kick, sig.Snap = sig.Kick*s.hits, sig.Snap*s.hits
 	s.advance(f.dt)
 
 	s.wv = s.wv[:0]
@@ -359,7 +364,7 @@ func (s *scene) step(f *frame) {
 	}
 	f.xs, f.ys, f.env = xs, ys, nil
 	s.feedback(f, sig)
-	s.expose()
+	s.expose(exposureFor(sig))
 }
 
 // How quickly a layer's weight follows its signals, in seconds: it rises
@@ -418,12 +423,13 @@ func (s *scene) bendFrom(f *frame, base, xs, ys []float64) {
 
 // feedback lets the last frame show through, moved by the scene's zoom and
 // turn and pushed outward by a kick, wherever it is brighter than the new one.
+// The breath moves keep and zoom by a few percent.
 func (s *scene) feedback(f *frame, sig Signals) {
-	keep := 0.3 + 0.55*s.fb[0]
+	keep := (0.3 + 0.55*s.fb[0]) * (1 + 0.06*(sig.Breath-0.5))
 	if s.label != "" {
 		keep = 0
 	}
-	zoom := 0.96 + 0.06*s.fb[1] + 0.03*sig.Kick
+	zoom := (0.96 + 0.06*s.fb[1] + 0.03*sig.Kick) * (1 + 0.01*(sig.Breath-0.5))
 	sn, cs := math.Sincos((s.fb[2] - 0.5) * 0.08)
 	for py := range f.fh {
 		for px := range f.fw {
@@ -437,12 +443,12 @@ func (s *scene) feedback(f *frame, sig Signals) {
 	copy(s.last, s.value)
 }
 
-// exposure is the mean brightness a frame is scaled towards.
+// exposure is the mean brightness a frame is scaled towards on steady music.
 const exposure = 0.4
 
-// expose scales the frame towards a mean brightness of exposure, moving the
+// expose scales the frame towards a mean brightness of target, moving the
 // gain a little each frame so that a beat still brightens the picture.
-func (s *scene) expose() {
+func (s *scene) expose(target float64) {
 	if s.gain == 0 {
 		s.gain = 1
 	}
@@ -451,7 +457,7 @@ func (s *scene) expose() {
 		sum += v
 	}
 	if mean := sum / float64(len(s.value)); mean > 0.001 {
-		want := math.Min(math.Max(exposure/mean, 0.3), 5)
+		want := math.Min(math.Max(target/mean, 0.3), 5)
 		s.gain += (want - s.gain) * 0.04
 	}
 	for i, v := range s.value {

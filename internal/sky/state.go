@@ -30,6 +30,7 @@ type State struct {
 	f       frame
 	value   []float64
 	tone    []float64
+	post    post
 	label   float64
 	frames  int
 }
@@ -129,6 +130,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	if s.next == nil {
 		copy(s.value, s.cur.value)
 		copy(s.tone, s.cur.tone)
+		s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
 		return
 	}
 	s.next.step(&s.f)
@@ -138,6 +140,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 		s.value[i] = s.cur.value[i]*(1-t) + s.next.value[i]*t
 		s.tone[i] = s.cur.tone[i]*(1-t) + s.next.tone[i]*t
 	}
+	s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
 	if s.fade >= 1 {
 		s.cur, s.next = s.next, nil
 		s.age, s.waiting, s.label = 0, 0, 0
@@ -159,6 +162,7 @@ func (s *State) resize(w, h int) {
 	f.cx, f.cy = float64(f.fw-1)/2, float64(f.fh-1)/2
 	f.radius = math.Min(float64(f.fw)/2, float64(f.fh)*f.aspect/2)
 	s.value, s.tone = make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)
+	s.post.resize(f)
 }
 
 // change moves on from the current scene. Most often the scene grows into
