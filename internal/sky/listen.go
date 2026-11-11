@@ -131,14 +131,7 @@ func (e *ear) add(prev, r Reading) {
 	k := float64(len(r.Channels))
 	energy, diff, cross = energy/k, diff/k, cross/k
 
-	gb, gt := band(bassHz, rate), band(trebleHz, rate)
-	treble := math.Min(energy, math.Max(0, (diff-energy*gb)/(gt-gb)))
-	s := slice{
-		level:  levelOf(energy, -50, -5),
-		bass:   levelOf(energy-treble, -50, -5),
-		treble: levelOf(treble, -45, -12),
-		air:    math.Min(cross/0.3, 1),
-	}
+	s := measure(energy, diff, cross, rate)
 	if len(powers) > 1 && powers[0]+powers[1] > 0 {
 		s.balance = (powers[1] - powers[0]) / (powers[0] + powers[1])
 	}
@@ -157,6 +150,21 @@ func (e *ear) add(prev, r Reading) {
 		}
 	}
 	e.slices = append(kept, s)
+}
+
+// measure returns the slice for audio with the given mean power, mean squared
+// difference between neighbouring samples relative to full scale, and zero
+// crossings per sample, at the given sample rate. The two-band split divides
+// the power between the low end and the high end.
+func measure(energy, diff, cross, rate float64) slice {
+	gb, gt := band(bassHz, rate), band(trebleHz, rate)
+	treble := math.Min(energy, math.Max(0, (diff-energy*gb)/(gt-gb)))
+	return slice{
+		level:  levelOf(energy, -50, -5),
+		bass:   levelOf(energy-treble, -50, -5),
+		treble: levelOf(treble, -45, -12),
+		air:    math.Min(cross/0.3, 1),
+	}
 }
 
 // take sets the position being heard for a frame drawn at the time now, and
