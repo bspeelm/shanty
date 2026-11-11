@@ -61,14 +61,16 @@ else
 fi
 
 # --- source counts -----------------------------------------------------------
-gofiles=$(find . -name '*.go' -not -path './vendor/*' -not -path './dist/*' 2>/dev/null | wc -l)
+# Directories whose names start with a dot, such as .git and working copies
+# kept inside the checkout, are not counted here or below.
+gofiles=$(find . -name '*.go' -not -path './vendor/*' -not -path './dist/*' -not -path './.*' 2>/dev/null | wc -l)
 if [ "$gofiles" -eq 0 ]; then
 	printf 'code:          none yet -- the budgets are armed and waiting\n'
 	exit "$fail"
 fi
 
-testlines=$(find . -name '*_test.go' -not -path './vendor/*' -exec cat {} + 2>/dev/null | wc -l)
-codelines=$(find . -name '*.go' -not -name '*_test.go' -not -path './vendor/*' -exec cat {} + 2>/dev/null | wc -l)
+testlines=$(find . -name '*_test.go' -not -path './vendor/*' -not -path './.*' -exec cat {} + 2>/dev/null | wc -l)
+codelines=$(find . -name '*.go' -not -name '*_test.go' -not -path './vendor/*' -not -path './.*' -exec cat {} + 2>/dev/null | wc -l)
 
 printf 'code(raw):     %s lines\n' "$codelines"
 printf 'tests:         %s lines (floor: 1 per %s of code)\n' "$testlines" "$MIN_TEST_RATIO"
@@ -96,7 +98,7 @@ if [ -n "$SOURCES" ]; then
 	[ "$ratio" -le "$MAX_COMMENT_RATIO" ] || over "over the comment budget -- retire a comment; this ceiling does not move."
 fi
 
-docs=$(find . -name '*.md' -not -path './.git/*' -not -path './vendor/*' \
+docs=$(find . -name '*.md' -not -path './.*' -not -path './vendor/*' \
 	-not -path './docs/history/*' -not -path './docs/review/*' -exec cat {} + | wc -l)
 printf 'prose:         %s lines (budget %s)\n' "$docs" "$MAX_DOC_LINES"
 [ "$docs" -le "$MAX_DOC_LINES" ] || over "over the prose budget -- retire a doc to docs/history/, do not raise the cap."
@@ -105,7 +107,7 @@ printf 'prose:         %s lines (budget %s)\n' "$docs" "$MAX_DOC_LINES"
 # A panic in a TUI takes the terminal with it. Errors are values here. The
 # files are named by find, which writes a path the same way on every platform.
 NONTEST=$(find . -name '*.go' -not -name '*_test.go' \
-	-not -path './vendor/*' -not -path './dist/*' 2>/dev/null || true)
+	-not -path './vendor/*' -not -path './dist/*' -not -path './.*' 2>/dev/null || true)
 if [ -n "$NONTEST" ]; then
 	# shellcheck disable=SC2086
 	panics=$(grep -Hn 'panic(' $NONTEST 2>/dev/null | wc -l | tr -d ' ')
@@ -132,7 +134,7 @@ fi
 
 # --- verification has no off switch ------------------------------------------
 # §2: a knob that exists gets turned, and gets pasted into setup guides.
-ALLGO=$(find . -name '*.go' -not -path './vendor/*' -not -path './dist/*' 2>/dev/null || true)
+ALLGO=$(find . -name '*.go' -not -path './vendor/*' -not -path './dist/*' -not -path './.*' 2>/dev/null || true)
 tls=''
 if [ -n "$ALLGO" ]; then
 	# shellcheck disable=SC2086

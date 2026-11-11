@@ -70,3 +70,38 @@ func TestTheBudgetScriptDoesNotCountVendoredPanics(t *testing.T) {
 			m[1], linesMatching("cmd", "panic(")+linesMatching("internal", "panic("), vendored)
 	}
 }
+
+// A working copy kept in a hidden directory inside the checkout holds a
+// second copy of everything, vendor/ included. The budgets describe this
+// checkout, so none of that copy is counted.
+func TestTheBudgetScriptDoesNotCountAHiddenWorkingCopy(t *testing.T) {
+	before := budgetReport(t)
+	dir := ".budgets-test-copy"
+	if err := os.MkdirAll(filepath.Join(dir, "internal"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) }) // a leftover is removed on the next run
+	planted := "package internal\n\nfunc f() { panic(\"x\") }\n"
+	if err := os.WriteFile(filepath.Join(dir, "internal", "copy.go"), []byte(planted), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(strings.Repeat("line\n", 50)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	after := budgetReport(t)
+	for _, line := range []string{"code(raw):", "tests:", "prose:", "panics:"} {
+		if a, b := reportLine(before, line), reportLine(after, line); a != b {
+			t.Errorf("a hidden copy changed the report:\n  before: %s\n  after:  %s", a, b)
+		}
+	}
+}
+
+// reportLine returns the line of a budget report that starts with prefix.
+func reportLine(report, prefix string) string {
+	for _, line := range strings.Split(report, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+	return ""
+}
