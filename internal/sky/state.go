@@ -174,13 +174,28 @@ func (s *State) Render(colour bool) Picture {
 	if s.cur == nil || s.w == 0 {
 		return Picture{}
 	}
-	sc := s.cur
-	if s.next != nil && s.fade > 0.5 {
-		sc = s.next
+	sig := s.lis.sig
+	k := look{glyphs: s.cur.glyphs, next: s.cur.glyphs, colour: colour,
+		shift: 0.15 * (sig.Treble - sig.Bass)}
+	palette := s.cur.palette
+	if s.next != nil {
+		t := smooth(0, 1, s.fade)
+		k.next, k.fade = s.next.glyphs, t
+		palette = blendPalettes(s.cur.palette, s.next.palette, t)
 	}
-	lines := render(s.value, s.tone, s.f.fw, s.f.fh, s.w, s.h, sc.glyphs, colour)
-	if sc.label != "" && s.label < labelFor && s.next == nil {
-		lines[s.h-1] = overlay(lines[s.h-1], " "+sc.label+" ", s.w)
+	lines := render(s.value, s.tone, s.f.fw, s.f.fh, s.w, s.h, k)
+	if s.cur.label != "" && s.label < labelFor && s.next == nil {
+		lines[s.h-1] = overlay(lines[s.h-1], " "+s.cur.label+" ", s.w)
 	}
-	return Picture{Lines: lines, Palette: sc.palette}
+	return Picture{Lines: lines, Palette: palette}
+}
+
+// blendPalettes returns the palette t of the way from a to b.
+func blendPalettes(a, b []RGB, t float64) []RGB {
+	out := make([]RGB, len(a))
+	mix := func(x, y uint8) uint8 { return uint8(float64(x)*(1-t) + float64(y)*t + 0.5) }
+	for i := range a {
+		out[i] = RGB{mix(a[i].R, b[i].R), mix(a[i].G, b[i].G), mix(a[i].B, b[i].B)}
+	}
+	return out
 }

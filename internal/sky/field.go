@@ -46,17 +46,6 @@ func (f *frame) warp(warps []warp, values [][4]float64) {
 	}
 }
 
-// pixel returns the field pixel at (x, y) in the field's own units, before any
-// warp, and false when it falls outside.
-func (f *frame) pixel(x, y float64) (int, bool) {
-	px := int(math.Round(x*f.radius + f.cx))
-	py := int(math.Round(y*f.radius/f.aspect + f.cy))
-	if px < 0 || py < 0 || px >= f.fw || py >= f.fh {
-		return 0, false
-	}
-	return py*f.fw + px, true
-}
-
 // fill sets every pixel of buf from fn, given the warped coordinates.
 func (f *frame) fill(buf []float64, fn func(x, y float64) float64) {
 	for i := range buf {
@@ -178,6 +167,26 @@ func (b blend) mix(under, over float64) float64 {
 		return math.Abs(under - over)
 	}
 	return math.Min(under+over, 1)
+}
+
+// glide moves v towards target as a smoothing filter with time constant tau
+// seconds would over dt seconds.
+func glide(v, target, dt, tau float64) float64 {
+	return v + (target-v)*(1-math.Exp(-dt/tau))
+}
+
+// bilinear samples a w by h picture at (sx, sy) in cells, blending the four
+// cells around it. Outside the picture it is 0.
+func bilinear(v []float64, w, h int, sx, sy float64) float64 {
+	if sx < 0 || sy < 0 || sx > float64(w-1) || sy > float64(h-1) {
+		return 0
+	}
+	x0, y0 := int(sx), int(sy)
+	x1, y1 := min(x0+1, w-1), min(y0+1, h-1)
+	fx, fy := sx-float64(x0), sy-float64(y0)
+	top := v[y0*w+x0]*(1-fx) + v[y0*w+x1]*fx
+	bot := v[y1*w+x0]*(1-fx) + v[y1*w+x1]*fx
+	return top*(1-fy) + bot*fy
 }
 
 // smooth is 0 below a, 1 above b, and a smooth step between.

@@ -10,6 +10,8 @@ import (
 type grid struct {
 	w, h int
 	v    []float64
+	// shown is what is drawn when the grid is eased: v smoothed over time.
+	shown []float64
 }
 
 // fit sizes the grid to about cells cells, square on screen, and reports
@@ -25,20 +27,36 @@ func (g *grid) fit(f *frame, cells int) bool {
 	return true
 }
 
+// ease draws the grid with each cell gliding towards its value over tau
+// seconds, for simulations whose cells flicker from frame to frame.
+func (g *grid) ease(f *frame, buf []float64, tau float64) {
+	if len(g.shown) != len(g.v) {
+		g.shown = append([]float64(nil), g.v...)
+	}
+	for i, v := range g.v {
+		g.shown[i] = glide(g.shown[i], v, f.dt, tau)
+	}
+	ex, ey := float64(f.fw)/f.radius, float64(f.fh)*f.aspect/f.radius
+	f.fill(buf, func(x, y float64) float64 {
+		return bilinear(g.shown, g.w, g.h, (x/ex+0.5)*float64(g.w)-0.5, (y/ey+0.5)*float64(g.h)-0.5)
+	})
+}
+
 func (g *grid) at(x, y int) float64 {
 	return g.v[((y+g.h)%g.h)*g.w+(x+g.w)%g.w]
 }
 
-// show draws the grid into buf through the warps.
-func (g *grid) show(f *frame, buf []float64) {
+// show draws the grid into buf through the warps, blending neighbouring
+// cells so that the grid's coarseness does not show.
+func (g *grid) show(f *frame, buf []float64) { g.showShifted(f, buf, 0) }
+
+// showShifted draws the grid moved up by shift cells.
+func (g *grid) showShifted(f *frame, buf []float64, shift float64) {
 	ex, ey := float64(f.fw)/f.radius, float64(f.fh)*f.aspect/f.radius
 	f.fill(buf, func(x, y float64) float64 {
-		gx := int((x/ex + 0.5) * float64(g.w))
-		gy := int((y/ey + 0.5) * float64(g.h))
-		if gx < 0 || gy < 0 || gx >= g.w || gy >= g.h {
-			return 0
-		}
-		return g.v[gy*g.w+gx]
+		gx := (x/ex+0.5)*float64(g.w) - 0.5
+		gy := (y/ey+0.5)*float64(g.h) - 0.5 + shift
+		return bilinear(g.v, g.w, g.h, gx, gy)
 	})
 }
 
@@ -77,7 +95,7 @@ func (l *life) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 	fade := 0.75 + 0.2*v[2]
 	for i, a := range l.alive {
 		if a {
-			l.v[i] = 1
+			l.v[i] += (1 - l.v[i]) * 0.45
 		} else {
 			l.v[i] *= fade
 		}
@@ -130,15 +148,18 @@ func (j *julia) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 			j.v[y*j.w+x] = juliaDepth(zr, zi, cr, ci, 32)
 		}
 	}
-	j.show(f, buf)
+	j.ease(f, buf, 0.06)
 }
 
 // juliaDepth iterates z² + c from z and returns how quickly it escapes: 1 for
 // a point that never does within limit steps, and less the sooner it escapes.
+// The count is made continuous from how far past the escape radius the point
+// landed, so that it changes smoothly as c moves.
 func juliaDepth(zr, zi, cr, ci float64, limit int) float64 {
 	for i := range limit {
-		if zr*zr+zi*zi > 4 {
-			return float64(i) / float64(limit)
+		if m := zr*zr + zi*zi; m > 16 {
+			smooth := float64(i) + 1 - math.Log2(math.Log2(m)/2)
+			return clamp01(smooth / float64(limit))
 		}
 		zr, zi = zr*zr-zi*zi+cr, 2*zr*zi+ci
 	}
@@ -187,7 +208,7 @@ func (g *fire) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 			g.v[y*g.w+x] = math.Max(0, sum/4-cool*f.rng.Float64())
 		}
 	}
-	g.show(f, buf)
+	g.ease(f, buf, 0.05)
 }
 
 // automaton is a one-dimensional cellular automaton. Each new row is made from
@@ -211,15 +232,17 @@ func (a *automaton) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 		a.row = make([]bool, a.w)
 		a.row[a.w/2] = true
 	}
-	steps := 0
+	steps, part := 0, 0.0
 	if f.sig.Tempo > 0 {
 		if f.sig.Beat != a.beat {
-			steps, a.beat = 1+int(3*v[0]), f.sig.Beat
+			steps, a.beat = 1, f.sig.Beat
 		}
+		part = f.sig.Phase
 	} else {
 		a.carry += f.dt * (4 + 12*v[0])
 		steps = int(a.carry)
 		a.carry -= float64(steps)
+		part = a.carry
 	}
 	for range steps {
 		if f.sig.Snap > 0.5 {
@@ -235,7 +258,8 @@ func (a *automaton) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 			}
 		}
 	}
-	a.show(f, buf)
+	// The rows slide up between steps, a whole row per step.
+	a.showShifted(f, buf, part-1)
 }
 
 // ruleStep returns the row after row under an elementary rule, wrapping at
@@ -501,6 +525,7 @@ func (e *epicycles) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 // starts a new one a while after it finishes.
 type maze struct {
 	grid
+	open   []bool
 	cw, ch int
 	seen   []bool
 	stack  [][2]int
@@ -512,11 +537,12 @@ func (m *maze) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 	if m.fit(f, 4000) || m.done > 4 {
 		m.cw, m.ch = (m.w-1)/2, (m.h-1)/2
 		m.seen = make([]bool, m.cw*m.ch)
+		m.open = make([]bool, m.w*m.h)
 		m.stack = [][2]int{{0, 0}}
 		m.seen[0] = true
 		m.done = 0
 		clear(m.v)
-		m.v[m.w+1] = 1
+		m.open[m.w+1] = true
 	}
 	rate := 20 + 80*v[0]
 	if f.sig.Tempo > 0 {
@@ -525,11 +551,16 @@ func (m *maze) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 	m.carry += f.dt * rate
 	for ; m.carry >= 1 && len(m.stack) > 0; m.carry-- {
 		m.stack = mazeStep(m.stack, m.seen, m.cw, m.ch, f.rng, func(x, y int) {
-			m.v[y*m.w+x] = 1
+			m.open[y*m.w+x] = true
 		})
 	}
 	if len(m.stack) == 0 {
 		m.done += f.dt
+	}
+	for i, o := range m.open {
+		if o {
+			m.v[i] += (1 - m.v[i]) * 0.3
+		}
 	}
 	m.show(f, buf)
 }
@@ -559,6 +590,7 @@ func mazeStep(stack [][2]int, seen []bool, cw, ch int, rng *rand.Rand, carve fun
 // time, then cuts a new set.
 type sorter struct {
 	bars  []float64
+	shown []float64
 	i, j  int
 	carry float64
 	beat  int
@@ -572,6 +604,7 @@ func (s *sorter) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 			s.bars = append(s.bars, f.rng.Float64())
 		}
 		s.bars = s.bars[len(s.bars)-24:]
+		s.shown = append([]float64(nil), s.bars...)
 		s.i, s.j, s.rest = 0, 0, 0
 	}
 	steps := 0
@@ -591,11 +624,14 @@ func (s *sorter) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 		s.rest += f.dt
 	}
 	n := len(s.bars)
+	for k, b := range s.bars {
+		s.shown[k] = glide(s.shown[k], b, f.dt, 0.08)
+	}
 	for py := range f.fh {
 		for px := range f.fw {
 			k := px * n / f.fw
 			v := 0.0
-			if float64(f.fh-py) <= s.bars[k]*float64(f.fh)*0.9 && px%(f.fw/n+1) != 0 {
+			if float64(f.fh-py) <= s.shown[k]*float64(f.fh)*0.9 && px%(f.fw/n+1) != 0 {
 				v = 0.5
 				if k == s.j || k == s.j+1 {
 					v = 1
