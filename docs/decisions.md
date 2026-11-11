@@ -1582,3 +1582,52 @@ for a scene at rest.
 The count is 10,238 lines, and the budget is raised to 10,800.
 
 ---
+
+## ADR-030 — Foresight: a second, silent mpv maps the track ahead of playback
+
+**Status:** accepted.
+
+While the visualiser is open, shanty measures the track playing and the one
+after it, one at a time, by starting a second mpv for each. That mpv has no
+audio output and no clock (`--ao=null --ao-null-untimed=yes`), runs the
+measuring filter of ADR-027 with the totals restarting every block of 1024
+samples, and prints each block's totals and time to its standard output. The
+totals become a plan of the track: curves of level, bass, treble and air;
+cues for sections, builds, drops, the climax and hushes; and a tempo. The
+visualiser is given the plan and does not yet use it.
+
+- The stream URL is given to the second mpv over its own unix socket, never
+  on its command line or in its environment. The socket is the player's path
+  with `.ahead` added, in the same 0700 directory. `TestAnalysisHygiene`
+  checks the child's argv and environment.
+- Each track measured is streamed twice from the server, once to play it and
+  once to measure it.
+- Nothing is measured while the visualiser is closed. Closing it, or moving
+  to a track that is neither playing nor next, stops the second mpv.
+- Plans are kept in memory for the session, by track. A track that could not
+  be measured is not tried again in that session. Nothing is written to disk.
+
+### What was measured
+
+Against mpv 0.41 with FFmpeg 9, a four-minute FLAC is measured in 0.6 to
+0.9 seconds, 160 to 390 times faster than it plays. The time of each block
+equals the live filter's sample count for the same audio, with no offset,
+to within one block (±11.6 ms), for FLAC and MP3. The first block is at 0 for
+FLAC, MP3 and Opus, because mpv removes encoder delay. A cue at T seconds is
+therefore due when the visualiser's position in the track reaches T.
+
+### Threat model
+
+ADR-001 applies unchanged. The credential travels the same way it does to the
+player. A hostile server can send audio that the second decoder parses, which
+is the exposure playback already has, in one more process.
+
+### When it does not work
+
+An mpv whose FFmpeg lacks `ametadata` printing to a file, or the `astats`
+options used, prints no blocks or ends the track with an error. There is then
+no plan, nothing is reported, and the visualiser draws from what it hears.
+There is no setting to turn measuring off, for the reasons ADR-001 gives
+about settings.
+
+---

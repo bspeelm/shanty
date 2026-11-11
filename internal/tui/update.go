@@ -178,6 +178,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sky.Hear(sky.Reading(msg))
 		}
 		return m, nil
+	case Foresight:
+		if m.sky != nil {
+			m.sky.Foresee(msg.Track, msg.Plan)
+		}
+		return m, nil
 	case SkySeed:
 		m.skySeed = uint64(msg)
 		return m, nil

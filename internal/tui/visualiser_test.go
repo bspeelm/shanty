@@ -6,7 +6,21 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/bspeelm/shanty/internal/sky"
 )
+
+func TestAPlanReachesTheVisualiserWithoutChangingTheScreen(t *testing.T) {
+	plan := sky.NewPlan(nil)
+	closed := loaded(t)
+	if next, cmd := closed.Update(Foresight{Track: "Slipway", Plan: plan}); cmd != nil || next.(Model).View() != closed.View() {
+		t.Error("a plan with the visualiser closed changed something")
+	}
+	open := send(t, loaded(t), ShowVisualiser{})
+	if next, cmd := open.Update(Foresight{Track: "Slipway", Plan: plan}); cmd != nil || next.(Model).View() != open.View() {
+		t.Error("a plan with the visualiser open asked for something or redrew it")
+	}
+}
 
 // The visualiser is an overlay rather than a screen, and it keeps itself
 // turning by asking for the next frame. These cover both: what is on screen

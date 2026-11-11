@@ -102,6 +102,7 @@ func play(ctx context.Context, env Env) error {
 	a.autoVolume = cfg.AutoVolume
 	a.configFile = env.Paths.ConfigFile()
 	a.notes = notes
+	a.analyser = silentMpv{Socket: env.Paths.Socket()}
 	if running {
 		a = a.resume(resumed)
 	}
