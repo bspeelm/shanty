@@ -26,13 +26,32 @@ func (o silentMpv) Analyse(ctx context.Context, url string) ([]mpv.Block, error)
 
 // foresight is what has been measured ahead of playback this session, by
 // track identifier. A track whose measuring failed holds a nil plan and is
-// not measured again. running is the track being measured, job counts the
-// measurings started, and stop cancels the one under way.
+// not measured again. order is the identifiers in plans, oldest first.
+// running is the track being measured, job counts the measurings started,
+// and stop cancels the one under way.
 type foresight struct {
 	plans   map[string]*sky.Plan
+	order   []string
 	running string
 	job     int
 	stop    context.CancelFunc
+}
+
+// foresightKept is how many tracks' plans are kept. A track whose plan has
+// been dropped is measured again when it is next wanted.
+const foresightKept = 200
+
+// keep holds the plan of a track, dropping the oldest once more than
+// foresightKept are held.
+func (f *foresight) keep(id string, plan *sky.Plan) {
+	if _, held := f.plans[id]; !held {
+		f.order = append(f.order, id)
+	}
+	f.plans[id] = plan
+	for len(f.order) > foresightKept {
+		delete(f.plans, f.order[0])
+		f.order = f.order[1:]
+	}
 }
 
 // foreseen is the result of measuring one track, with the number of the
@@ -113,7 +132,7 @@ func (a app) sawAhead(msg foreseen) (tea.Model, tea.Cmd) {
 		f.cancel()
 	}
 	if !errors.Is(msg.err, context.Canceled) {
-		f.plans[msg.id] = msg.plan
+		f.keep(msg.id, msg.plan)
 	}
 	return a, a.foresee()
 }
