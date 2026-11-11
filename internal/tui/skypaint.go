@@ -14,11 +14,15 @@ import (
 type Heard sky.Reading
 
 // Foresight is the plan of a track, measured ahead of playback, for the
-// visualiser. Track is the title the track is shown under while it plays.
+// visualiser, with the title and artist the track is shown under.
 type Foresight struct {
-	Track string
-	Plan  *sky.Plan
+	Title, Artist string
+	Plan          *sky.Plan
 }
+
+// skyTrack is the name the visualiser knows a track by: its title and its
+// artist, so that two songs with the same title are told apart.
+func skyTrack(title, artist string) string { return title + "\x00" + artist }
 
 // paintSky turns a picture of the visualiser into w by h lines of text, with
 // its colours when the picture has them.

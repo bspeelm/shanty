@@ -795,7 +795,7 @@ func (a app) enqueue(album subsonic.Album, index int, next bool) (tea.Model, tea
 	if next {
 		where = "playing " + track.Title + " next"
 	}
-	return a, tea.Batch(a.prefetch(), a.queueChanged(), emit(tui.Notice(where)))
+	return a, tea.Batch(a.prefetch(), a.queueChanged(), emit(tui.Notice(where)), a.foresee())
 }
 
 // prefetch tells mpv which track follows the one playing.

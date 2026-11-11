@@ -83,7 +83,7 @@ func plansFor(msgs []tea.Msg) []string {
 	var got []string
 	for _, m := range msgs {
 		if f, ok := m.(tui.Foresight); ok && f.Plan != nil {
-			got = append(got, f.Track)
+			got = append(got, f.Title)
 		}
 	}
 	return got

@@ -72,7 +72,7 @@ func (a app) foresee() tea.Cmd {
 		plan, done := f.plans[t.ID]
 		switch {
 		case done && plan != nil:
-			cmds = append(cmds, emit(tui.Foresight{Track: t.Title, Plan: plan}))
+			cmds = append(cmds, emit(tui.Foresight{Title: t.Title, Artist: t.Artist, Plan: plan}))
 		case !done && f.running == "":
 			ctx, stop := context.WithCancel(a.ctx)
 			f.job++
