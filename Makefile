@@ -31,7 +31,7 @@ help:
 	@echo "make crossbuild  every platform the release ships"
 
 lint:
-	gofmt -l . | grep -v '^vendor/' | (! grep .) || { echo "gofmt -w the files above"; exit 1; }
+	gofmt -l . | grep -v -e '^vendor/' -e '^\.' | (! grep .) || { echo "gofmt -w the files above"; exit 1; }
 
 vet:
 	go vet ./...
