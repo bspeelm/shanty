@@ -41,7 +41,8 @@ const favour = 8
 // profiles holds the style of each axis, in the order of Character.axes.
 var profiles = [4]style{
 	{ // Calm
-		kinds:   map[string]float64{"plasma": favour, "reaction": favour, "julia": favour, "flow": favour, "sun": favour, "cells": 2},
+		kinds: map[string]float64{"plasma": favour, "reaction": favour, "julia": favour, "flow": favour, "sun": favour, "cells": 2,
+			"night lake": favour, "dawn sea": 1.5, "aurora": 1, "storm": 0.3},
 		sources: [sources]float64{srcLevel: 3, srcBass: 1, srcAir: 1, srcSlow: 4, srcSlower: 4, srcBalance: 1, srcTension: 1, srcHush: 2},
 		warps:   [warpKinds]float64{warpTwist: 4, warpRipple: 4, warpRotate: 2, warpZoom: 1, warpKaleido: 1, warpMirror: 1},
 		glyphs:  [4]float64{glyphBraille: 5, glyphHalf: 3, glyphShade: 1},
@@ -49,7 +50,8 @@ var profiles = [4]style{
 		sat: 0.55, contrast: 1.4, hits: 0.4,
 	},
 	{ // Drive
-		kinds:   map[string]float64{"tunnel": favour, "lattice": favour, "rings": favour, "grid": favour, "rule": favour, "spiral": 2},
+		kinds: map[string]float64{"tunnel": favour, "lattice": favour, "rings": favour, "grid": favour, "rule": favour, "spiral": 2,
+			"aurora": 1, "night lake": 0.15, "dawn sea": 0.15, "storm": 0.15},
 		sources: [sources]float64{srcKick: 5, srcPhase: 5, srcBar: 4, srcBass: 2, srcLevel: 1, srcSnap: 1, srcRelease: 2},
 		warps:   [warpKinds]float64{warpKaleido: 5, warpRotate: 4, warpZoom: 3, warpMirror: 2, warpPolar: 1},
 		glyphs:  [4]float64{glyphHalf: 5, glyphBraille: 2, glyphShade: 2, glyphASCII: 1},
@@ -57,7 +59,8 @@ var profiles = [4]style{
 		lock: 1, sat: 1, contrast: 0.7, hits: 1,
 	},
 	{ // Grit
-		kinds:   map[string]float64{"fire": favour, "boids": favour, "sparks": favour, "terrain": favour, "stars": favour, "ant": 2},
+		kinds: map[string]float64{"fire": favour, "boids": favour, "sparks": favour, "terrain": favour, "stars": favour, "ant": 2,
+			"storm": 3, "night lake": 0.3, "dawn sea": 0.3, "aurora": 0.3},
 		sources: [sources]float64{srcSnap: 5, srcTreble: 4, srcAir: 4, srcKick: 3, srcLevel: 2, srcBusy: 2, srcRelease: 2},
 		warps:   [warpKinds]float64{warpRipple: 4, warpZoom: 4, warpMirror: 2, warpRotate: 1, warpTwist: 1},
 		glyphs:  [4]float64{glyphShade: 4, glyphHalf: 4, glyphASCII: 2, glyphBraille: 1},
@@ -65,7 +68,8 @@ var profiles = [4]style{
 		lock: 0.3, sat: 0.9, contrast: 0.9, hits: 1,
 	},
 	{ // Flow
-		kinds:   map[string]float64{"orbits": favour, "lorenz": favour, "epicycles": favour, "chaos": favour, "spiral": favour, "flow": 2},
+		kinds: map[string]float64{"orbits": favour, "lorenz": favour, "epicycles": favour, "chaos": favour, "spiral": favour, "flow": 2,
+			"dawn sea": favour, "night lake": 2, "storm": 0.3},
 		sources: [sources]float64{srcLevel: 5, srcBass: 3, srcSlow: 3, srcBalance: 2, srcTreble: 1, srcSlower: 2, srcTension: 2, srcHush: 1},
 		warps:   [warpKinds]float64{warpPolar: 4, warpMirror: 4, warpTwist: 2, warpRotate: 2, warpKaleido: 1},
 		glyphs:  [4]float64{glyphBraille: 5, glyphHalf: 2, glyphShade: 1},
