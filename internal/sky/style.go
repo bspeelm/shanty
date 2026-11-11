@@ -28,6 +28,8 @@ type style struct {
 	// lock is how strongly turning is stepped on the beat rather than
 	// continuous, from 0 to 1.
 	lock float64
+	// hits scales how strongly Kick and Snap move parameters.
+	hits float64
 	// sat and contrast shape the palette: how strong its colours are, and
 	// how steeply it rises from dark to bright.
 	sat, contrast float64
@@ -40,35 +42,35 @@ const favour = 8
 var profiles = [4]style{
 	{ // Calm
 		kinds:   map[string]float64{"plasma": favour, "reaction": favour, "julia": favour, "flow": favour, "sun": favour, "cells": 2},
-		sources: [sources]float64{srcLevel: 3, srcBass: 1, srcAir: 1, srcSlow: 4, srcSlower: 4, srcBalance: 1},
+		sources: [sources]float64{srcLevel: 3, srcBass: 1, srcAir: 1, srcSlow: 4, srcSlower: 4, srcBalance: 1, srcTension: 1, srcHush: 2},
 		warps:   [warpKinds]float64{warpTwist: 4, warpRipple: 4, warpRotate: 2, warpZoom: 1, warpKaleido: 1, warpMirror: 1},
 		glyphs:  [4]float64{glyphBraille: 5, glyphHalf: 3, glyphShade: 1},
 		glide:   0.4, morph: 20, life: [2]float64{70, 150}, keep: [2]float64{0.6, 1},
-		sat: 0.55, contrast: 1.4,
+		sat: 0.55, contrast: 1.4, hits: 0.4,
 	},
 	{ // Drive
 		kinds:   map[string]float64{"tunnel": favour, "lattice": favour, "rings": favour, "grid": favour, "rule": favour, "spiral": 2},
-		sources: [sources]float64{srcKick: 5, srcPhase: 5, srcBar: 4, srcBass: 2, srcLevel: 1, srcSnap: 1},
+		sources: [sources]float64{srcKick: 5, srcPhase: 5, srcBar: 4, srcBass: 2, srcLevel: 1, srcSnap: 1, srcRelease: 2},
 		warps:   [warpKinds]float64{warpKaleido: 5, warpRotate: 4, warpZoom: 3, warpMirror: 2, warpPolar: 1},
 		glyphs:  [4]float64{glyphHalf: 5, glyphBraille: 2, glyphShade: 2, glyphASCII: 1},
 		glide:   0.05, morph: 4, life: [2]float64{30, 70}, keep: [2]float64{0.2, 0.6},
-		lock: 1, sat: 1, contrast: 0.7,
+		lock: 1, sat: 1, contrast: 0.7, hits: 1,
 	},
 	{ // Grit
 		kinds:   map[string]float64{"fire": favour, "boids": favour, "sparks": favour, "terrain": favour, "stars": favour, "ant": 2},
-		sources: [sources]float64{srcSnap: 5, srcTreble: 4, srcAir: 4, srcKick: 3, srcLevel: 2, srcBusy: 2},
+		sources: [sources]float64{srcSnap: 5, srcTreble: 4, srcAir: 4, srcKick: 3, srcLevel: 2, srcBusy: 2, srcRelease: 2},
 		warps:   [warpKinds]float64{warpRipple: 4, warpZoom: 4, warpMirror: 2, warpRotate: 1, warpTwist: 1},
 		glyphs:  [4]float64{glyphShade: 4, glyphHalf: 4, glyphASCII: 2, glyphBraille: 1},
 		glide:   0.08, morph: 6, life: [2]float64{35, 80}, keep: [2]float64{0.3, 0.7},
-		lock: 0.3, sat: 0.9, contrast: 0.9,
+		lock: 0.3, sat: 0.9, contrast: 0.9, hits: 1,
 	},
 	{ // Flow
 		kinds:   map[string]float64{"orbits": favour, "lorenz": favour, "epicycles": favour, "chaos": favour, "spiral": favour, "flow": 2},
-		sources: [sources]float64{srcLevel: 5, srcBass: 3, srcSlow: 3, srcBalance: 2, srcTreble: 1, srcSlower: 2},
+		sources: [sources]float64{srcLevel: 5, srcBass: 3, srcSlow: 3, srcBalance: 2, srcTreble: 1, srcSlower: 2, srcTension: 2, srcHush: 1},
 		warps:   [warpKinds]float64{warpPolar: 4, warpMirror: 4, warpTwist: 2, warpRotate: 2, warpKaleido: 1},
 		glyphs:  [4]float64{glyphBraille: 5, glyphHalf: 2, glyphShade: 1},
 		glide:   0.25, morph: 14, life: [2]float64{60, 130}, keep: [2]float64{0.5, 0.9},
-		sat: 0.45, contrast: 1.1,
+		sat: 0.45, contrast: 1.1, hits: 0.5,
 	},
 }
 
@@ -98,6 +100,7 @@ func styleFor(c Character) *style {
 		out.keep[0] += w * p.keep[0]
 		out.keep[1] += w * p.keep[1]
 		out.lock += w * p.lock
+		out.hits += w * p.hits
 		out.sat += w * p.sat
 		out.contrast += w * p.contrast
 	}

@@ -25,6 +25,11 @@ type Signals struct {
 	Beat  int
 	// Section is set on the frame where the music changes character.
 	Section bool
+	// Tension rises while the music builds over several seconds. Release
+	// jumps when a build lets go or a drop lands, and dies away over a
+	// second or two. Hush is how far the level is below the track's running
+	// average. Breath rises and falls once a phrase.
+	Tension, Release, Hush, Breath float64
 }
 
 // The sources a scene can route to a parameter, in the order Signals.source
@@ -42,6 +47,9 @@ const (
 	srcBar
 	srcSlow
 	srcSlower
+	srcTension
+	srcRelease
+	srcHush
 	sources
 )
 
@@ -73,6 +81,12 @@ func (s Signals) source(i int, clock float64) float64 {
 		return 0.5 + 0.5*math.Sin(clock*2*math.Pi/37)
 	case srcSlower:
 		return 0.5 + 0.5*math.Sin(clock*2*math.Pi/113)
+	case srcTension:
+		return s.Tension
+	case srcRelease:
+		return s.Release
+	case srcHush:
+		return s.Hush
 	}
 	return 0
 }
@@ -93,6 +107,7 @@ type listener struct {
 	historyT float64
 	meter    characterMeter
 	char     Character
+	shape    tensionMeter
 }
 
 // historyLen is how many levels the history keeps, one every historyStep
@@ -135,6 +150,7 @@ func (l *listener) step(dt float64, now time.Time) Signals {
 
 	s.Tempo, s.Phase, s.Beat = l.tempo.step(onset, dt)
 	l.char = l.meter.step(*s, l.tempo.sure, kick, onset, dt)
+	l.shape.step(s, dt)
 	l.section(dt)
 	l.remember(dt)
 	return *s
