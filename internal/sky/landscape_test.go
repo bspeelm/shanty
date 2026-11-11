@@ -276,3 +276,39 @@ func TestALandscapeIsAlwaysTheFirstLayer(t *testing.T) {
 		t.Fatal("no scene had a landscape")
 	}
 }
+
+func TestAScenePicksUpAgainOnceItsLandscapeHasGone(t *testing.T) {
+	st := styleFor(Character{Calm: 1})
+	for seed := uint64(1); seed <= 200; seed++ {
+		rng := rand.New(rand.NewPCG(seed, 8))
+		s := newScene(rng, st, Character{Calm: 1}, Signals{})
+		if !s.landed() {
+			continue
+		}
+		var over *layer
+		for _, l := range s.layers[1:] {
+			over = l
+		}
+		if over == nil {
+			continue
+		}
+		quietened := over.weight.base
+		// The landscape leaves, and the next change finds none.
+		s.layers[0].goal = 0
+		s.evolve(rng, st, Character{Calm: 1})
+		if s.landed() {
+			continue
+		}
+		if s.grounded {
+			t.Fatal("a scene whose landscape had gone was still arranged around one")
+		}
+		if over.weight.base <= quietened {
+			t.Errorf("a layer kept its lowered weight %.2f after the landscape went", over.weight.base)
+		}
+		if s.zoom.depth == ([2]float64{}) && s.turn.depth == ([2]float64{}) {
+			t.Error("the feedback still neither zoomed nor turned after the landscape went")
+		}
+		return
+	}
+	t.Fatal("no seed made a scene with a landscape and a layer over it whose landscape then went")
+}
