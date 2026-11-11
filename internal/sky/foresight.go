@@ -11,6 +11,8 @@ type foresightState struct {
 	heard   float64
 	pulse   float64
 	section float64
+	// following is set while the last frame was drawn to a plan.
+	following bool
 }
 
 type foreseen struct {
@@ -65,15 +67,18 @@ func (s *State) foresee(sig Signals, st *style, dt float64) (Signals, float64, b
 	f := &s.foresight
 	p := s.plan()
 	if p == nil || !s.lis.ear.have {
-		f.heard, f.pulse = 0, 0
+		f.heard, f.pulse, f.following = 0, 0, false
 		return sig, 0, false
 	}
 	pos := s.lis.ear.now
+	// Cues are acted on as playback passes them. A plan that arrives part of
+	// the way through a track, or a jump in position, starts from where
+	// playback is, so the cues behind it are not all set off at once.
 	from := f.heard
-	if pos < from {
+	if !f.following || pos < from || pos-from > 1 {
 		from = pos
 	}
-	f.heard = pos
+	f.heard, f.following = pos, true
 
 	sig.Tension = math.Max(sig.Tension, p.Tension(pos))
 	f.pulse *= math.Exp(-dt / 0.7)
