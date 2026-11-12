@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -28,10 +29,14 @@ type recorded struct {
 	} `json:"params"`
 }
 
-// recordedTrack is the readings of one track in a recording.
+// recordedTrack is the readings of one track in a recording. guessed is
+// whether the track started without its audio parameters, and peak is the
+// largest sample seen.
 type recordedTrack struct {
 	title    string
 	readings []Reading
+	guessed  bool
+	peak     float64
 }
 
 // recordedEpoch is the number of samples after which the measuring filter
@@ -39,7 +44,9 @@ type recordedTrack struct {
 const recordedEpoch = 1024 * 64
 
 // readRecording splits a recording into tracks of readings. A line whose
-// title is "(address withheld)" is not the start of a track.
+// title is "(address withheld)" is not the start of a track. A track that
+// starts without its audio parameters is given the sample rate the readings
+// advance at and the format its largest sample fits.
 func readRecording(t *testing.T, path string) []recordedTrack {
 	f, err := os.Open(path)
 	if err != nil {
@@ -63,7 +70,7 @@ func readRecording(t *testing.T, path string) []recordedTrack {
 			scale = map[string]float64{"s16": 1 << 15, "s32": 1 << 31}[r.Params.Format]
 		}
 		if r.Title != nil && *r.Title != "(address withheld)" {
-			out = append(out, recordedTrack{title: *r.Title})
+			out = append(out, recordedTrack{title: *r.Title, guessed: r.Params == nil})
 		}
 		if len(out) == 0 || r.MD == nil || r.Pos == nil || r.Paused {
 			continue
@@ -89,8 +96,46 @@ func readRecording(t *testing.T, path string) []recordedTrack {
 		}
 		tr := &out[len(out)-1]
 		tr.readings = append(tr.readings, rd)
+		if v, err := strconv.ParseFloat(r.MD["lavfi.astats.1.Max_level"], 64); err == nil {
+			tr.peak = math.Max(tr.peak, math.Abs(v))
+		}
+	}
+	for i := range out {
+		if out[i].guessed {
+			guessParams(&out[i])
+		}
 	}
 	return out
+}
+
+// guessParams sets the sample rate of a track's readings to the common rate
+// nearest the median of samples a second between readings in one epoch, and
+// the scale to 32 bits when a sample is beyond 16 bits.
+func guessParams(tr *recordedTrack) {
+	var rates []float64
+	for i := 1; i < len(tr.readings); i++ {
+		a, b := tr.readings[i-1], tr.readings[i]
+		if dp := (b.Position - a.Position).Seconds(); b.Samples > a.Samples && dp > 0.005 {
+			rates = append(rates, (b.Samples-a.Samples)/dp)
+		}
+	}
+	if len(rates) == 0 {
+		return
+	}
+	sort.Float64s(rates)
+	rate := 48000
+	for _, r := range []int{44100, 48000, 88200, 96000, 192000} {
+		if math.Abs(float64(r)-rates[len(rates)/2]) < math.Abs(float64(rate)-rates[len(rates)/2]) {
+			rate = r
+		}
+	}
+	scale := float64(1 << 15)
+	if tr.peak > 1<<15 {
+		scale = 1 << 31
+	}
+	for i := range tr.readings {
+		tr.readings[i].Rate, tr.readings[i].Scale = rate, scale
+	}
 }
 
 // replayWindow is what is counted over ten seconds of a replay.
