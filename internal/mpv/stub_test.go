@@ -40,6 +40,12 @@ const (
 	// a low thump every half second, a burst of noise between thumps, and
 	// silence from 0.05 to 0.09 seconds.
 	measuredBands = "testdata/bands.txt"
+	// measuredAntiphase is the recorded output of the analysing filter for
+	// a low thump whose right channel is its left channel inverted.
+	measuredAntiphase = "testdata/antiphase.txt"
+	// noParamsEnv makes an analysing stub end a track without saying its
+	// audio format.
+	noParamsEnv = "SHANTY_TEST_STUB_NO_PARAMS"
 )
 
 func TestMain(m *testing.M) {
@@ -148,7 +154,9 @@ func measure(conn net.Conn) {
 	if reason == "" {
 		reason = "eof"
 	}
-	fmt.Fprintln(conn, `{"event":"property-change","id":1,"name":"audio-params","data":{"format":"s16","samplerate":44100,"channel-count":2}}`)
+	if os.Getenv(noParamsEnv) == "" {
+		fmt.Fprintln(conn, `{"event":"property-change","id":1,"name":"audio-params","data":{"format":"s16","samplerate":44100,"channel-count":2}}`)
+	}
 	if reason == "eof" {
 		b, err := os.ReadFile(measuredBands)
 		if err != nil {

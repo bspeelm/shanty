@@ -7,30 +7,38 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
 
-// analyseRate is the sample rate the analysing filter measures at, and
-// analyseBands is how many bands it measures besides the whole sound.
+// analyseRate is the sample rate the analysing filter measures at,
+// analyseWhole is how many channels it measures the whole sound in, and
+// analyseBands is how many bands it measures besides.
 const (
 	analyseRate  = 48000
+	analyseWhole = 2
 	analyseBands = 4
 )
 
-// analyseFilter mixes the audio to one channel at analyseRate, cuts it into
-// blocks of blockSamples, and measures each block on its own: the whole sound,
-// then four bands, which are below 150 Hz, 100 to 400 Hz, 1 to 4 kHz and above
-// 6 kHz. It prints every block's totals to standard output.
-var analyseFilter = fmt.Sprintf("lavfi=[aresample=%d,aformat=sample_fmts=flt:channel_layouts=mono,"+
-	"asetnsamples=n=%d:p=0,asplit=5[f][a][b][c][d];"+
-	"[a]lowpass=f=150[k];[b]bandpass=f=250:width_type=h:w=300[l];"+
-	"[c]bandpass=f=2500:width_type=h:w=3000[m];[d]highpass=f=6000[h];"+
+// analyseFilter resamples the audio to analyseRate, cuts it into blocks of
+// blockSamples, and measures each block on its own: the whole sound in two
+// channels, then four bands of a mix to one channel, which are below 150 Hz,
+// 100 to 400 Hz, 1 to 4 kHz and above 6 kHz. It prints every block's totals
+// to standard output.
+var analyseFilter = fmt.Sprintf("lavfi=[asplit=2[g][b];"+
+	"[g]aresample=%[1]d,aformat=sample_fmts=flt:channel_layouts=stereo,asetnsamples=n=%[2]d:p=0[f];"+
+	"[b]aresample=%[1]d,aformat=sample_fmts=flt:channel_layouts=mono,asetnsamples=n=%[2]d:p=0,asplit=4[w][x][y][z];"+
+	"[w]lowpass=f=150,aformat=channel_layouts=mono[k];"+
+	"[x]bandpass=f=250:width_type=h:w=300,aformat=channel_layouts=mono[l];"+
+	"[y]bandpass=f=2500:width_type=h:w=3000,aformat=channel_layouts=mono[m];"+
+	"[z]highpass=f=6000,aformat=channel_layouts=mono[h];"+
 	"[f][k][l][m][h]amerge=inputs=5,"+
 	"astats=metadata=1:reset=1:measure_perchannel=RMS_level+RMS_difference+Zero_crossings:measure_overall=Number_of_samples,"+
 	"ametadata=mode=print:file=-]", analyseRate, blockSamples)
@@ -63,22 +71,36 @@ type Block struct {
 // opt.Socket with a suffix. Cancelling ctx stops the mpv and returns
 // ctx.Err().
 func Analyse(ctx context.Context, opt Options, url string) ([]Block, error) {
+	blocks, params, err := analyse(ctx, opt, url, analyseFilter)
+	if err != nil {
+		return nil, err
+	}
+	for i := range blocks {
+		blocks[i] = banded(blocks[i], params)
+	}
+	return blocks, nil
+}
+
+// analyse measures a track with a filter, and returns the totals of every
+// block and the format of the decoded audio.
+func analyse(ctx context.Context, opt Options, url, filter string) ([]Block, audioParams, error) {
+	var none audioParams
 	binary := opt.Binary
 	if binary == "" {
 		binary = "mpv"
 	}
 	if opt.Socket == "" {
-		return nil, errors.New("no IPC socket path was given")
+		return nil, none, errors.New("no IPC socket path was given")
 	}
 	socket := opt.Socket + analyseSuffix
 	if err := checkSocketPath(socket); err != nil {
-		return nil, err
+		return nil, none, err
 	}
 	if err := os.MkdirAll(filepath.Dir(socket), 0o700); err != nil {
-		return nil, err
+		return nil, none, err
 	}
 	if err := clearSocket(socket); err != nil {
-		return nil, err
+		return nil, none, err
 	}
 
 	cmd := exec.Command(binary,
@@ -89,7 +111,7 @@ func Analyse(ctx context.Context, opt Options, url string) ([]Block, error) {
 		"--ao-null-untimed=yes",
 		"--term-status-msg=",
 		"--msg-level=all=no",
-		"--af="+analyseFilter,
+		"--af="+filter,
 		"--input-ipc-server="+socket,
 	)
 	cmd.Env = os.Environ()
@@ -97,7 +119,7 @@ func Analyse(ctx context.Context, opt Options, url string) ([]Block, error) {
 	out, in := io.Pipe()
 	cmd.Stdout, cmd.Stderr = in, opt.Diagnostics
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("could not start %s: %w", binary, err)
+		return nil, none, fmt.Errorf("could not start %s: %w", binary, err)
 	}
 	parsed := make(chan []Block, 1)
 	go func() { parsed <- parseBlocks(out) }()
@@ -112,45 +134,54 @@ func Analyse(ctx context.Context, opt Options, url string) ([]Block, error) {
 	if err != nil {
 		_ = cmd.Process.Kill() // the process may have exited already
 		<-exited
-		return nil, err
+		return nil, none, err
 	}
 	p := newPlayer(cmd, conn, socket)
 	go p.read()
-	_, err = p.follow(ctx, url)
+	params, err := p.follow(ctx, url)
 	_ = p.Close() // Close kills an mpv that will not quit, and reports nothing
 	<-exited
 	_ = os.Remove(socket) // a socket left behind is cleared on the next start
 	if err != nil {
-		return nil, err
+		return nil, none, err
 	}
-	blocks := <-parsed
-	for i := range blocks {
-		blocks[i] = banded(blocks[i])
-	}
-	return blocks, nil
+	return <-parsed, params, nil
 }
 
 // banded returns a block measured by analyseFilter with its rate and scale
-// set. A block with a channel for the whole sound and one for each band keeps
-// the first as its channel and the rest as its bands; any other block keeps
-// all its channels and has no bands.
-func banded(b Block) Block {
+// set. A block with the channels of the whole sound and one for each band
+// keeps the first as its channels and the rest as its bands; any other block
+// keeps all its channels and has no bands. The whole sound of a track with
+// one channel is raised to the level of that channel, and the zero crossings
+// are scaled to what they are at the track's own sample rate.
+func banded(b Block, params audioParams) Block {
 	b.Rate, b.Scale = analyseRate, 1
-	if len(b.Channels) != 1+analyseBands {
+	if len(b.Channels) != analyseWhole+analyseBands {
 		return b
 	}
 	b.Bands = make([]float64, analyseBands)
-	for i, c := range b.Channels[1:] {
+	for i, c := range b.Channels[analyseWhole:] {
 		b.Bands[i] = c.Loudness
 	}
-	b.Channels = b.Channels[:1]
+	b.Channels = slices.Clone(b.Channels[:analyseWhole])
+	for i := range b.Channels {
+		c := &b.Channels[i]
+		if params.Channels == 1 {
+			c.Loudness += 10 * math.Log10(analyseWhole)
+			c.Difference *= math.Sqrt(analyseWhole)
+		}
+		if params.Rate > 0 {
+			c.Crossings *= float64(analyseRate) / float64(params.Rate)
+		}
+	}
 	return b
 }
 
 // audioParams is the part of mpv's audio-params property the analysis uses.
 type audioParams struct {
-	Rate   int    `json:"samplerate"`
-	Format string `json:"format"`
+	Rate     int    `json:"samplerate"`
+	Format   string `json:"format"`
+	Channels int    `json:"channel-count"`
 }
 
 // follow loads a track into an analysing mpv and waits for it to end. It
