@@ -1679,3 +1679,59 @@ Over 72,000 soaked frames every value was within range; the median frame was
 metric is unchanged for every component that existed before.
 
 ---
+
+## ADR-032 — The plan is the score: beats, kicks, cuts and moods come from foresight, and flashing is limited
+
+**Status:** accepted. Builds on ADR-027 to ADR-031. Raises the code budget
+from 12,500 to 14,500 lines.
+
+### What listening showed
+
+On real music the live listener, with three totals a block, locked onto
+hi-hats in techno, found beats in music that has none, and could not tell a
+kick under a rolling bassline from the bassline. The analysing mpv of ADR-030
+has no such limit, since nobody hears its output.
+
+### The analyser
+
+It now measures the whole sound as before and five bands of a mono mix:
+below 150 Hz, 100 to 400 Hz, 1 to 4 kHz, above 6 kHz, and 100 to 150 Hz with
+that band's peak. The live filter is unchanged. A seven-minute track is
+measured in about five seconds.
+
+### The plan
+
+From the bands the plan finds a beat grid by dynamic programming, bars,
+kicks, snares, hats and softer notes, whether the track has a steady beat at
+all, and its character. A beat carries a kick by the peak of the narrow band
+around it and its neighbours. Against the kick band of the test tracks the
+grid sits within 4 ms.
+
+### The merge
+
+With a plan measured in bands the director takes the tempo, phase and
+confidence from the grid; sets off kicks on the beat, on the first frame at
+or after it, at an even strength; gives every beat of a section a kick where
+most carry one and none where few do; cuts to a new scene in a third of a
+second at a drop or where the kicks start or stop; and draws for the mood of
+the stretch ahead. Loud music led by grit rather than drive is heavy: faster,
+brighter, shaken on each hit, and moved by every rise heard. A plan whose
+level stays far from what is heard is dropped until they agree. Without a
+plan the live listener runs; it takes its beat from kicks alone and reports
+no tempo without a steady one.
+
+### The flash guard
+
+After compositing, the light of each of six regions may stray 0.03 from a
+reference that moves 0.15 a second. On rendered frames this holds every
+region to 1.5 flashes a second across the stress cases, against 4 to 7
+before. It is measured for full colour on a dark background. It does not
+cover a light terminal background, a terminal that drops colour, flashes
+smaller than a region, or the saturated-red rule.
+
+### Rejected
+
+Tuning the live listener alone: it has too little to hear with. A setting to
+turn the guard off: ADR-001.
+
+---
