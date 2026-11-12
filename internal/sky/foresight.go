@@ -26,6 +26,12 @@ type foresightState struct {
 	busy       float64
 	apart      float64
 	astray     bool
+	// cut is set on the frame a cut is due, and cutAt is the time of the
+	// cue the last cut was made for.
+	cut   bool
+	cutAt float64
+	// near is set while a cut is less than cutClear away.
+	near bool
 }
 
 type foreseen struct {
@@ -84,8 +90,91 @@ const (
 	apartFor   = 4
 	// planShare is the weight of the plan's character beside the character
 	// heard, once enough has been heard to have one.
-	planShare = 0.6
+	planShare = 0.85
+	// cutFade is how long a cut takes. A section is cut to when it is at
+	// least cutStrength strong, or when the share of its beats that carry a
+	// kick differs by cutTurn from the share before it.
+	cutFade     = 0.35
+	cutStrength = 0.5
+	cutTurn     = 0.4
+	// cutClear is how long before a cut no other change of scene starts.
+	cutClear = 8
+	// moodSpan is the stretch a mood is measured over, moodAhead how far
+	// ahead of the position the frame's mood is taken, and drummedFrom the
+	// share of beats with a kick from which a stretch counts as drummed.
+	moodSpan    = 8
+	moodAhead   = 0.5
+	drummedFrom = 0.5
 )
+
+// drummed returns how fully the beats from a to b carry kicks, from 0 to 1:
+// the strength of the kicks there for each beat, against the strength a
+// kick on every beat would have at the track's usual kick strength. It is 0
+// when there are no beats there.
+func (p *Plan) drummed(a, b float64) float64 {
+	beats := len(between(p.Beats, a, b))
+	if beats == 0 {
+		return 0
+	}
+	usual := p.kickStrength()
+	if usual == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, h := range p.HitsBetween(a, b) {
+		if h.Kind == HitKick {
+			sum += math.Min(h.Strength, usual)
+		}
+	}
+	return math.Min(sum/usual/float64(beats), 1)
+}
+
+// kickStrength returns the strength of the track's stronger kicks: the
+// kick three quarters of the way up its kicks in order of strength.
+func (p *Plan) kickStrength() float64 {
+	if p.usualKick == 0 {
+		var all []float64
+		for _, h := range p.Hits {
+			if h.Kind == HitKick {
+				all = append(all, h.Strength)
+			}
+		}
+		if len(all) == 0 {
+			return 0
+		}
+		slices.Sort(all)
+		p.usualKick = all[len(all)*3/4]
+	}
+	return p.usualKick
+}
+
+// mood returns the character of the stretch that starts at t: the track's
+// own where its beats carry kicks or the track has no beats at all, and a
+// soft one, between calm and flowing, where they do not.
+func (p *Plan) mood(t float64) Character {
+	c := p.Character()
+	if len(p.Beats) == 0 {
+		return c
+	}
+	w := clamp01(p.drummed(t, t+moodSpan) / drummedFrom)
+	soft := Character{Calm: 0.45, Drive: 0.05, Grit: 0.05, Flow: 0.45}
+	a, b := c.axes(), soft.axes()
+	mix := func(i int) float64 { return w*a[i] + (1-w)*b[i] }
+	return Character{mix(0), mix(1), mix(2), mix(3)}
+}
+
+// cutDue reports whether the cue c of a plan measured in bands is one to
+// cut to: a drop, a strong section, or a section where the kicks start or
+// stop.
+func (p *Plan) cutDue(c Cue) bool {
+	if !p.banded {
+		return false
+	}
+	if c.Kind == CueDrop || c.Strength >= cutStrength {
+		return true
+	}
+	return math.Abs(p.drummed(c.At, c.At+moodSpan)-p.drummed(c.At-moodSpan, c.At)) >= cutTurn
+}
 
 // trusted returns the plan of the track playing when it was measured in
 // bands and what is heard agrees with it, and nil otherwise.
@@ -97,18 +186,19 @@ func (s *State) trusted() *Plan {
 }
 
 // character returns the character the frame is drawn for: the one heard, or
-// with a trusted plan a blend of the track's and the one heard. Until enough
-// has been heard, it is the track's alone.
+// with a trusted plan a blend of the mood of the stretch just ahead and the
+// one heard. Until enough has been heard, it is the plan's mood alone.
 func (s *State) character() Character {
 	live := s.lis.char
 	p := s.trusted()
 	if p == nil {
 		return live
 	}
+	mood := p.mood(s.lis.ear.now + moodAhead)
 	if !s.lis.meter.settled() {
-		return p.Character()
+		return mood
 	}
-	a, b := p.Character().axes(), live.axes()
+	a, b := mood.axes(), live.axes()
 	mix := func(i int) float64 { return planShare*a[i] + (1-planShare)*b[i] }
 	return Character{mix(0), mix(1), mix(2), mix(3)}
 }
@@ -181,7 +271,8 @@ func (f *foresightState) agrees(heard, planned, dt float64) bool {
 //   - tension follows the plan's builds, rising before the drop arrives;
 //   - a drop or the climax sets off a release as it is heard;
 //   - the light begins to settle two seconds before a hush;
-//   - a plan measured in bands gives the beat, the hits and the busyness.
+//   - a plan measured in bands gives the beat, the hits and the busyness,
+//     and sets cut on the frame a drop or a marked section is to be cut to.
 //
 // A plan whose level stays far from the level heard is not followed until
 // the two agree again. A plan with no curves is always followed.
@@ -192,8 +283,10 @@ func (f *foresightState) agrees(heard, planned, dt float64) bool {
 func (s *State) foresee(sig Signals, st *style, dt float64) (Signals, float64, bool) {
 	f := &s.foresight
 	p := s.plan()
+	f.cut, f.near = false, false
 	if p != f.last {
 		f.last, f.kick, f.snap, f.note, f.busy, f.apart, f.astray = p, 0, 0, 0, sig.Busy, 0, false
+		f.cut, f.cutAt = false, 0
 	}
 	if p == nil || !s.lis.ear.have {
 		f.heard, f.pulse, f.following = 0, 0, false
@@ -228,8 +321,23 @@ func (s *State) foresee(sig Signals, st *style, dt float64) (Signals, float64, b
 		sig.Hush = math.Max(sig.Hush, 0.6*(1-(c.At-pos)/2))
 	}
 
+	// The next drop or section worth a cut is cut to so that the cut is half
+	// done as it is heard.
+	f.near = false
+	for _, kind := range []CueKind{CueDrop, CueSection} {
+		c, ok := p.Next(pos, kind)
+		if !ok || c.At == f.cutAt || !p.cutDue(c) {
+			continue
+		}
+		if c.At-pos <= cutFade/2 {
+			f.cut, f.cutAt, f.section = true, c.At, c.At
+		} else if c.At-pos <= cutClear {
+			f.near = true
+		}
+	}
+
 	lead := math.Max(fadeMin, st.morph/2)
 	c, ok := p.Next(pos, CueSection)
-	due := ok && c.At-pos <= lead && c.At != f.section && s.age > sectionLead
+	due := ok && c.At-pos <= lead && c.At != f.section && s.age > sectionLead && !p.cutDue(c)
 	return sig, c.At, due
 }

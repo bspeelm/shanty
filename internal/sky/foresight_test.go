@@ -267,3 +267,97 @@ func TestTheCharacterOfANewTrackIsItsPlansUntilEnoughIsHeard(t *testing.T) {
 		t.Errorf("before anything was heard the character was %+v, want the plan's %+v", got, p.Character())
 	}
 }
+
+// breakdown is the plan of a 120 BPM track whose kicks stop from 40 s to
+// 70 s while its hats and a pad carry on. It has no curves, so that it is
+// followed whatever is heard. It returns the time of the cue nearest to the
+// kicks coming back.
+func breakdown(t *testing.T) (*Plan, float64) {
+	t.Helper()
+	var g groove
+	for at := 0.25; at < 110; at += 0.5 {
+		if at < 40 || at > 70 {
+			g.play(at, kickVoice, 1, nil)
+		}
+		g.play(at+0.25, hatVoice, 1, nil)
+	}
+	pad := func(float64) [bandCount]float64 { return [bandCount]float64{1e-3, 1e-3, 1e-4, 1e-5} }
+	p := NewPlan(banded(110, g.strikes, pad))
+	p.curve = nil
+	back := math.Inf(1)
+	for _, c := range p.Cues {
+		if (c.Kind == CueSection || c.Kind == CueDrop) && math.Abs(c.At-70) < math.Abs(back-70) {
+			back = c.At
+		}
+	}
+	if math.Abs(back-70) > 2 {
+		t.Fatalf("the plan has no cue where the kicks come back: %v", p.Cues)
+	}
+	return p, back
+}
+
+func TestAStretchWithoutKicksIsSoftAndTheStretchesAroundItAreNot(t *testing.T) {
+	p, _ := breakdown(t)
+	if c := p.mood(48); c.Calm+c.Flow <= c.Drive+c.Grit {
+		t.Errorf("without kicks the mood was %+v, want calm and flowing to lead", c)
+	}
+	for _, at := range []float64{10, 80} {
+		if c := p.mood(at); c.Drive <= c.Calm || c.Drive <= c.Flow {
+			t.Errorf("with kicks at %v s the mood was %+v, want Drive above Calm and Flow", at, c)
+		}
+	}
+}
+
+// cuts plays a planned track from 0 to secs and returns the position of each
+// frame on which a cut began. before runs ahead of each frame.
+func cuts(s *State, tr *track, secs float64, before func(pos float64)) []float64 {
+	var out []float64
+	dt := 1.0 / 30
+	for at := 0.0; at < secs; at += dt {
+		if before != nil {
+			before(s.lis.ear.now)
+		}
+		was := s.next
+		play(s, tr, at, dt/2, 40, 10)
+		if s.next != nil && s.next != was && s.fadeLen == cutFade {
+			out = append(out, s.lis.ear.now)
+		}
+	}
+	return out
+}
+
+func TestTheKicksComingBackAreCutToAsTheyAreHeard(t *testing.T) {
+	p, back := breakdown(t)
+	s := New(3)
+	s.Foresee("track", p)
+	var tr track
+	got := cuts(s, &tr, 90, nil)
+	if d := nearest(got, back); d > cutFade {
+		t.Fatalf("cuts began at %v; the kicks come back at %.2f s", got, back)
+	}
+	if c := s.cur.char; c.Drive <= c.Calm {
+		t.Errorf("after the kicks came back the scene was made for %+v", c)
+	}
+}
+
+func TestACutReplacesAChangeOfSceneAlreadyUnderWay(t *testing.T) {
+	p, back := breakdown(t)
+	s := New(3)
+	s.Foresee("track", p)
+	var tr track
+	started := false
+	got := cuts(s, &tr, back+1, func(pos float64) {
+		// A slow change is begun two seconds before the kicks come back.
+		if !started && pos > back-2 {
+			started = true
+			s.next = s.make(s.Signals(), styleFor(s.character()), s.character())
+			s.fade, s.fadeLen = 0, fadeMin
+		}
+	})
+	if !started {
+		t.Fatal("no change was begun, so this test proves nothing")
+	}
+	if d := nearest(got, back); d > cutFade {
+		t.Errorf("with a change under way, cuts began at %v; the kicks come back at %.2f s", got, back)
+	}
+}

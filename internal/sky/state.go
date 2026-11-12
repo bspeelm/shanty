@@ -113,6 +113,12 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 		sig.Section = false
 	}
 
+	// A cut replaces a change of scene already under way.
+	if s.foresight.cut && s.cur != nil {
+		s.next = s.make(sig, st, char)
+		s.fade, s.fadeLen, s.waiting = 0, cutFade, 0
+	}
+
 	if s.cur == nil {
 		s.cur = s.make(sig, st, char)
 		s.label = 0
@@ -122,7 +128,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	}
 	s.age += dt
 	s.label += dt
-	if s.next == nil && !s.cur.changing() {
+	if s.next == nil && !s.cur.changing() && !s.foresight.near {
 		// Music that has turned out unlike what the scene was made for is a
 		// reason to start afresh: the first scene, made before anything was
 		// heard; a new track; or a track that changes its nature.
@@ -166,6 +172,11 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 		s.tone[i] = s.cur.tone[i]*(1-t) + s.next.tone[i]*t
 	}
 	s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
+	// A cut is one change of light and not a flash, so the guard takes the
+	// picture as it finds it while a cut is under way.
+	if s.fadeLen == cutFade {
+		s.guard.ready = false
+	}
 	s.guard.apply(s.value, s.tone, dt, s.cur.halves() || s.next.halves())
 	if s.fade >= 1 {
 		s.cur, s.next = s.next, nil
