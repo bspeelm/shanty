@@ -14,8 +14,14 @@ import (
 const chromeLines = 6
 
 // chrome is how many rows the frame uses for something other than the list.
-// The list of matching commands takes one or more while it is showing.
-func (m Model) chrome() int { return m.chromeBase() + len(m.artBlock(m.viewWidth())) }
+// The list of matching commands takes one or more while it is showing, and
+// the cover art takes its rows unless the visualiser is showing.
+func (m Model) chrome() int {
+	if m.showSky {
+		return m.chromeBase()
+	}
+	return m.chromeBase() + len(m.artBlock(m.viewWidth()))
+}
 
 // chromeBase is every row of the frame that is neither the list nor the cover
 // art. It does not count the art, so that the decision to show art can be made
