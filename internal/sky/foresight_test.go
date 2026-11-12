@@ -141,3 +141,129 @@ func TestASeekPastADropDoesNotSetItOff(t *testing.T) {
 		t.Errorf("seeking from 10 s to 60 s set off a release of %.2f for the drop at 40 s", got)
 	}
 }
+
+// scored is a plan of a 128 BPM dance track measured in bands, with no
+// curves, so that it is followed whatever is heard.
+func scored(seconds float64) (*Plan, groove) {
+	g, bass := danceGroove(128, seconds, 0.3)
+	p := NewPlan(banded(seconds, g.strikes, bass))
+	p.curve = nil
+	return p, g
+}
+
+func TestWithAPlanMeasuredInBandsTheBeatIsThePlansAndNotTheOneHeard(t *testing.T) {
+	p, g := scored(60)
+	s := New(3)
+	s.Foresee("track", p)
+	var tr track
+	// What is heard is a 120 BPM click; the plan says 128 BPM.
+	play(s, &tr, 0, 30, 40, 10)
+	sig := s.Signals()
+	if math.Abs(sig.Tempo-128) > 1.5 {
+		t.Fatalf("with a plan at 128 BPM the tempo was %.1f", sig.Tempo)
+	}
+	pos := s.lis.ear.now
+	since := pos - g.beats[0]
+	want := math.Mod(since/(60.0/128), 1)
+	off := sig.Phase - want
+	if off -= math.Round(off); math.Abs(off) > 0.08 {
+		t.Errorf("at %.2f s the phase was %.2f, want %.2f from the plan's beats", pos, sig.Phase, want)
+	}
+	if sig.Sure < 0.5 {
+		t.Errorf("a plan sure of its beat gave a confidence of %.2f", sig.Sure)
+	}
+}
+
+func TestAPlannedKickIsSetOffWithinAFrameOfItsTime(t *testing.T) {
+	p, _ := scored(40)
+	var kicks []float64
+	for _, h := range p.Hits {
+		if h.Kind == HitKick {
+			kicks = append(kicks, h.At)
+		}
+	}
+	s := New(3)
+	s.Foresee("track", p)
+	var tr track
+	play(s, &tr, 0, 10, 40, 10)
+	dt := 1.0 / 30
+	late, seen := 0.0, 0
+	last := s.Signals().Kick
+	from := s.lis.ear.now
+	for at := 10.0; at < 30; at += dt {
+		play(s, &tr, at, dt/2, 40, 10)
+		k := s.Signals().Kick
+		if k > last+0.15 {
+			seen++
+			late = math.Max(late, nearest(kicks, s.lis.ear.now))
+		}
+		last = k
+	}
+	if want := len(between(kicks, from, s.lis.ear.now)); want < 10 || seen < want-1 {
+		t.Fatalf("%d kicks were set off where the plan has %d", seen, want)
+	}
+	if late > dt {
+		t.Errorf("a kick was set off %.0f ms from the nearest planned kick", late*1000)
+	}
+}
+
+func TestATrackPlannedAsBeatlessHasNoTempoWhateverIsHeard(t *testing.T) {
+	p := NewPlan(beatlessPad())
+	p.curve = nil
+	if !p.Beatless() {
+		t.Fatal("the pad's plan has a beat, so this test proves nothing")
+	}
+	s := New(3)
+	var tr track
+	play(s, &tr, 0, 25, 40, 10)
+	if s.Signals().Tempo == 0 {
+		t.Fatal("no tempo was heard in the click, so this test proves nothing")
+	}
+	s.Foresee("track", p)
+	play(s, &tr, 25, 5, 40, 10)
+	if sig := s.Signals(); sig.Tempo != 0 || sig.beatWeight() != 0 {
+		t.Errorf("with a beatless plan the tempo was %.1f at weight %.2f", sig.Tempo, sig.beatWeight())
+	}
+}
+
+func TestAPlanWhoseLevelIsFarFromWhatIsHeardIsDroppedAndTakenUpAgain(t *testing.T) {
+	p, _ := scored(60)
+	// The plan says the track is silent; what is heard is loud.
+	p.curve = make([]Moment, int(60/planStep))
+	s := New(3)
+	s.Foresee("track", p)
+	var tr track
+	play(s, &tr, 0, 3, 40, 10)
+	if s.trusted() == nil {
+		t.Fatal("the plan was dropped within three seconds")
+	}
+	play(s, &tr, 3, 4, 40, 10)
+	if s.trusted() != nil {
+		t.Fatal("a plan for a silent track was still followed after seven loud seconds")
+	}
+	if tempo := s.Signals().Tempo; math.Abs(tempo-128) < 2 {
+		t.Errorf("the dropped plan still gave its tempo, %.1f", tempo)
+	}
+	// The plan's level comes to match what is heard.
+	heard := s.Signals().Level
+	for i := range p.curve {
+		p.curve[i].Level = heard
+	}
+	play(s, &tr, 7, 6, 40, 10)
+	if s.trusted() == nil {
+		t.Error("the plan was not taken up again once it agreed with what is heard")
+	}
+}
+
+func TestTheCharacterOfANewTrackIsItsPlansUntilEnoughIsHeard(t *testing.T) {
+	p, _ := scored(60)
+	if lead := p.Character(); lead.Drive < 0.5 {
+		t.Fatalf("the dance plan's character is %+v, so this test proves nothing", lead)
+	}
+	s := New(3)
+	s.Foresee("track", p)
+	s.Step(40, 10, 1.0/30, time.Time{}, "track")
+	if got := s.character(); got != p.Character() {
+		t.Errorf("before anything was heard the character was %+v, want the plan's %+v", got, p.Character())
+	}
+}

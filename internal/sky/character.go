@@ -139,15 +139,24 @@ type measures struct {
 	steady, regular, busy, bright, dynamics, swell, sharp, loud float64
 }
 
+// Loudness counts as heavy from heavyFrom, and fully from heavyFull.
+const (
+	heavyFrom = 0.6
+	heavyFull = 0.85
+)
+
 // character weighs the measures into the four axes and scales them to add up
-// to 1.
+// to 1. Loud music is not calm, and loud music without a steady pulse is
+// gritty however few of its hits stand out.
 func (m measures) character() Character {
+	heavy := clamp01((m.loud - heavyFrom) / (heavyFull - heavyFrom))
 	c := Character{
-		Calm:  (1 - m.busy) * (1 - m.steady) * (1 - 0.7*m.dynamics) * (1 - 0.6*m.sharp),
+		Calm:  (1 - m.busy) * (1 - m.steady) * (1 - 0.7*m.dynamics) * (1 - 0.6*m.sharp) * (1 - 0.85*heavy),
 		Drive: m.steady * (0.3 + 0.7*m.regular) * (1 - 0.6*m.dynamics) * (0.4 + 0.6*m.busy),
 		Grit:  m.bright * (0.3 + 0.7*m.busy) * (0.4 + 0.6*m.sharp) * (1 - 0.5*m.regular*m.steady),
 		Flow:  clamp01(0.7*m.dynamics+0.7*m.swell) * (1 - 0.5*m.sharp) * (1 - 0.5*m.steady),
 	}
+	c.Grit = math.Max(c.Grit, heavy*(1-m.steady)*(0.5+0.5*m.bright))
 	sum := c.Calm + c.Drive + c.Grit + c.Flow
 	if sum < 1e-6 {
 		return Character{Calm: 1}
