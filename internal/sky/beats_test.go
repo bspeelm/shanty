@@ -193,35 +193,61 @@ func TestTheDownbeatsOfAFourOnTheFloorTrackFallOnItsBars(t *testing.T) {
 	}
 }
 
-func TestTheHitsOfAFourOnTheFloorTrackAreKicksClapsAndHats(t *testing.T) {
+func TestTheHitsOfAFourOnTheFloorTrackAreKicksClapsAndHatsWithAKickUnderAClapCountedOnce(t *testing.T) {
 	g, bass := danceGroove(124, 60, 0.137)
 	p := NewPlan(banded(60, g.strikes, bass))
 	found := map[HitKind][]float64{}
+	var all []float64
 	for _, h := range p.Hits {
 		found[h.Kind] = append(found[h.Kind], h.At)
+		all = append(all, h.At)
 		if h.Strength <= 0 || h.Strength > 1 {
 			t.Errorf("a %s at %.3fs has strength %v", h.Kind, h.At, h.Strength)
 		}
 	}
+	var alone []float64
+	for _, k := range g.kicks {
+		if nearest(g.snares, k) > 0.01 {
+			alone = append(alone, k)
+		}
+	}
+	drums := slices.Concat(found[HitKick], found[HitSnare])
+	slices.Sort(drums)
 	for _, c := range []struct {
-		kind  HitKind
-		truth []float64
-	}{{HitKick, g.kicks}, {HitSnare, g.snares}, {HitHat, g.hats}} {
+		name         string
+		truth, found []float64
+	}{{"lone kick", alone, found[HitKick]}, {"kick under a clap", g.snares, drums}, {"hat", g.hats, found[HitHat]}} {
 		heard := 0
 		for _, at := range c.truth {
-			if nearest(found[c.kind], at) <= 0.03 {
+			if nearest(c.found, at) <= 0.03 {
 				heard++
 			}
 		}
-		false := 0
-		for _, at := range found[c.kind] {
-			if nearest(c.truth, at) > 0.03 {
-				false++
+		if float64(heard) < 0.9*float64(len(c.truth)) {
+			t.Errorf("%d of %d %ss were found", heard, len(c.truth), c.name)
+		}
+	}
+	for _, at := range g.snares {
+		n := 0
+		for _, h := range all {
+			if math.Abs(h-at) <= 0.03 {
+				n++
 			}
 		}
-		if float64(heard) < 0.9*float64(len(c.truth)) || float64(false) > 0.1*float64(len(found[c.kind])) {
-			t.Errorf("%d of %d %ss were found, and %d of %d found are not one", heard, len(c.truth), c.kind, false, len(found[c.kind]))
+		if n > 1 {
+			t.Errorf("the kick and clap at %.3f are %d hits", at, n)
 		}
+	}
+	truth := slices.Concat(g.kicks, g.hats)
+	slices.Sort(truth)
+	false := 0
+	for _, at := range all {
+		if nearest(truth, at) > 0.03 {
+			false++
+		}
+	}
+	if float64(false) > 0.05*float64(len(all)) {
+		t.Errorf("%d of %d hits are not a drum", false, len(all))
 	}
 }
 
@@ -280,7 +306,9 @@ func TestTheGridFollowsATempoThatRisesFrom120To128(t *testing.T) {
 	tracked(t, p, g.beats, 2, seconds-3)
 }
 
-func TestABeatlessPadWithSwellsAndFlickersHasNoGrid(t *testing.T) {
+// beatlessPad is three minutes of slow swells, random flickers in the high
+// band, and random low thumps.
+func beatlessPad() []Block {
 	r := rand.New(rand.NewPCG(1, 2))
 	var g groove
 	for at := 0.0; at < 180; at += r.ExpFloat64() / 1.5 {
@@ -293,11 +321,36 @@ func TestABeatlessPadWithSwellsAndFlickersHasNoGrid(t *testing.T) {
 		a := 0.02 * (1.2 + math.Sin(2*math.Pi*t/7.3)) * (1.2 + math.Sin(2*math.Pi*t/12.9+1))
 		return [bandCount]float64{a / 2, a, a / 3, a / 20}
 	}
-	p := NewPlan(banded(180, g.strikes, swell))
+	return banded(180, g.strikes, swell)
+}
+
+func TestABeatlessTrackHasAtMostHalfAStrongHitASecondInAnyFiveSeconds(t *testing.T) {
+	p := NewPlan(beatlessPad())
+	var strong []float64
+	for _, h := range p.Hits {
+		if h.Strength >= 0.3 {
+			strong = append(strong, h.At)
+		}
+	}
+	for i, at := range strong {
+		j, _ := slices.BinarySearch(strong, at+5)
+		if j-i > 2 {
+			t.Errorf("a beatless track has %d strong hits in the 5 s from %.1f s", j-i, at)
+		}
+	}
+	for i := 1; i < len(p.Hits); i++ {
+		if p.Hits[i].At-p.Hits[i-1].At < 0.03 {
+			t.Errorf("hits at %.3f and %.3f are one sound counted twice", p.Hits[i-1].At, p.Hits[i].At)
+		}
+	}
+}
+
+func TestABeatlessPadWithSwellsAndFlickersHasNoGrid(t *testing.T) {
+	p := NewPlan(beatlessPad())
 	if !p.Beatless() || len(p.Beats) != 0 || p.Pulse >= beatlessBelow {
 		t.Errorf("a beatless pad has Pulse %.2f and %d beats at %.1f BPM", p.Pulse, len(p.Beats), p.Tempo)
 	}
-	if _, _, _, _, ok := p.BeatAt(60); ok {
+	if _, ok := p.BeatAt(60); ok {
 		t.Error("a beatless pad has a beat at 60 s")
 	}
 	c := p.Character()
@@ -309,12 +362,111 @@ func TestABeatlessPadWithSwellsAndFlickersHasNoGrid(t *testing.T) {
 func TestAFourOnTheFloorTrackIsLedByDrive(t *testing.T) {
 	g, bass := danceGroove(124, 90, 0.137)
 	c := NewPlan(banded(90, g.strikes, bass)).Character()
-	if c.Drive <= math.Max(c.Calm, c.Flow) {
-		t.Errorf("a four on the floor's character is %+v, not led by drive over calm and flow", c)
+	if c.Drive <= max(c.Calm, c.Flow, c.Grit) {
+		t.Errorf("a four on the floor's character is %+v, not led by drive", c)
 	}
 	if sum := c.Calm + c.Drive + c.Grit + c.Flow; math.Abs(sum-1) > 1e-9 {
 		t.Errorf("the character adds up to %v", sum)
 	}
+}
+
+func TestAFourOnTheFloorKickOverARollingBasslineIsFoundAndLedByDrive(t *testing.T) {
+	var g groove
+	beat := 60 / 126.0
+	roll := voice{[bandCount]float64{0.5, 0.4, 0.002, 0}, 0.06}
+	for i := 0; float64(i)*beat < 89; i++ {
+		at := 0.1 + float64(i)*beat
+		g.beats = append(g.beats, at)
+		g.play(at, kickVoice, 1, &g.kicks)
+		for q := 1; q < 4; q++ {
+			g.play(at+float64(q)*beat/4, roll, 0.8, nil)
+		}
+		g.play(at+beat/2, hatVoice, 1, nil)
+	}
+	steady := func(float64) [bandCount]float64 { return [bandCount]float64{0.1, 0.1, 1e-4, 1e-5} }
+	p := NewPlan(banded(90, g.strikes, steady))
+	tracked(t, p, g.beats, 2, 87)
+	var kicks []float64
+	for _, h := range p.Hits {
+		if h.Kind == HitKick {
+			kicks = append(kicks, h.At)
+		}
+	}
+	heard := 0
+	for _, k := range g.kicks {
+		if nearest(kicks, k) <= 0.03 {
+			heard++
+		}
+	}
+	if float64(heard) < 0.9*float64(len(g.kicks)) {
+		t.Errorf("%d of %d kicks over the bassline were found", heard, len(g.kicks))
+	}
+	if c := p.Character(); c.Drive <= max(c.Calm, c.Flow, c.Grit) {
+		t.Errorf("a four on the floor over a rolling bassline has character %+v, not led by drive", c)
+	}
+}
+
+func TestASilentGapInAGrooveHasNoBeats(t *testing.T) {
+	var g groove
+	beat := 0.5
+	for at := 0.25; at < 100; at += beat {
+		if at > 30 && at < 70 {
+			continue
+		}
+		g.beats = append(g.beats, at)
+		g.play(at, kickVoice, 1, nil)
+		g.play(at+beat/2, hatVoice, 1, nil)
+	}
+	silence := func(float64) [bandCount]float64 { return [bandCount]float64{} }
+	p := NewPlan(banded(100, g.strikes, silence))
+	for _, b := range p.Beats {
+		if b > 31 && b < 70 {
+			t.Errorf("a beat at %.2f s falls in the silence", b)
+		}
+	}
+	if beat, ok := p.BeatAt(50); ok {
+		t.Errorf("BeatAt(50) in the silence is %+v", beat)
+	}
+	tracked(t, p, g.beats, 2, 29)
+	tracked(t, p, g.beats, 71, 97)
+}
+
+func TestTheTempoOfAnExactGrooveHoldsFromBeatToBeat(t *testing.T) {
+	g, bass := danceGroove(120, 60, 0.137)
+	p := NewPlan(banded(60, g.strikes, bass))
+	for b := 4; b+5 < len(p.Beats); b++ {
+		mid := (p.Beats[b] + p.Beats[b+1]) / 2
+		if beat, ok := p.BeatAt(mid); !ok || math.Abs(beat.Tempo-120) > 0.5 {
+			t.Errorf("at beat %d the tempo is %+v, want 120 within 0.5", b, beat)
+		}
+	}
+}
+
+func TestWhenTheKicksStopTheGridDoesNotMoveOntoTheOffbeatHats(t *testing.T) {
+	var g groove
+	beat := 60 / 125.0
+	var hats []float64
+	for i := 0; float64(i)*beat < 99; i++ {
+		at := 0.2 + float64(i)*beat
+		g.beats = append(g.beats, at)
+		if at < 40 || at > 64 {
+			g.play(at, kickVoice, 1, nil)
+			if i%2 == 1 {
+				g.play(at, clapVoice, 1, nil)
+			}
+		} else {
+			hats = append(hats, at+beat/2)
+		}
+		g.play(at+beat/2, hatVoice, 1, nil)
+	}
+	p := NewPlan(banded(100, g.strikes, quietBed))
+	for _, b := range p.Beats {
+		if b > 40 && b < 64 && nearest(hats, b) < 0.06 {
+			t.Errorf("the beat at %.3f s is on an offbeat hat", b)
+		}
+	}
+	tracked(t, p, g.beats, 2, 39)
+	tracked(t, p, g.beats, 65, 97)
 }
 
 func TestBeatAtGivesTheTempoPhaseBeatAndPlaceInTheBar(t *testing.T) {
@@ -325,21 +477,21 @@ func TestBeatAtGivesTheTempoPhaseBeatAndPlaceInTheBar(t *testing.T) {
 	}
 	b := 10
 	mid := (p.Beats[b] + p.Beats[b+1]) / 2
-	tempo, phase, beat, bar, ok := p.BeatAt(mid)
-	if !ok || beat != b || math.Abs(phase-0.5) > 1e-9 || math.Abs(tempo-120) > 3 || bar != p.bar[b] {
-		t.Errorf("BeatAt(%.3f) = %.1f, %.2f, %d, %d, %v; want about 120, 0.5, %d, %d, true", mid, tempo, phase, beat, bar, ok, b, p.bar[b])
+	got, ok := p.BeatAt(mid)
+	if !ok || got.Index != b || math.Abs(got.Phase-0.5) > 1e-9 || math.Abs(got.Tempo-120) > 1 || got.Bar != p.bar[b] || got.Confidence <= 0.5 {
+		t.Errorf("BeatAt(%.3f) = %+v, %v; want about 120 BPM, phase 0.5, beat %d, bar %d, confident", mid, got, ok, b, p.bar[b])
 	}
-	if _, phase, beat, _, ok := p.BeatAt(p.Beats[b]); !ok || beat != b || phase != 0 {
-		t.Errorf("on beat %d BeatAt says beat %d at phase %v", b, beat, phase)
+	if got, ok := p.BeatAt(p.Beats[b]); !ok || got.Index != b || got.Phase != 0 {
+		t.Errorf("on beat %d BeatAt says %+v", b, got)
 	}
 	for _, at := range []float64{p.Beats[0] - 0.01, p.Beats[len(p.Beats)-1]} {
-		if _, _, _, _, ok := p.BeatAt(at); ok {
+		if _, ok := p.BeatAt(at); ok {
 			t.Errorf("BeatAt(%.3f) is outside the beats and reports one", at)
 		}
 	}
 	for i, d := range p.Downbeats {
-		if _, _, _, bar, _ := p.BeatAt(d); bar != 0 {
-			t.Errorf("downbeat %d at %.3f is at place %d in its bar", i, d, bar)
+		if got, _ := p.BeatAt(d); got.Bar != 0 {
+			t.Errorf("downbeat %d at %.3f is at place %d in its bar", i, d, got.Bar)
 		}
 	}
 }
@@ -369,7 +521,7 @@ func TestATrackMeasuredWithoutBandsHasNoBeatsAndIsNotBeatless(t *testing.T) {
 	if c := p.Character(); c != (Character{0.25, 0.25, 0.25, 0.25}) {
 		t.Errorf("a plan without bands has character %+v", c)
 	}
-	if _, _, _, _, ok := p.BeatAt(10); ok {
+	if _, ok := p.BeatAt(10); ok {
 		t.Error("a plan without bands has a beat")
 	}
 }
