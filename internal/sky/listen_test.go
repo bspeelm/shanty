@@ -139,6 +139,51 @@ func TestAfterASeekTheSliceIsPlacedByTheLeadLearnedBefore(t *testing.T) {
 	}
 }
 
+func TestSlicesHeardWhileNoFrameIsDrawnAreNotKeptForOnsets(t *testing.T) {
+	var tr track
+	var e ear
+	pos := 0.0
+	for range 600 {
+		pos += 0.1
+		e.hear(tr.block(0.1, both(0.1), both(0), 0, pos-0.27))
+	}
+	if len(e.pending) > 15 {
+		t.Errorf("a minute heard with no frame drawn left %d slices waiting", len(e.pending))
+	}
+}
+
+func TestEverySliceReachesTheOnsetsOnceAndInOrder(t *testing.T) {
+	var tr track
+	var e ear
+	pos := 0.0
+	var seen []float64
+	for range 50 {
+		// Two readings arrive for each frame.
+		for range 2 {
+			pos += 0.02
+			e.hear(tr.block(0.02, both(0.1), both(0), 0, pos-0.27))
+		}
+		e.take(0.04, time.Time{})
+		for _, s := range e.fresh {
+			seen = append(seen, s.at)
+		}
+	}
+	for range 30 {
+		e.take(0.04, time.Time{})
+		for _, s := range e.fresh {
+			seen = append(seen, s.at)
+		}
+	}
+	if len(seen) != 99 {
+		t.Errorf("%d slices reached the onsets, want 99", len(seen))
+	}
+	for i := 1; i < len(seen); i++ {
+		if seen[i] <= seen[i-1] {
+			t.Fatalf("slice %d at %.3f s came after one at %.3f s", i, seen[i], seen[i-1])
+		}
+	}
+}
+
 func TestNothingIsHeardBeforeThePositionReachesIt(t *testing.T) {
 	var tr track
 	var e ear

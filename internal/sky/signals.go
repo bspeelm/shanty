@@ -13,16 +13,20 @@ type Signals struct {
 	Level, Bass, Treble, Air float64
 	// Balance runs from -1, all left, to 1, all right.
 	Balance float64
-	// Kick and Snap jump when the low end or the high end rises sharply, and
-	// die away over a few frames.
+	// Kick and Snap jump when the low end or the high end rises sharply for
+	// how it has been rising over the last few seconds, and die away over a
+	// few frames.
 	Kick, Snap float64
 	// Busy is how many hits there have been over the last few seconds.
 	Busy float64
 	// Tempo is the beats per minute, or 0 while it is not known. Phase is how
-	// far through the current beat playback is, and Beat counts beats.
+	// far through the current beat playback is, and Beat counts beats. Sure
+	// is the confidence in the tempo: it rises while estimates of the tempo
+	// agree and falls while they wander.
 	Tempo float64
 	Phase float64
 	Beat  int
+	Sure  float64
 	// Section is set on the frame where the music changes character.
 	Section bool
 	// Tension rises while the music builds over several seconds. Release
@@ -74,9 +78,9 @@ func (s Signals) source(i int, clock float64) float64 {
 	case srcBusy:
 		return s.Busy
 	case srcPhase:
-		return 1 - s.Phase
+		return s.onBeat(1 - s.Phase)
 	case srcBar:
-		return (float64(s.Beat%4) + s.Phase) / 4
+		return s.onBeat((float64(s.Beat%4) + s.Phase) / 4)
 	case srcSlow:
 		return 0.5 + 0.5*math.Sin(clock*2*math.Pi/37)
 	case srcSlower:
@@ -91,12 +95,28 @@ func (s Signals) source(i int, clock float64) float64 {
 	return 0
 }
 
+// beatWeight is how far what follows the beat follows it rather than the
+// breath: the confidence in the tempo while one is reported, and 0 otherwise.
+func (s Signals) beatWeight() float64 {
+	if s.Tempo == 0 {
+		return 0
+	}
+	return s.Sure
+}
+
+// onBeat blends v, a value that follows the beat, towards the breath by how
+// little the tempo is trusted.
+func (s Signals) onBeat(v float64) float64 {
+	w := s.beatWeight()
+	return w*v + (1-w)*s.Breath
+}
+
 // listener follows the slices an ear hands over and keeps the signals.
 type listener struct {
 	ear      ear
 	sig      Signals
-	bassAvg  float64
-	trebAvg  float64
+	low      riseMeter
+	high     riseMeter
 	hits     []float64
 	clock    float64
 	short    [3]float64
@@ -132,15 +152,16 @@ func (l *listener) step(dt float64, now time.Time) Signals {
 	s.Air = follow(s.Air, in.air, 0.3, 0.1)
 	s.Balance += (in.balance - s.Balance) * 0.2
 
-	l.bassAvg += (in.bass - l.bassAvg) * 0.05
-	l.trebAvg += (in.treble - l.trebAvg) * 0.08
-	kick := clamp01((in.bass - l.bassAvg - 0.08) * 4)
-	snap := clamp01((in.treble - l.trebAvg - 0.08) * 4)
+	var kick, snap float64
+	for _, f := range l.ear.fresh {
+		kick = math.Max(kick, l.low.step(f.bass, f.at))
+		snap = math.Max(snap, l.high.step(f.treble, f.at))
+	}
 	s.Kick = math.Max(s.Kick*0.82, kick)
 	s.Snap = math.Max(s.Snap*0.75, snap)
 
 	onset := math.Max(kick, snap)
-	if onset > 0.3 {
+	if math.Max(s.Kick, s.Snap) > 0.3 {
 		l.hits = append(l.hits, l.clock)
 	}
 	for len(l.hits) > 0 && l.hits[0] < l.clock-4 {
@@ -148,8 +169,9 @@ func (l *listener) step(dt float64, now time.Time) Signals {
 	}
 	s.Busy = follow(s.Busy, math.Min(float64(len(l.hits))/24, 1), 0.1, 0.05)
 
-	s.Tempo, s.Phase, s.Beat = l.tempo.step(onset, dt)
-	l.char = l.meter.step(*s, l.tempo.sure, kick, onset, dt)
+	s.Tempo, s.Phase, s.Beat = l.tempo.step(kick, dt)
+	s.Sure = l.tempo.conf
+	l.char = l.meter.step(*s, s.Sure, kick, onset, dt)
 	l.shape.step(s, dt)
 	l.section(dt)
 	l.remember(dt)
@@ -191,4 +213,54 @@ func follow(v, target, up, down float64) float64 {
 		return v + (target-v)*up
 	}
 	return v + (target-v)*down
+}
+
+// riseMeter finds onsets in one band. A slice's rise is how far the band's
+// level climbed over it and the slice before. The meter keeps the running
+// mean and mean deviation of the rise over about riseSpan seconds, with each
+// rise counted as at most riseKeep deviations above the mean, and scores
+// each rise by how many deviations it stands above that mean.
+type riseMeter struct {
+	last, up, mean, dev float64
+	// at is the time of the last slice, in seconds into the track.
+	at    float64
+	ready bool
+}
+
+// The span of the running statistics in seconds, the least deviation a rise
+// is measured against, the least rise that counts as an onset, the scores at
+// which an onset starts and reaches full strength, and the most deviations
+// above the mean a rise counts as in the statistics.
+const (
+	riseSpan  = 2.0
+	riseFloor = 0.015
+	riseLeast = 0.05
+	riseFrom  = 1.5
+	riseFull  = 4.0
+	riseKeep  = 1.0
+)
+
+// step takes the band's level in a slice placed at seconds into the track,
+// and returns the strength of an onset in it, from 0 to 1.
+func (r *riseMeter) step(v, at float64) float64 {
+	dt := at - r.at
+	r.at = at
+	if !r.ready || math.Abs(dt) > 1 {
+		r.last, r.up, r.ready = v, 0, true
+		return 0
+	}
+	dt = math.Max(dt, 0)
+	up := math.Max(v-r.last, 0)
+	rise := up + r.up
+	r.last, r.up = v, up
+	dev := math.Max(r.dev, riseFloor)
+	z := (rise - r.mean) / dev
+	k := 1 - math.Exp(-dt/riseSpan)
+	kept := math.Min(rise, r.mean+riseKeep*dev)
+	r.mean += (kept - r.mean) * k
+	r.dev += (math.Abs(kept-r.mean) - r.dev) * k
+	if rise < riseLeast {
+		return 0
+	}
+	return clamp01((z - riseFrom) / (riseFull - riseFrom))
 }

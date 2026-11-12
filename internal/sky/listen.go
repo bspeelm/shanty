@@ -70,6 +70,10 @@ type ear struct {
 	pos        float64
 	at         time.Time
 	slices     []slice
+	// pending holds the slices not yet reached by take, up to a second
+	// behind the position, and fresh those the last call to take reached, in
+	// the order they were heard.
+	pending, fresh []slice
 }
 
 // hear takes one reading. A fall in the sample count is an epoch ending when
@@ -106,7 +110,7 @@ func (e *ear) hear(r Reading) {
 }
 
 func (e *ear) restart() {
-	e.epochs, e.slices, e.taken = 0, nil, 0
+	e.epochs, e.slices, e.taken, e.pending = 0, nil, 0, nil
 }
 
 // add works out the slice between two readings in the same epoch.
@@ -150,6 +154,13 @@ func (e *ear) add(prev, r Reading) {
 		}
 	}
 	e.slices = append(kept, s)
+	waiting := e.pending[:0]
+	for _, old := range e.pending {
+		if old.at >= e.now-1 {
+			waiting = append(waiting, old)
+		}
+	}
+	e.pending = append(waiting, s)
 }
 
 // measure returns the slice for audio with the given mean power, mean squared
@@ -170,8 +181,10 @@ func measure(energy, diff, cross, rate float64) slice {
 // take sets the position being heard for a frame drawn at the time now, and
 // returns the slices within half a step of it that have not been returned
 // before: the loudest level and bands among them, and their mean air and
-// balance. With none new it returns the newest slice already heard, and false
-// when there is none at all.
+// balance. Every slice still pending is put in fresh once, on the first call
+// to take that reaches it, even one placed behind a position already taken.
+// With none new it returns the newest slice already heard, and false when
+// there is none at all.
 //
 // The position is the last reading's plus the time since it was taken, so a
 // reading or a frame that waited in line is not drawn late. Without clock
@@ -187,6 +200,16 @@ func (e *ear) take(step float64, now time.Time) (slice, bool) {
 	until := e.now + step/2
 	var out slice
 	n := 0
+	e.fresh = e.fresh[:0]
+	waiting := e.pending[:0]
+	for _, s := range e.pending {
+		if s.at <= until {
+			e.fresh = append(e.fresh, s)
+		} else {
+			waiting = append(waiting, s)
+		}
+	}
+	e.pending = waiting
 	for _, s := range e.slices {
 		if s.at > e.taken && s.at <= until {
 			out.level = math.Max(out.level, s.level)
