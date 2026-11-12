@@ -1,12 +1,14 @@
 package shanty
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -78,6 +80,9 @@ func TestTheBudgetScriptDoesNotCountAHiddenWorkingCopy(t *testing.T) {
 	before := budgetReport(t)
 	dir := ".budgets-test-copy"
 	if err := os.MkdirAll(filepath.Join(dir, "internal"), 0o700); err != nil {
+		if errors.Is(err, syscall.EROFS) || errors.Is(err, fs.ErrPermission) {
+			t.Skip("the checkout cannot be written to, so no copy can be planted in it")
+		}
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) }) // a leftover is removed on the next run
