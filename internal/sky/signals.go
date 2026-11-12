@@ -39,6 +39,10 @@ type Signals struct {
 	// Heavy is how far the music is a loud wall of sound with no steady
 	// kick to carry it, from 0 to 1.
 	Heavy float64
+	// Weight is how hard the part playing hits against a part of middling
+	// intensity, from -0.5 to 0.25, lower still for a part with no sound,
+	// and 0 where the parts are not known.
+	Weight float64
 }
 
 // The sources a scene can route to a parameter, in the order Signals.source

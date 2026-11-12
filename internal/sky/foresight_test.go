@@ -320,7 +320,7 @@ func cuts(s *State, tr *track, secs float64, before func(pos float64)) []float64
 		}
 		was := s.next
 		play(s, tr, at, dt/2, 40, 10)
-		if s.next != nil && s.next != was && s.fadeLen == cutFade {
+		if s.next != nil && s.next != was && s.cutting {
 			out = append(out, s.lis.ear.now)
 		}
 	}

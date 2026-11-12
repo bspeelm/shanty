@@ -28,7 +28,7 @@ func planOf(t *testing.T, path string) *Plan {
 		for j, c := range b.Channels {
 			ch[j] = Channel{Loudness: c.Loudness, Difference: c.Difference, Crossings: c.Crossings}
 		}
-		out[i] = Block{At: b.At.Seconds(), Samples: b.Samples, Channels: ch, Bands: b.Bands, Punch: b.Punch, Rate: b.Rate, Scale: b.Scale}
+		out[i] = Block{At: b.At.Seconds(), Samples: b.Samples, Channels: ch, Bands: b.Bands, Punch: b.Punch, Side: b.Side, Rate: b.Rate, Scale: b.Scale}
 	}
 	return NewPlan(out)
 }
@@ -57,7 +57,7 @@ func playWhole(m measured, p *Plan) played {
 		last = pos
 		sig := s.Signals()
 		out.pos, out.kick, out.heavy = append(out.pos, s.lis.ear.now), append(out.kick, sig.Kick), append(out.heavy, sig.Heavy)
-		if s.next != nil && s.next != was && s.fadeLen == cutFade {
+		if s.next != nil && s.next != was && s.cutting {
 			out.cuts = append(out.cuts, s.lis.ear.now)
 		}
 	}
