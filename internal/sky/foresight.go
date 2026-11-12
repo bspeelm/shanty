@@ -78,6 +78,18 @@ const (
 	// or hat take to fall to 1/e.
 	kickFall = 0.17
 	snapFall = 0.12
+	// beatReach is how near a beat a kick must fall to be set off on it,
+	// and gridKick the strength of a kick set off on a beat.
+	beatReach = 0.06
+	gridKick  = 0.9
+	// Kicks fade by the share of their section's beats that carry a kick:
+	// none at fadeFrom, and in full at fadeOver above it. Every beat of a
+	// section where that share is at least fillFrom is given a kick. A
+	// section shorter than sectionLeast is measured over that length.
+	fadeFrom     = 0.45
+	fadeOver     = 0.15
+	fillFrom     = 0.6
+	sectionLeast = 8
 	// hatShare is how strongly a hat counts beside a snare.
 	hatShare = 0.6
 	// noteFall is how long a planned note takes to fall to 1/e, and
@@ -99,6 +111,13 @@ const (
 	cutTurn     = 0.4
 	// cutClear is how long before a cut no other change of scene starts.
 	cutClear = 8
+	// gritBehind is how far grit may trail drive in a character before the
+	// music stops counting as led by grit. heavyAhead is how far ahead of
+	// the position the plan's level is read for Heavy, and heavyGlide how
+	// long Heavy takes to follow.
+	gritBehind = 0.1
+	heavyAhead = 2
+	heavyGlide = 1.5
 	// moodSpan is the stretch a mood is measured over, moodAhead how far
 	// ahead of the position the frame's mood is taken, and drummedFrom the
 	// share of beats with a kick from which a stretch counts as drummed.
@@ -156,11 +175,33 @@ func (p *Plan) mood(t float64) Character {
 	if len(p.Beats) == 0 {
 		return c
 	}
-	w := clamp01(p.drummed(t, t+moodSpan) / drummedFrom)
+	// A track led by grit keeps its character where its kicks are few.
+	w := math.Max(clamp01(p.drummed(t, t+moodSpan)/drummedFrom), gritLed(c))
 	soft := Character{Calm: 0.45, Drive: 0.05, Grit: 0.05, Flow: 0.45}
 	a, b := c.axes(), soft.axes()
 	mix := func(i int) float64 { return w*a[i] + (1-w)*b[i] }
 	return Character{mix(0), mix(1), mix(2), mix(3)}
+}
+
+// gritLed is how far a character is led by grit over drive, from 0 where
+// drive is ahead by gritBehind to 1 where grit is ahead by as much.
+func gritLed(c Character) float64 {
+	return clamp01((c.Grit - c.Drive + gritBehind) / (2 * gritBehind))
+}
+
+// heavy follows how far the music is a loud wall of sound with no steady
+// kick to carry it: how loud it is, heard and with a trusted plan planned
+// for the seconds ahead, by how far its character is led by grit over
+// drive.
+func (s *State) heavy(dt float64) float64 {
+	level, c := s.lis.meter.slow, s.lis.char
+	if p := s.trusted(); p != nil {
+		level = planShare*p.At(s.lis.ear.now+heavyAhead).Level + (1-planShare)*level
+		c = p.Character()
+	}
+	loud := clamp01((level - heavyFrom) / (heavyFull - heavyFrom))
+	s.weight = glide(s.weight, loud*gritLed(c), dt, heavyGlide)
+	return s.weight
 }
 
 // cutDue reports whether the cue c of a plan measured in bands is one to
@@ -203,6 +244,64 @@ func (s *State) character() Character {
 	return Character{mix(0), mix(1), mix(2), mix(3)}
 }
 
+// onBeat reports whether t is within beatReach of a beat the plan is sure
+// of.
+func (p *Plan) onBeat(t float64) bool {
+	i, _ := slices.BinarySearch(p.Beats, t)
+	for _, k := range []int{i - 1, i} {
+		if k >= 0 && k < len(p.Beats) && math.Abs(p.Beats[k]-t) <= beatReach {
+			if beat, ok := p.BeatAt(p.Beats[k]); ok && beat.Confidence >= kickConfidence {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sectionShare returns the share of the beats of the section around t that
+// have a kick within beatReach of them. A section runs from one drop or
+// section cue to the next, and one shorter than sectionLeast is measured
+// with the time either side of it, up to that length.
+func (p *Plan) sectionShare(t float64) float64 {
+	if p.shares == nil {
+		p.edges = []float64{0}
+		for _, c := range p.Cues {
+			if (c.Kind == CueSection || c.Kind == CueDrop) && c.At > p.edges[len(p.edges)-1] {
+				p.edges = append(p.edges, c.At)
+			}
+		}
+		p.edges = append(p.edges, math.Max(p.Length, p.edges[len(p.edges)-1]))
+		p.shares = make([]float64, len(p.edges)-1)
+		for i := range p.shares {
+			a, b := p.edges[i], p.edges[i+1]
+			if short := sectionLeast - (b - a); short > 0 {
+				a, b = a-short/2, b+short/2
+			}
+			beats := between(p.Beats, a, b)
+			for _, at := range beats {
+				if p.kicked(at) {
+					p.shares[i] += 1 / float64(len(beats))
+				}
+			}
+		}
+	}
+	i, _ := slices.BinarySearch(p.edges, t)
+	if i >= len(p.edges) || p.edges[i] != t {
+		i--
+	}
+	return p.shares[min(max(i, 0), len(p.shares)-1)]
+}
+
+// kicked reports whether a kick falls within beatReach of t.
+func (p *Plan) kicked(t float64) bool {
+	for _, h := range p.HitsBetween(t-beatReach, t+beatReach) {
+		if h.Kind == HitKick {
+			return true
+		}
+	}
+	return false
+}
+
 // score replaces the beat, the hits and the busyness heard with the plan's,
 // for the frame at pos that follows the one at from. Each planned kick, and
 // each planned snare or hat, is set off as playback reaches it and dies
@@ -213,12 +312,32 @@ func (s *State) score(sig Signals, p *Plan, from, pos, dt float64) Signals {
 	f := &s.foresight
 	f.kick *= math.Exp(-dt / kickFall)
 	f.snap *= math.Exp(-dt / snapFall)
-	// A hit is set off on the frame nearest to it.
-	for _, h := range p.HitsBetween(from+dt/2, pos+dt/2) {
+	// What falls after the last frame's position and at or before this one's
+	// is set off on this frame, the frame on which its sound is first heard.
+	lo, hi := math.Nextafter(from, math.Inf(1)), math.Nextafter(pos, math.Inf(1))
+	// A kick beside a beat of the grid is set off on the beat, at an even
+	// strength, and every beat of a drummed section is given one.
+	for _, at := range between(p.Beats, lo, hi) {
+		beat, ok := p.BeatAt(at)
+		if !ok || beat.Confidence < kickConfidence {
+			continue
+		}
+		if share := p.sectionShare(at); share >= fillFrom || p.kicked(at) {
+			f.kick = math.Max(f.kick, gridKick*clamp01((share-fadeFrom)/fadeOver))
+		}
+	}
+	// The other kicks fade out in a section that is not drummed.
+	drummed := 1.0
+	if len(p.Beats) > 0 {
+		drummed = clamp01((p.sectionShare(pos) - fadeFrom) / fadeOver)
+	}
+	for _, h := range p.HitsBetween(lo, hi) {
 		v := clamp01(0.35 + 0.65*h.Strength)
 		switch h.Kind {
 		case HitKick:
-			f.kick = math.Max(f.kick, v)
+			if !p.onBeat(h.At) {
+				f.kick = math.Max(f.kick, drummed*v)
+			}
 		case HitSnare:
 			f.snap = math.Max(f.snap, v)
 		case HitHat:
@@ -226,10 +345,10 @@ func (s *State) score(sig Signals, p *Plan, from, pos, dt float64) Signals {
 		}
 	}
 	f.note *= math.Exp(-dt / noteFall)
-	for _, n := range p.NotesBetween(from+dt/2, pos+dt/2) {
+	for _, n := range p.NotesBetween(lo, hi) {
 		f.note = math.Max(f.note, clamp01(2*n.Strength))
 	}
-	sig.Kick = f.kick * (0.6 + 0.4*sig.Bass)
+	sig.Kick = f.kick * (0.7 + 0.3*sig.Bass)
 	sig.Snap = math.Max(f.snap*(0.6+0.4*sig.Treble), noteShare*f.note)
 	near := float64(len(p.HitsBetween(pos-busySpan/2, pos+busySpan/2)))
 	f.busy = glide(f.busy, math.Min(near/busySpan/busyFull, 1), dt, 0.5)

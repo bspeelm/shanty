@@ -145,7 +145,7 @@ func planBlocks(blocks []mpv.Block) []sky.Block {
 		for j, c := range b.Channels {
 			channels[j] = sky.Channel{Loudness: c.Loudness, Difference: c.Difference, Crossings: c.Crossings}
 		}
-		out[i] = sky.Block{At: b.At.Seconds(), Samples: b.Samples, Channels: channels, Bands: b.Bands, Rate: b.Rate, Scale: b.Scale}
+		out[i] = sky.Block{At: b.At.Seconds(), Samples: b.Samples, Channels: channels, Bands: b.Bands, Punch: b.Punch, Rate: b.Rate, Scale: b.Scale}
 	}
 	return out
 }

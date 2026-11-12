@@ -36,6 +36,9 @@ type Signals struct {
 	// second or two. Hush is how far the level is below the track's running
 	// average. Breath rises and falls once a phrase.
 	Tension, Release, Hush, Breath float64
+	// Heavy is how far the music is a loud wall of sound with no steady
+	// kick to carry it, from 0 to 1.
+	Heavy float64
 }
 
 // The sources a scene can route to a parameter, in the order Signals.source
@@ -130,6 +133,9 @@ type listener struct {
 	sig  Signals
 	low  riseMeter
 	high riseMeter
+	// thump and crack are the latest rises in the low and the high end as
+	// they are, however small, dying away over a few frames.
+	thump, crack float64
 	// hits holds the times of the onsets in the last busySpan seconds, and
 	// hit whether the last slice was one.
 	hits  []float64
@@ -177,6 +183,10 @@ const (
 	drumsFull = 2.5
 )
 
+// rawFull is the rise in a band's level that counts as a full thump or
+// crack.
+const rawFull = 0.08
+
 // Busy counts the onsets over the last busySpan seconds, or over the time
 // listened when that is shorter, and is 1 at busyFull onsets a second.
 const (
@@ -221,7 +231,7 @@ func (l *listener) step(dt float64, now time.Time) Signals {
 	}
 	// heardKick and heardSnap are what the tempo is found from: the quiet
 	// share without the size of the rise, or the loud share.
-	var kick, snap, heardKick, heardSnap float64
+	var kick, snap, heardKick, heardSnap, thump, crack float64
 	for _, f := range l.ear.fresh {
 		kOn, kRise := l.low.step(f.low, f.at)
 		hOn, hRise := l.high.step(f.high, f.at)
@@ -230,6 +240,8 @@ func (l *listener) step(dt float64, now time.Time) Signals {
 		heardSnap = math.Max(heardSnap, math.Max(hLoud, quietShare*hOn))
 		k, h := kOn*shares(kRise), hOn*shares(hRise)
 		kick, snap = math.Max(kick, k), math.Max(snap, h)
+		thump = math.Max(thump, kOn*clamp01(kRise/rawFull))
+		crack = math.Max(crack, hOn*clamp01(hRise/rawFull))
 		hit := math.Max(k, h) > 0.3
 		if hit && !l.hit {
 			l.hits = append(l.hits, l.clock)
@@ -242,6 +254,8 @@ func (l *listener) step(dt float64, now time.Time) Signals {
 	}
 	s.Kick = math.Max(s.Kick*0.82, kick)
 	s.Snap = math.Max(s.Snap*0.75, snap)
+	l.thump = math.Max(l.thump*0.82, thump)
+	l.crack = math.Max(l.crack*0.75, crack)
 
 	onset := math.Max(kick, snap)
 	for len(l.hits) > 0 && l.hits[0] < l.clock-busySpan {

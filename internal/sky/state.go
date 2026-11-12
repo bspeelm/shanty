@@ -26,12 +26,16 @@ type State struct {
 	recent  []string
 	track   string
 	moved   int
-	w, h    int
-	f       frame
-	value   []float64
-	tone    []float64
-	post    post
-	guard   flashGuard
+	// weight is Heavy as it glides, turned the time since heavy music last
+	// reshaped the scene, and lurch the way the picture was last shaken.
+	weight, turned float64
+	lurch          float64
+	w, h           int
+	f              frame
+	value          []float64
+	tone           []float64
+	post           post
+	guard          flashGuard
 	// shift moves every cell along the palette, gliding towards the treble
 	// less the bass.
 	shift  float64
@@ -107,6 +111,10 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	st := styleFor(char)
 	st.steady(char, s.lis.sig.beatWeight())
 	sig, section, planned := s.foresee(sig, st, dt)
+	// Heavy music moves with every rise in its sound, as far as it is heavy.
+	sig.Heavy = s.heavy(dt)
+	sig.Kick = math.Max(sig.Kick, sig.Heavy*s.lis.thump)
+	sig.Snap = math.Max(sig.Snap, sig.Heavy*s.lis.crack)
 	s.sig = sig
 	// With a plan, the plan's sections replace those heard live.
 	if s.plan() != nil {
@@ -152,7 +160,23 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 		s.moved = sig.Beat
 		s.cur.mutate(s.sims, st)
 	}
+	// Heavy music also reshapes the scene on a hard hit, at most once every
+	// heavyTurn seconds.
+	s.turned += dt
+	if sig.Heavy > 0.5 && sig.Kick > 0.7 && s.turned > heavyTurn {
+		s.turned = 0
+		s.cur.mutate(s.sims, st)
+	}
 
+	// Heavy music shakes the picture a little on each hit, a new way each
+	// time one lands.
+	hit := math.Max(sig.Kick, sig.Snap)
+	if hit > s.f.jolt+0.2 {
+		s.lurch = 2 * math.Pi * s.sims.Float64()
+	}
+	s.f.jolt = hit
+	reach := heavyShake * sig.Heavy * hit * s.f.radius
+	s.f.sx, s.f.sy = reach*math.Cos(s.lurch), reach*math.Sin(s.lurch)
 	s.f.dt, s.f.sig, s.f.history, s.f.rng = dt, sig, s.lis.history, s.sims
 	heard := s.lis.sig
 	s.shift = glide(s.shift, 0.15*(heard.Treble-heard.Bass), dt, shiftGlide)

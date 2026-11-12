@@ -113,11 +113,13 @@ const (
 	dropFull    = 6.0
 	// A beat of confidence kickConfidence carries a kick when the beats
 	// within kickBeats of it rise by a median of kickRise dB in the band
-	// where a kick starts, and no kick is within kickNear seconds of it; the kick
-	// is at least kickFloor strong.
-	kickConfidence = 0.5
+	// where a kick starts, or of peakRise dB in its peak where that was
+	// measured, and no kick is within kickNear seconds of it; the kick is at
+	// least kickFloor strong.
+	kickConfidence = 0.25
 	kickBeats      = 8
 	kickRise       = 2.0
+	peakRise       = 3.0
 	kickNear       = 0.045
 	kickFloor      = 0.3
 	// A drum is heard where the music has a rhythm of at least drumSupport,
@@ -177,6 +179,10 @@ type onsets struct {
 	level [bandCount][]float64
 	loud  [bandCount]float64
 	rise  [bandCount][]float64
+	// punch is the peak in dB of the band where a kick starts, at each
+	// block, and punched whether any block was measured with one.
+	punch   []float64
+	punched bool
 	// weight is how much each band counts towards sum.
 	weight [bandCount]float64
 	sum    []float64
@@ -192,6 +198,11 @@ func bandOnsets(blocks []Block) *onsets {
 		}
 		o.at = append(o.at, b.At)
 		o.hop = math.Max(o.hop, b.Samples/float64(b.Rate))
+		peak := silentBelow
+		if b.Punch > 0 {
+			peak, o.punched = math.Max(20*math.Log10(b.Punch), silentBelow), true
+		}
+		o.punch = append(o.punch, peak)
 		for k := range bandCount {
 			v := b.Bands[k]
 			if math.IsNaN(v) {
@@ -1014,13 +1025,24 @@ func (p *Plan) hits(o *onsets, rhythm []float64) {
 // confident beats within kickBeats of it in its run, itself among them, is
 // at least kickRise dB, or when its own punch is and so is the median of
 // those before it or of those after it. The kick's strength is kickFloor
-// more than a tenth of the larger of that median and its own punch.
+// more than a tenth of the larger of that median and its own punch. Where
+// the blocks were measured with the band's peak, a beat's punch is how far
+// the highest peak of the block the beat falls in and the two after it
+// stands above the mean peak of the two blocks before that one, and the
+// rise asked for is peakRise.
 func (p *Plan) gridKicks(o *onsets) {
 	n := len(p.Beats)
-	l := o.level[bandPunch]
+	l, rise := o.level[bandPunch], kickRise
+	if o.punched {
+		l, rise = o.punch, peakRise
+	}
 	punch := make([]float64, n)
 	for b, t := range p.Beats {
-		if i, _ := slices.BinarySearch(o.at, t); i >= 2 && i+2 <= len(l) {
+		i, _ := slices.BinarySearch(o.at, t)
+		switch {
+		case o.punched && i >= 3 && i+2 <= len(l):
+			punch[b] = slices.Max(l[i-1:i+2]) - mean(l[i-3:i-1])
+		case !o.punched && i >= 2 && i+2 <= len(l):
 			punch[b] = mean(l[i:i+2]) - mean(l[i-2:i])
 		}
 	}
@@ -1053,8 +1075,8 @@ func (p *Plan) gridKicks(o *onsets) {
 		}
 		before, after := side(lo, b-1), side(b+1, hi)
 		around := quantile(slices.Concat(before, after, []float64{punch[b]}), 0.5)
-		edge := punch[b] >= kickRise && (quantile(before, 0.5) >= kickRise || quantile(after, 0.5) >= kickRise)
-		if around < kickRise && !edge {
+		edge := punch[b] >= rise && (quantile(before, 0.5) >= rise || quantile(after, 0.5) >= rise)
+		if around < rise && !edge {
 			continue
 		}
 		if j, _ := slices.BinarySearch(kicks, t-kickNear); j < len(kicks) && kicks[j] <= t+kickNear {

@@ -512,7 +512,7 @@ func (s *scene) step(f *frame) {
 			l.w = glide(l.w, target, f.dt, math.Max(fallGlide, s.glide))
 		}
 		l.ready = true
-		l.clock += f.dt * (0.2 + 1.8*l.v[0])
+		l.clock += f.dt * (0.2 + 1.8*l.v[0]) * (1 + heavySpeed*sig.Heavy)
 		f.couple = l.couple
 		l.comp.draw(f, l.v, l.clock, l.buf)
 		w := l.w * l.presence

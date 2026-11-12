@@ -56,6 +56,9 @@ type Channel struct {
 	Difference float64
 	// Crossings is the number of zero crossings.
 	Crossings float64
+	// Peak is the peak level in dB relative to full scale, where the filter
+	// measures it, and 0 where it does not.
+	Peak float64
 }
 
 // errNoHearing is returned when mpv has no reading to give: nothing is

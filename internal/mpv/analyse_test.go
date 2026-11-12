@@ -3,6 +3,7 @@ package mpv
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -293,5 +294,27 @@ func TestAnAnalysisSocketTooLongIsRefused(t *testing.T) {
 	_, err := Analyse(t.Context(), Options{Socket: "/" + strings.Repeat("s", 200)}, streamURL())
 	if err == nil || !strings.Contains(err.Error(), "characters") {
 		t.Errorf("got %v, want the path refused for its length", err)
+	}
+}
+
+func TestThePeakOfTheLastBandIsTheBlocksPunch(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("frame:0    pts:0       pts_time:0\n")
+	for c := 1; c <= analyseWhole+analyseBands; c++ {
+		fmt.Fprintf(&b, "lavfi.astats.%d.RMS_level=-20.000000\n", c)
+		fmt.Fprintf(&b, "lavfi.astats.%d.Peak_level=-%d.000000\n", c, c)
+	}
+	b.WriteString("lavfi.astats.Overall.Number_of_samples=1024.000000\n")
+	blocks := parseBlocks(strings.NewReader(b.String()))
+	if len(blocks) != 1 {
+		t.Fatalf("one block was written and %d were read", len(blocks))
+	}
+	got := banded(blocks[0], audioParams{}).Punch
+	// The last band's peak is -7 dB.
+	if want := math.Pow(10, -7.0/20); math.Abs(got-want) > 1e-6 {
+		t.Errorf("the punch was %.4f, want %.4f", got, want)
+	}
+	if p := banded(parseBlocks(strings.NewReader(recorded(t)))[0], audioParams{}).Punch; p != 0 {
+		t.Errorf("a block measured without bands has a punch of %v", p)
 	}
 }

@@ -17,8 +17,11 @@ type frame struct {
 	aspect float64
 	// cx, cy and radius place the unit circle in the middle of the field.
 	cx, cy, radius float64
-	dt             float64
-	sig            Signals
+	// sx and sy are how far, in pixels, the picture is shaken off the
+	// middle on this frame, and jolt the strength of the last frame's hit.
+	sx, sy, jolt float64
+	dt           float64
+	sig          Signals
 	// history is the level over the last few seconds, oldest first.
 	history []float64
 	rng     *rand.Rand
@@ -50,8 +53,8 @@ func (f *frame) warp(warps []*warp, values [][4]float64) {
 	}
 	for py := range f.fh {
 		for px := range f.fw {
-			x := (float64(px) - f.cx) / f.radius
-			y := (float64(py) - f.cy) * f.aspect / f.radius
+			x := (float64(px) - f.cx - f.sx) / f.radius
+			y := (float64(py) - f.cy - f.sy) * f.aspect / f.radius
 			for i, w := range warps {
 				wx, wy := w.apply(x, y, values[i])
 				x, y = x+(wx-x)*w.amount, y+(wy-y)*w.amount

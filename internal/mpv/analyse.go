@@ -41,7 +41,7 @@ var analyseFilter = fmt.Sprintf("lavfi=[asplit=2[g][b];"+
 	"[z]highpass=f=6000,aformat=channel_layouts=mono[h];"+
 	"[v]bandpass=f=125:width_type=h:w=50,bandpass=f=125:width_type=h:w=50,aformat=channel_layouts=mono[p];"+
 	"[f][k][l][m][h][p]amerge=inputs=6,"+
-	"astats=metadata=1:reset=1:measure_perchannel=RMS_level+RMS_difference+Zero_crossings:measure_overall=Number_of_samples,"+
+	"astats=metadata=1:reset=1:measure_perchannel=RMS_level+Peak_level+RMS_difference+Zero_crossings:measure_overall=Number_of_samples,"+
 	"ametadata=mode=print:file=-]", analyseRate, blockSamples)
 
 // analyseSuffix is added to the player's socket path to name the socket of
@@ -61,6 +61,9 @@ type Block struct {
 	// 6 kHz, and 100 to 150 Hz. It is empty for a block measured without
 	// bands.
 	Bands []float64
+	// Punch is the peak of the 100 to 150 Hz band, from 0 to 1 of full
+	// scale. It is 0 for a block measured without it.
+	Punch float64
 	// Rate is the sample rate, and Scale is the value of a full-scale sample
 	// in the units of Channel.Difference.
 	Rate  int
@@ -152,8 +155,9 @@ func analyse(ctx context.Context, opt Options, url, filter string) ([]Block, aud
 
 // banded returns a block measured by analyseFilter with its rate and scale
 // set. A block with the channels of the whole sound and one for each band
-// keeps the first as its channels and the rest as its bands; any other block
-// keeps all its channels and has no bands. The whole sound of a track with
+// keeps the first as its channels and the rest as its bands, with the peak of
+// the last band as its punch; any other block keeps all its channels and has
+// no bands. The whole sound of a track with
 // one channel is raised to the level of that channel, and the zero crossings
 // are scaled to what they are at the track's own sample rate.
 func banded(b Block, params audioParams) Block {
@@ -164,6 +168,9 @@ func banded(b Block, params audioParams) Block {
 	b.Bands = make([]float64, analyseBands)
 	for i, c := range b.Channels[analyseWhole:] {
 		b.Bands[i] = c.Loudness
+	}
+	if peak := b.Channels[len(b.Channels)-1].Peak; peak != 0 && !math.IsNaN(peak) {
+		b.Punch = math.Min(math.Pow(10, peak/20), 1)
 	}
 	b.Channels = slices.Clone(b.Channels[:analyseWhole])
 	for i := range b.Channels {
@@ -273,6 +280,8 @@ func parseBlocks(r io.Reader) []Block {
 		switch ch := &cur.Channels[c-1]; name {
 		case "RMS_level":
 			ch.Loudness = v
+		case "Peak_level":
+			ch.Peak = v
 		case "RMS_difference":
 			ch.Difference = v
 		case "Zero_crossings":
