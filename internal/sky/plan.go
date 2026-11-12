@@ -91,12 +91,15 @@ type Plan struct {
 	Notes  []Note
 	curve  []Moment
 	builds [][2]float64
-	banded bool
-	bar    []int
-	conf   []float64
-	broken []bool
-	tempi  []float64
-	char   Character
+	// usualKick is the strength of the track's stronger kicks, found when
+	// first asked for.
+	usualKick float64
+	banded    bool
+	bar       []int
+	conf      []float64
+	broken    []bool
+	tempi     []float64
+	char      Character
 }
 
 // The planner's measures. Times are in seconds and levels are on the 0 to 1
