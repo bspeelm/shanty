@@ -215,3 +215,22 @@ func TestOnlyTheLatestTwoHundredPlansAreKept(t *testing.T) {
 		t.Errorf("keeping a track again left %d in the order, want %d", len(f.order), foresightKept)
 	}
 }
+
+func TestMeasuredBlocksReachThePlannerWithTheirBands(t *testing.T) {
+	in := []mpv.Block{
+		{At: 1500 * time.Millisecond, Samples: 1024, Rate: 48000, Scale: 1,
+			Channels: []mpv.Channel{{Loudness: -12, Difference: 0.01, Crossings: 30}},
+			Bands:    []float64{-10, -20, -30, -40}},
+		{At: 0, Samples: 512, Rate: 48000, Scale: 1, Channels: []mpv.Channel{{Loudness: -6}}},
+	}
+	got := planBlocks(in)
+	want := sky.Block{At: 1.5, Samples: 1024, Rate: 48000, Scale: 1,
+		Channels: []sky.Channel{{Loudness: -12, Difference: 0.01, Crossings: 30}},
+		Bands:    []float64{-10, -20, -30, -40}}
+	if fmt.Sprint(got[0]) != fmt.Sprint(want) {
+		t.Errorf("a block with bands became %+v, want %+v", got[0], want)
+	}
+	if len(got[1].Bands) != 0 || got[1].Channels[0].Loudness != -6 {
+		t.Errorf("a block without bands became %+v", got[1])
+	}
+}

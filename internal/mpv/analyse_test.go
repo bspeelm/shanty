@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -101,19 +102,38 @@ func analysing(t *testing.T, extraEnv ...string) (Options, string) {
 	return Options{Binary: self, Socket: filepath.Join(shortDir(t), "run", "mpv.sock")}, dir
 }
 
-func TestAnalyseReturnsEveryBlockWithItsFormat(t *testing.T) {
+func TestAnalyseReturnsEveryBlockWithItsWholeSoundAndFourBands(t *testing.T) {
 	opt, dir := analysing(t)
 	blocks, err := Analyse(t.Context(), opt, streamURL())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blocks) != 26 {
-		t.Fatalf("got %d blocks, want 26", len(blocks))
+	if len(blocks) != 11 {
+		t.Fatalf("got %d blocks, want 11", len(blocks))
 	}
 	for _, b := range blocks {
-		if b.Rate != 44100 || b.Scale != 1<<15 {
-			t.Fatalf("a block has rate %d and scale %v, want 44100 and 32768", b.Rate, b.Scale)
+		if b.Rate != 48000 || b.Scale != 1 || len(b.Channels) != 1 || len(b.Bands) != 4 {
+			t.Fatalf("a block has rate %d, scale %v, %d channels and %d bands, want 48000, 1, 1 and 4",
+				b.Rate, b.Scale, len(b.Channels), len(b.Bands))
 		}
+	}
+	first := blocks[0]
+	if want := (Channel{Loudness: -6.860854, Difference: 0.003394, Crossings: 3}); first.Channels[0] != want {
+		t.Errorf("the whole sound of the first block is %+v, want %+v", first.Channels[0], want)
+	}
+	if want := []float64{-7.215836, -18.148681, -38.191460, -75.977048}; !slices.Equal(first.Bands, want) {
+		t.Errorf("the bands of the first block are %v, want %v", first.Bands, want)
+	}
+	if b := blocks[3]; !math.IsInf(b.Channels[0].Loudness, -1) || b.Bands[0] > -100 {
+		t.Errorf("the silent block at %s measured %+v and bands %v", b.At, b.Channels[0], b.Bands)
+	}
+	before, thump := blocks[6], blocks[7]
+	if thump.At != 490667*time.Microsecond || thump.Bands[0]-before.Bands[0] < 60 {
+		t.Errorf("the thump at half a second rose from %v dB to %v dB in the lowest band, in the block at %s",
+			before.Bands[0], thump.Bands[0], thump.At)
+	}
+	if last := blocks[len(blocks)-1]; last.Samples != 224 {
+		t.Errorf("the last block holds %v samples, want 224", last.Samples)
 	}
 	argv := report(t, dir, argvFile)
 	for _, want := range []string{"--no-config", "--ao=null", "--ao-null-untimed=yes", "--input-ipc-server=" + opt.Socket + analyseSuffix} {
@@ -123,6 +143,22 @@ func TestAnalyseReturnsEveryBlockWithItsFormat(t *testing.T) {
 	}
 	if _, err := os.Stat(opt.Socket + analyseSuffix); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the analysing socket is left behind: %v", err)
+	}
+}
+
+func TestTheAnalysingFilterMeasuresTheWholeSoundAndFourBandsAtAFixedRate(t *testing.T) {
+	for _, want := range []string{"aresample=48000", "channel_layouts=mono", "asetnsamples=n=1024", "amerge=inputs=5"} {
+		if !strings.Contains(analyseFilter, want) {
+			t.Errorf("the analysing filter lacks %s:\n%s", want, analyseFilter)
+		}
+	}
+}
+
+func TestABlockMeasuredWithoutBandsKeepsItsChannelsAndHasNoBands(t *testing.T) {
+	blocks := parseBlocks(strings.NewReader(recorded(t)))
+	b := banded(blocks[0])
+	if len(b.Channels) != 2 || len(b.Bands) != 0 || b.Rate != 48000 || b.Scale != 1 {
+		t.Errorf("a two-channel block became %+v", b)
 	}
 }
 

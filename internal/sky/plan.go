@@ -15,6 +15,10 @@ type Block struct {
 	Samples float64
 	// Channels holds the totals for each channel.
 	Channels []Channel
+	// Bands holds the RMS level in dB relative to full scale of each band, in
+	// the order bandKick, bandLow, bandMid, bandHigh. It is empty for a block
+	// measured without bands.
+	Bands []float64
 	// Rate is the sample rate, and Scale is the value of a full-scale sample
 	// in the units of Channel.Difference.
 	Rate  int
@@ -59,17 +63,32 @@ type Moment struct {
 	Level, Bass, Treble, Air float64
 }
 
-// Plan is a map of a whole track: its curves, its cues and its tempo.
+// Plan is a map of a whole track: its curves, its cues, its tempo, its beats
+// and its hits.
 type Plan struct {
 	// Cues are the events in the track, in order of time.
 	Cues []Cue
-	// Tempo is the beats per minute from the onsets of the whole track, or 0,
-	// and Sure is how strongly the onsets repeat at it, from 0 to 1.
+	// Tempo is the beats per minute of the track, or 0, and Sure is how
+	// strongly the onsets repeat at it, from 0 to 1. For a track measured in
+	// bands they come from its beats, and Sure is Pulse.
 	Tempo, Sure float64
 	// Length is the length of the track in seconds.
 	Length float64
+	// Beats are the times of the beats in seconds, in order, and Downbeats
+	// are the beats that start a bar. Meter is the number of beats in a bar.
+	// A track measured without bands, or without a steady beat, has none.
+	Beats, Downbeats []float64
+	Meter            int
+	// Pulse is how strong and steady the beat is across the track, from 0 to
+	// 1. A track with a Pulse below beatlessBelow has no beats.
+	Pulse float64
+	// Hits are the kicks, snares and hats of the track, in order of time.
+	Hits   []Hit
 	curve  []Moment
 	builds [][2]float64
+	banded bool
+	bar    []int
+	char   Character
 }
 
 // The planner's measures. Times are in seconds and levels are on the 0 to 1
@@ -155,6 +174,7 @@ func NewPlan(blocks []Block) *Plan {
 	if len(onsets) > 1 {
 		p.Tempo, p.Sure = periodOf(onsets, p.Length/float64(len(onsets)))
 	}
+	p.beats(blocks)
 
 	level := make([]float64, n)
 	for i, m := range p.curve {
