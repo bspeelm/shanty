@@ -102,7 +102,7 @@ func analysing(t *testing.T, extraEnv ...string) (Options, string) {
 	return Options{Binary: self, Socket: filepath.Join(shortDir(t), "run", "mpv.sock")}, dir
 }
 
-func TestAnalyseReturnsEveryBlockWithItsWholeSoundAndFourBands(t *testing.T) {
+func TestAnalyseReturnsEveryBlockWithItsWholeSoundAndFiveBands(t *testing.T) {
 	opt, dir := analysing(t)
 	blocks, err := Analyse(t.Context(), opt, streamURL())
 	if err != nil {
@@ -112,8 +112,8 @@ func TestAnalyseReturnsEveryBlockWithItsWholeSoundAndFourBands(t *testing.T) {
 		t.Fatalf("got %d blocks, want 11", len(blocks))
 	}
 	for _, b := range blocks {
-		if b.Rate != 48000 || b.Scale != 1 || len(b.Channels) != 2 || len(b.Bands) != 4 {
-			t.Fatalf("a block has rate %d, scale %v, %d channels and %d bands, want 48000, 1, 2 and 4",
+		if b.Rate != 48000 || b.Scale != 1 || len(b.Channels) != 2 || len(b.Bands) != 5 {
+			t.Fatalf("a block has rate %d, scale %v, %d channels and %d bands, want 48000, 1, 2 and 5",
 				b.Rate, b.Scale, len(b.Channels), len(b.Bands))
 		}
 	}
@@ -124,7 +124,7 @@ func TestAnalyseReturnsEveryBlockWithItsWholeSoundAndFourBands(t *testing.T) {
 			t.Errorf("channel %d of the whole sound of the first block is %+v, want %+v", i+1, c, want)
 		}
 	}
-	if want := []float64{-7.215836, -18.148681, -38.191460, -75.977048}; !slices.Equal(first.Bands, want) {
+	if want := []float64{-7.215836, -18.148681, -38.191460, -75.977048, -27.663779}; !slices.Equal(first.Bands, want) {
 		t.Errorf("the bands of the first block are %v, want %v", first.Bands, want)
 	}
 	if b := blocks[3]; !math.IsInf(b.Channels[0].Loudness, -1) || b.Bands[0] > -100 {
@@ -149,8 +149,8 @@ func TestAnalyseReturnsEveryBlockWithItsWholeSoundAndFourBands(t *testing.T) {
 	}
 }
 
-func TestTheAnalysingFilterMeasuresTheWholeSoundAndFourBandsAtAFixedRate(t *testing.T) {
-	for _, want := range []string{"aresample=48000", "channel_layouts=mono", "asetnsamples=n=1024", "amerge=inputs=5"} {
+func TestTheAnalysingFilterMeasuresTheWholeSoundAndFiveBandsAtAFixedRate(t *testing.T) {
+	for _, want := range []string{"aresample=48000", "channel_layouts=mono", "asetnsamples=n=1024", "bandpass=f=125:width_type=h:w=50,bandpass=f=125:width_type=h:w=50", "amerge=inputs=6"} {
 		if !strings.Contains(analyseFilter, want) {
 			t.Errorf("the analysing filter lacks %s:\n%s", want, analyseFilter)
 		}
@@ -178,8 +178,8 @@ func TestAntiphaseStereoIsMeasuredAtItsLevelAndNotAsSilence(t *testing.T) {
 		t.Fatalf("got %d blocks, want 3", len(blocks))
 	}
 	got := banded(blocks[0], audioParams{Rate: 44100, Channels: 2})
-	if len(got.Channels) != 2 || len(got.Bands) != 4 {
-		t.Fatalf("the block has %d channels and %d bands, want 2 and 4", len(got.Channels), len(got.Bands))
+	if len(got.Channels) != 2 || len(got.Bands) != 5 {
+		t.Fatalf("the block has %d channels and %d bands, want 2 and 5", len(got.Channels), len(got.Bands))
 	}
 	for i, c := range got.Channels {
 		if math.IsInf(c.Loudness, -1) || c.Loudness < -10 {

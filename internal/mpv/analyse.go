@@ -24,22 +24,23 @@ import (
 const (
 	analyseRate  = 48000
 	analyseWhole = 2
-	analyseBands = 4
+	analyseBands = 5
 )
 
 // analyseFilter resamples the audio to analyseRate, cuts it into blocks of
 // blockSamples, and measures each block on its own: the whole sound in two
-// channels, then four bands of a mix to one channel, which are below 150 Hz,
-// 100 to 400 Hz, 1 to 4 kHz and above 6 kHz. It prints every block's totals
-// to standard output.
+// channels, then five bands of a mix to one channel, which are below 150 Hz,
+// 100 to 400 Hz, 1 to 4 kHz, above 6 kHz, and 100 to 150 Hz through two
+// filters in a row. It prints every block's totals to standard output.
 var analyseFilter = fmt.Sprintf("lavfi=[asplit=2[g][b];"+
 	"[g]aresample=%[1]d,aformat=sample_fmts=flt:channel_layouts=stereo,asetnsamples=n=%[2]d:p=0[f];"+
-	"[b]aresample=%[1]d,aformat=sample_fmts=flt:channel_layouts=mono,asetnsamples=n=%[2]d:p=0,asplit=4[w][x][y][z];"+
+	"[b]aresample=%[1]d,aformat=sample_fmts=flt:channel_layouts=mono,asetnsamples=n=%[2]d:p=0,asplit=5[w][x][y][z][v];"+
 	"[w]lowpass=f=150,aformat=channel_layouts=mono[k];"+
 	"[x]bandpass=f=250:width_type=h:w=300,aformat=channel_layouts=mono[l];"+
 	"[y]bandpass=f=2500:width_type=h:w=3000,aformat=channel_layouts=mono[m];"+
 	"[z]highpass=f=6000,aformat=channel_layouts=mono[h];"+
-	"[f][k][l][m][h]amerge=inputs=5,"+
+	"[v]bandpass=f=125:width_type=h:w=50,bandpass=f=125:width_type=h:w=50,aformat=channel_layouts=mono[p];"+
+	"[f][k][l][m][h][p]amerge=inputs=6,"+
 	"astats=metadata=1:reset=1:measure_perchannel=RMS_level+RMS_difference+Zero_crossings:measure_overall=Number_of_samples,"+
 	"ametadata=mode=print:file=-]", analyseRate, blockSamples)
 
@@ -56,8 +57,9 @@ type Block struct {
 	// Channels holds the totals for each channel.
 	Channels []Channel
 	// Bands holds the RMS level in dB relative to full scale of each band the
-	// block was measured in, lowest first. It is empty for a block measured
-	// without bands.
+	// block was measured in: below 150 Hz, 100 to 400 Hz, 1 to 4 kHz, above
+	// 6 kHz, and 100 to 150 Hz. It is empty for a block measured without
+	// bands.
 	Bands []float64
 	// Rate is the sample rate, and Scale is the value of a full-scale sample
 	// in the units of Channel.Difference.

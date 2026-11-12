@@ -44,7 +44,8 @@ const synthRate, synthBlock = 48000, 1024
 
 // banded returns the blocks of a track of the given length: each block's
 // power in each band is the mean, over the block, of the bed and every
-// strike so far dying away.
+// strike so far dying away. The band where a kick starts holds 0.4 of the
+// lowest band's power and 0.3 of the low band's.
 func banded(seconds float64, strikes []strike, under bed) []Block {
 	slices.SortFunc(strikes, func(a, b strike) int {
 		if a.at < b.at {
@@ -80,6 +81,7 @@ func banded(seconds float64, strikes []strike, under bed) []Block {
 					b[k] += h.gain * h.v.power[k] * rise * math.Exp(-(t-h.at)/h.v.decay)
 				}
 			}
+			b[bandPunch] = 0.4*b[bandKick] + 0.3*b[bandLow]
 			for k := range bandCount {
 				power[k] += b[k] / sub
 			}
@@ -202,7 +204,7 @@ func TestTheDownbeatsOfAFourOnTheFloorTrackFallOnItsBars(t *testing.T) {
 	}
 }
 
-func TestTheHitsOfAFourOnTheFloorTrackAreKicksClapsAndHatsWithAKickUnderAClapCountedOnce(t *testing.T) {
+func TestEveryBeatOfAFourOnTheFloorTrackHasAKickAndAKickUnderAClapIsStillAKick(t *testing.T) {
 	g, bass := danceGroove(124, 60, 0.137)
 	p := NewPlan(banded(60, g.strikes, bass))
 	found := map[HitKind][]float64{}
@@ -214,37 +216,26 @@ func TestTheHitsOfAFourOnTheFloorTrackAreKicksClapsAndHatsWithAKickUnderAClapCou
 			t.Errorf("a %s at %.3fs has strength %v", h.Kind, h.At, h.Strength)
 		}
 	}
-	var alone []float64
-	for _, k := range g.kicks {
-		if nearest(g.snares, k) > 0.01 {
-			alone = append(alone, k)
-		}
-	}
-	drums := slices.Concat(found[HitKick], found[HitSnare])
-	slices.Sort(drums)
 	for _, c := range []struct {
-		name         string
-		truth, found []float64
-	}{{"lone kick", alone, found[HitKick]}, {"kick under a clap", g.snares, drums}, {"hat", g.hats, found[HitHat]}} {
-		heard := 0
+		kind   HitKind
+		truth  []float64
+		atMost float64
+	}{{HitKick, g.kicks, 0.03}, {HitSnare, g.snares, 0.1}, {HitHat, g.hats, 0.1}} {
+		missed := 0
 		for _, at := range c.truth {
-			if nearest(c.found, at) <= 0.03 {
-				heard++
+			if at > 2 && at < 57 && nearest(found[c.kind], at) > 0.03 {
+				missed++
 			}
 		}
-		if float64(heard) < 0.9*float64(len(c.truth)) {
-			t.Errorf("%d of %d %ss were found", heard, len(c.truth), c.name)
+		if float64(missed) > c.atMost*float64(len(c.truth)) {
+			t.Errorf("%d of %d %ss have no %s hit", missed, len(c.truth), c.kind, c.kind)
 		}
 	}
-	for _, at := range g.snares {
-		n := 0
-		for _, h := range all {
-			if math.Abs(h-at) <= 0.03 {
-				n++
+	for kind, times := range found {
+		for i := 1; i < len(times); i++ {
+			if times[i]-times[i-1] < 0.03 {
+				t.Errorf("two %ss at %.3f and %.3f are one sound counted twice", kind, times[i-1], times[i])
 			}
-		}
-		if n > 1 {
-			t.Errorf("the kick and clap at %.3f are %d hits", at, n)
 		}
 	}
 	truth := slices.Concat(g.kicks, g.hats)
@@ -348,8 +339,8 @@ func TestABeatlessTrackHasAtMostHalfAStrongHitASecondInAnyFiveSeconds(t *testing
 		}
 	}
 	for i := 1; i < len(p.Hits); i++ {
-		if p.Hits[i].At-p.Hits[i-1].At < 0.03 {
-			t.Errorf("hits at %.3f and %.3f are one sound counted twice", p.Hits[i-1].At, p.Hits[i].At)
+		if p.Hits[i].At-p.Hits[i-1].At < 0.03 && p.Hits[i].Kind == p.Hits[i-1].Kind {
+			t.Errorf("%ss at %.3f and %.3f are one sound counted twice", p.Hits[i].Kind, p.Hits[i-1].At, p.Hits[i].At)
 		}
 	}
 }
@@ -694,6 +685,11 @@ func TestTheBarsHoldAcrossABreakdownWithoutDrums(t *testing.T) {
 	}
 	if after == 0 || float64(on) < 0.9*float64(after) {
 		t.Errorf("%d of %d downbeats after the breakdown fall on a bar", on, after)
+	}
+	for _, h := range p.Hits {
+		if h.Kind == HitKick && h.At > 44 && h.At < 55 {
+			t.Errorf("a kick at %.2f s inside the breakdown, where only the bass plays", h.At)
+		}
 	}
 }
 

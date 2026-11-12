@@ -7,12 +7,14 @@ import (
 )
 
 // The bands a block is measured in, in the order of Block.Bands: below
-// 150 Hz, 100 to 400 Hz, 1 to 4 kHz and above 6 kHz.
+// 150 Hz, 100 to 400 Hz, 1 to 4 kHz, above 6 kHz, and 100 to 150 Hz, where a
+// kick starts.
 const (
 	bandKick = iota
 	bandLow
 	bandMid
 	bandHigh
+	bandPunch
 	bandCount
 )
 
@@ -108,6 +110,16 @@ const (
 	decayAbove  = 0.3
 	decayBlocks = 8
 	dropLeast   = 3.0
+	dropFull    = 6.0
+	// A beat of confidence kickConfidence carries a kick when the beats
+	// within kickBeats of it rise by a median of kickRise dB in the band
+	// where a kick starts, and no kick is within kickNear seconds of it; the kick
+	// is at least kickFloor strong.
+	kickConfidence = 0.5
+	kickBeats      = 8
+	kickRise       = 2.0
+	kickNear       = 0.045
+	kickFloor      = 0.3
 	// A drum is heard where the music has a rhythm of at least drumSupport,
 	// or as a rise of broadAbove dB across the spectrum; without rhythm it
 	// must be lonelyGap seconds from any stronger drum.
@@ -116,7 +128,7 @@ const (
 	lonelyGap   = 2.5
 	// slipCost is the weight of downbeats a bar must lose before the
 	// downbeat moves to another beat.
-	slipCost = 8.0
+	slipCost = 30.0
 	// A beat whose support is under supportedAbove has no evidence of its
 	// own; a beat laid between two supported runs has confidence bridged; and
 	// a stretch with any band within soundBelow dB of its loud level has
@@ -143,14 +155,19 @@ const (
 	// tempoBeats is how many beats either side a beat's tempo is measured
 	// over.
 	tempoBeats = 4
+	// weightLeast is the least share of its weight a band without rhythm
+	// keeps.
+	weightLeast = 0.1
 	// snapWithin is how close a hit must be to a quarter of a beat to be
 	// moved onto it.
 	snapWithin = 0.03
 )
 
 // bandWeights is how much each band counts towards the onsets the beat is
-// found from.
-var bandWeights = [bandCount]float64{1, 0.7, 0.7, 0.4}
+// found from when every band is as rhythmic as the most rhythmic. A band
+// counts for less by the share its rhythm is of the most rhythmic band's,
+// and no less than weightLeast of its weight.
+var bandWeights = [bandCount]float64{1, 0.7, 0.7, 0.4, 0.7}
 
 // onsets holds the onset strength of each band at each block.
 type onsets struct {
@@ -160,7 +177,9 @@ type onsets struct {
 	level [bandCount][]float64
 	loud  [bandCount]float64
 	rise  [bandCount][]float64
-	sum   []float64
+	// weight is how much each band counts towards sum.
+	weight [bandCount]float64
+	sum    []float64
 }
 
 // bandOnsets returns the onsets of the blocks measured in bands, or nil when
@@ -219,11 +238,37 @@ func bandOnsets(blocks []Block) *onsets {
 		wide, global := movingMean(sq, o.blocks(spreadSpan)), mean(sq)
 		for i := range flux {
 			flux[i] /= math.Sqrt(math.Max(wide[i], global)) + 1e-9
-			o.sum[i] += bandWeights[k] * flux[i]
 		}
 		o.band[k] = flux
 	}
+	var rhythm [bandCount]float64
+	most := 0.0
+	for k := range bandCount {
+		rhythm[k] = o.rhythmOf(k)
+		most = math.Max(most, rhythm[k])
+	}
+	for k := range bandCount {
+		o.weight[k] = bandWeights[k] * math.Max(rhythm[k]/math.Max(most, 1e-9), weightLeast)
+		for i, v := range o.band[k] {
+			o.sum[i] += o.weight[k] * v
+		}
+	}
 	return o
+}
+
+// rhythmOf is how strongly the onsets of band k repeat: the median, over
+// windows of tempoSpan, of how far the highest autocorrelation at a lag of
+// one beat from fastestBPM to slowestBPM stands above the mean over those
+// lags.
+func (o *onsets) rhythmOf(k int) float64 {
+	span := o.blocks(tempoSpan)
+	lo, hi := int(60/fastestBPM/o.hop), int(60/slowestBPM/o.hop)+1
+	var peaks []float64
+	for start := 0; start+span <= len(o.band[k]); start += 2 * span {
+		a := autocorrelation(o.band[k][start:start+span], hi)
+		peaks = append(peaks, slices.Max(a[lo:])-mean(a[lo:]))
+	}
+	return math.Max(quantile(peaks, 0.5), 0)
 }
 
 // onsetAt returns when an onset found in block i of band k sounds. The rise
@@ -248,7 +293,7 @@ func (o *onsets) strongest(i int) int {
 	best, kind := -1.0, bandKick
 	for k := range bandCount {
 		for j := max(i-1, 0); j <= min(i+1, len(o.at)-1); j++ {
-			if v := bandWeights[k] * o.band[k][j]; v > best {
+			if v := o.weight[k] * o.band[k][j]; v > best {
 				best, kind = v, k
 			}
 		}
@@ -668,8 +713,9 @@ func (o *onsets) trim(beats []int) []int {
 
 // downbeats marks the place in its bar of each beat kept, and the
 // downbeats among them. A beat's weight as a
-// downbeat is the change in each band's mean level from the two beats before
-// it to the two beats after it, in dB, and half its low onsets. The meter is
+// downbeat is the rise in the mean level of each band but the one where a
+// kick starts, from the two beats before it to the two beats after it, and
+// from the four before to the four after, in dB, and half its low onsets. The meter is
 // three when the best place for downbeats in bars of three stands out from
 // the rest a quarter more than it does in bars of four, and four otherwise.
 // The places follow the path through the beats with the most weight on
@@ -701,9 +747,11 @@ func (p *Plan) downbeats(o *onsets) {
 	}
 	f := make([]float64, n)
 	for b, i := range idx {
-		if b >= 2 && b+2 < n {
-			for k := range bandCount {
-				f[b] += math.Abs(meanOf(k, i, idx[b+2]) - meanOf(k, idx[b-2], i))
+		for _, far := range []int{2, 4} {
+			if b >= far && b+far < n {
+				for k := range bandPunch {
+					f[b] += math.Max(meanOf(k, i, idx[b+far])-meanOf(k, idx[b-far], i), 0)
+				}
 			}
 		}
 		low := 0.0
@@ -804,9 +852,7 @@ type candidate struct {
 // when it adds at least as much power to the middle band as to the high
 // band and the high band rises by half a hit, and a hat when it adds more
 // power to the high band and the high band rises; a rise in the middle band
-// alone is a note. A kick and a snare within a block of each other are one
-// candidate, of the stronger kind, as sharp, as short and as wide as the
-// sharper, shorter and wider of the two.
+// alone is a note. A kick and a snare at the same moment are two candidates.
 //
 // Its sharpness is the share of its climb, from the lowest of the eight
 // blocks before its peak, made over the last sharpBlocks blocks, and its decay the
@@ -890,19 +936,6 @@ func (o *onsets) candidates() []candidate {
 				c.across[b] = math.Max(c.across[b], rise[b][j])
 			}
 		}
-		if last := len(out) - 1; last >= 0 && i-out[last].block <= 1 && kind != HitHat && out[last].hit.Kind != HitHat &&
-			(out[last].hit.Kind == HitKick) != (kind == HitKick) {
-			prev := out[last]
-			if c.hit.Strength > prev.hit.Strength {
-				out[last] = c
-			}
-			out[last].sharp, out[last].decay = max(c.sharp, prev.sharp), max(c.decay, prev.decay)
-			out[last].drop = max(c.drop, prev.drop)
-			for b := range bandCount {
-				out[last].across[b] = max(c.across[b], prev.across[b])
-			}
-			return
-		}
 		out = append(out, c)
 	}
 	for i := 1; i < n; i++ {
@@ -924,7 +957,8 @@ func (o *onsets) candidates() []candidate {
 
 // hits sorts the candidates into hits and notes. A drum is percussive,
 // making at least sharpAbove of its climb over sharpBlocks blocks and giving back
-// at least decayAbove of it, and at least dropLeast dB, within decayBlocks, and it is heard either where
+// at least dropLeast dB, and either decayAbove of the climb or dropFull dB,
+// within decayBlocks, and it is heard either where
 // the music has a rhythm of at least drumSupport or as a sharp sound across
 // the spectrum: a kick that rises broadAbove dB in the middle or high band
 // at the same time, a snare that rises that much in both, or a hat that
@@ -947,7 +981,7 @@ func (p *Plan) hits(o *onsets, rhythm []float64) {
 		default:
 			across = c.across[bandHigh]
 		}
-		percussive := c.hit.Kind != hitNote && c.sharp >= sharpAbove && c.decay >= decayAbove && c.drop >= dropLeast
+		percussive := c.hit.Kind != hitNote && c.sharp >= sharpAbove && c.drop >= dropLeast && (c.decay >= decayAbove || c.drop >= dropFull)
 		supported := rhythm[c.block] >= drumSupport
 		at := c.hit.At
 		alone := !slices.ContainsFunc(lonely, func(t float64) bool { return math.Abs(t-at) < lonelyGap })
@@ -961,6 +995,7 @@ func (p *Plan) hits(o *onsets, rhythm []float64) {
 			p.Notes = append(p.Notes, Note{At: at, Strength: c.hit.Strength / 2})
 		}
 	}
+	p.gridKicks(o)
 	for h := range p.Hits {
 		p.Hits[h].At = p.snap(p.Hits[h].At)
 	}
@@ -969,6 +1004,64 @@ func (p *Plan) hits(o *onsets, rhythm []float64) {
 	}
 	slices.SortStableFunc(p.Hits, func(a, b Hit) int { return cmp.Compare(a.At, b.At) })
 	slices.SortStableFunc(p.Notes, func(a, b Note) int { return cmp.Compare(a.At, b.At) })
+}
+
+// gridKicks adds a kick on each beat of confidence kickConfidence or more
+// that has none within kickNear seconds, where the beats around it carry
+// kicks. A beat's punch is how far the mean level of the band where a kick
+// starts, over the two blocks from the beat, stands above its mean over the
+// two before. The beat carries a kick when the median punch of the
+// confident beats within kickBeats of it in its run, itself among them, is
+// at least kickRise dB, or when its own punch is and so is the median of
+// those before it or of those after it. The kick's strength is kickFloor
+// more than a tenth of the larger of that median and its own punch.
+func (p *Plan) gridKicks(o *onsets) {
+	n := len(p.Beats)
+	l := o.level[bandPunch]
+	punch := make([]float64, n)
+	for b, t := range p.Beats {
+		if i, _ := slices.BinarySearch(o.at, t); i >= 2 && i+2 <= len(l) {
+			punch[b] = mean(l[i:i+2]) - mean(l[i-2:i])
+		}
+	}
+	var kicks []float64
+	for _, h := range p.Hits {
+		if h.Kind == HitKick {
+			kicks = append(kicks, h.At)
+		}
+	}
+	slices.Sort(kicks)
+	for b, t := range p.Beats {
+		if p.conf[b] < kickConfidence {
+			continue
+		}
+		lo, hi := b, b
+		for lo > 0 && b-lo < kickBeats && p.joined(lo-1) {
+			lo--
+		}
+		for hi < n-1 && hi-b < kickBeats && p.joined(hi) {
+			hi++
+		}
+		side := func(from, to int) []float64 {
+			var out []float64
+			for c := from; c <= to; c++ {
+				if p.conf[c] >= kickConfidence {
+					out = append(out, punch[c])
+				}
+			}
+			return out
+		}
+		before, after := side(lo, b-1), side(b+1, hi)
+		around := quantile(slices.Concat(before, after, []float64{punch[b]}), 0.5)
+		edge := punch[b] >= kickRise && (quantile(before, 0.5) >= kickRise || quantile(after, 0.5) >= kickRise)
+		if around < kickRise && !edge {
+			continue
+		}
+		if j, _ := slices.BinarySearch(kicks, t-kickNear); j < len(kicks) && kicks[j] <= t+kickNear {
+			continue
+		}
+		p.Hits = append(p.Hits, Hit{At: t, Kind: HitKick, Strength: clamp01(kickFloor + math.Max(around, punch[b])/10)})
+	}
 }
 
 // snap returns t moved onto the nearest quarter of a beat when it is within

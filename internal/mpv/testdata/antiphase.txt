@@ -17,6 +17,9 @@ lavfi.astats.5.Zero_crossings=0.000000
 lavfi.astats.6.RMS_difference=0.000000
 lavfi.astats.6.RMS_level=-inf
 lavfi.astats.6.Zero_crossings=0.000000
+lavfi.astats.7.RMS_difference=0.000000
+lavfi.astats.7.RMS_level=-inf
+lavfi.astats.7.Zero_crossings=0.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:1    pts:1024    pts_time:0.0213333
 lavfi.astats.1.RMS_difference=0.002049
@@ -37,6 +40,9 @@ lavfi.astats.5.Zero_crossings=0.000000
 lavfi.astats.6.RMS_difference=0.000000
 lavfi.astats.6.RMS_level=-inf
 lavfi.astats.6.Zero_crossings=0.000000
+lavfi.astats.7.RMS_difference=0.000000
+lavfi.astats.7.RMS_level=-inf
+lavfi.astats.7.Zero_crossings=0.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:2    pts:2048    pts_time:0.0426667
 lavfi.astats.1.RMS_difference=0.001501
@@ -57,4 +63,7 @@ lavfi.astats.5.Zero_crossings=0.000000
 lavfi.astats.6.RMS_difference=0.000000
 lavfi.astats.6.RMS_level=-inf
 lavfi.astats.6.Zero_crossings=0.000000
+lavfi.astats.7.RMS_difference=0.000000
+lavfi.astats.7.RMS_level=-inf
+lavfi.astats.7.Zero_crossings=0.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
