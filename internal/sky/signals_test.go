@@ -2,6 +2,7 @@ package sky
 
 import (
 	"math"
+	"math/rand/v2"
 	"testing"
 	"time"
 )
@@ -113,5 +114,52 @@ func TestAChangeOfCharacterIsASection(t *testing.T) {
 	}
 	if !found {
 		t.Error("a quiet passage turning loud was not heard as a new section")
+	}
+}
+
+// clickPhase plays a click track at bpm into a tempo for secs seconds, with
+// frames of 1/30 s varied by up to jitter seconds, and returns the largest
+// distance in beats between the tempo's phase and the clicks over the last
+// half of the run, and the tempo found at the end.
+func clickPhase(bpm, jitter, secs float64) (float64, float64) {
+	var tp tempo
+	rng := rand.New(rand.NewPCG(1, 2))
+	period := 60 / bpm
+	now, worst, found := 0.0, 0.0, 0.0
+	for now < secs {
+		dt := 1.0/30 + (rng.Float64()*2-1)*jitter
+		before := now
+		now += dt
+		onset := 0.0
+		if math.Floor(now/period) != math.Floor(before/period) {
+			onset = 1
+		}
+		var phase float64
+		found, phase, _ = tp.step(onset, dt)
+		if now > secs/2 {
+			off := phase - math.Mod(now/period, 1)
+			worst = math.Max(worst, math.Abs(off-math.Round(off)))
+		}
+	}
+	return worst, found
+}
+
+func TestFramesOfUnevenLengthDoNotPullTheTempoAway(t *testing.T) {
+	for _, bpm := range []float64{97, 120, 140} {
+		worst, found := clickPhase(bpm, 0.01, 120)
+		if math.Abs(found-bpm) > 3 {
+			t.Errorf("a click at %v BPM with uneven frames was heard as %.1f BPM", bpm, found)
+		}
+		if worst > 0.15 {
+			t.Errorf("a click at %v BPM with uneven frames drifted %.2f of a beat from the phase", bpm, worst)
+		}
+	}
+}
+
+func TestAPhaseFoundHalfABeatOutMovesOntoTheClicks(t *testing.T) {
+	// At 128 BPM the phase starts about half a beat from the clicks when the
+	// tempo is first found.
+	if worst, _ := clickPhase(128, 0, 60); worst > 0.15 {
+		t.Errorf("the phase stayed %.2f of a beat from a steady click", worst)
 	}
 }
