@@ -16,11 +16,24 @@ import (
 	"time"
 )
 
-// analyseFilter cuts the audio into blocks of blockSamples, measures each
-// block on its own, and prints every block's totals to standard output.
-var analyseFilter = fmt.Sprintf("lavfi=[asetnsamples=n=%d:p=0,"+
+// analyseRate is the sample rate the analysing filter measures at, and
+// analyseBands is how many bands it measures besides the whole sound.
+const (
+	analyseRate  = 48000
+	analyseBands = 4
+)
+
+// analyseFilter mixes the audio to one channel at analyseRate, cuts it into
+// blocks of blockSamples, and measures each block on its own: the whole sound,
+// then four bands, which are below 150 Hz, 100 to 400 Hz, 1 to 4 kHz and above
+// 6 kHz. It prints every block's totals to standard output.
+var analyseFilter = fmt.Sprintf("lavfi=[aresample=%d,aformat=sample_fmts=flt:channel_layouts=mono,"+
+	"asetnsamples=n=%d:p=0,asplit=5[f][a][b][c][d];"+
+	"[a]lowpass=f=150[k];[b]bandpass=f=250:width_type=h:w=300[l];"+
+	"[c]bandpass=f=2500:width_type=h:w=3000[m];[d]highpass=f=6000[h];"+
+	"[f][k][l][m][h]amerge=inputs=5,"+
 	"astats=metadata=1:reset=1:measure_perchannel=RMS_level+RMS_difference+Zero_crossings:measure_overall=Number_of_samples,"+
-	"ametadata=mode=print:file=-]", blockSamples)
+	"ametadata=mode=print:file=-]", analyseRate, blockSamples)
 
 // analyseSuffix is added to the player's socket path to name the socket of
 // the analysing mpv.
@@ -34,6 +47,10 @@ type Block struct {
 	Samples float64
 	// Channels holds the totals for each channel.
 	Channels []Channel
+	// Bands holds the RMS level in dB relative to full scale of each band the
+	// block was measured in, lowest first. It is empty for a block measured
+	// without bands.
+	Bands []float64
 	// Rate is the sample rate, and Scale is the value of a full-scale sample
 	// in the units of Channel.Difference.
 	Rate  int
@@ -99,7 +116,7 @@ func Analyse(ctx context.Context, opt Options, url string) ([]Block, error) {
 	}
 	p := newPlayer(cmd, conn, socket)
 	go p.read()
-	params, err := p.follow(ctx, url)
+	_, err = p.follow(ctx, url)
 	_ = p.Close() // Close kills an mpv that will not quit, and reports nothing
 	<-exited
 	_ = os.Remove(socket) // a socket left behind is cleared on the next start
@@ -107,11 +124,27 @@ func Analyse(ctx context.Context, opt Options, url string) ([]Block, error) {
 		return nil, err
 	}
 	blocks := <-parsed
-	scale := fullScale(params.Format)
 	for i := range blocks {
-		blocks[i].Rate, blocks[i].Scale = params.Rate, scale
+		blocks[i] = banded(blocks[i])
 	}
 	return blocks, nil
+}
+
+// banded returns a block measured by analyseFilter with its rate and scale
+// set. A block with a channel for the whole sound and one for each band keeps
+// the first as its channel and the rest as its bands; any other block keeps
+// all its channels and has no bands.
+func banded(b Block) Block {
+	b.Rate, b.Scale = analyseRate, 1
+	if len(b.Channels) != 1+analyseBands {
+		return b
+	}
+	b.Bands = make([]float64, analyseBands)
+	for i, c := range b.Channels[1:] {
+		b.Bands[i] = c.Loudness
+	}
+	b.Channels = b.Channels[:1]
+	return b
 }
 
 // audioParams is the part of mpv's audio-params property the analysis uses.

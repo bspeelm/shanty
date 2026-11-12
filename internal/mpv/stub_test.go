@@ -32,9 +32,14 @@ const (
 	// endEnv is the reason an analysing stub gives for the end of a track,
 	// and "never" makes it never end one.
 	endEnv = "SHANTY_TEST_STUB_END"
-	// measured is what an analysing stub prints when a track is loaded: the
-	// recorded output of the real filter.
+	// measured is the recorded output of a filter measuring two channels
+	// without bands.
 	measured = "testdata/ametadata.txt"
+	// measuredBands is what an analysing stub prints when a track is loaded:
+	// the recorded output of the analysing filter, for a synthetic track of
+	// a low thump every half second, a burst of noise between thumps, and
+	// silence from 0.05 to 0.09 seconds.
+	measuredBands = "testdata/bands.txt"
 )
 
 func TestMain(m *testing.M) {
@@ -145,7 +150,7 @@ func measure(conn net.Conn) {
 	}
 	fmt.Fprintln(conn, `{"event":"property-change","id":1,"name":"audio-params","data":{"format":"s16","samplerate":44100,"channel-count":2}}`)
 	if reason == "eof" {
-		b, err := os.ReadFile(measured)
+		b, err := os.ReadFile(measuredBands)
 		if err != nil {
 			os.Exit(6)
 		}
