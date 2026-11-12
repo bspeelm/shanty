@@ -395,13 +395,18 @@ func (m Model) turnSky() tea.Cmd {
 }
 
 // openSky puts the visualiser on screen with nothing heard yet and asks for
-// its first frame.
+// its first frame. When a cover is on screen it also asks for a repaint,
+// which takes the cover's picture away.
 func (m Model) openSky() (tea.Model, tea.Cmd) {
+	covered := len(m.bigArt) > 0 || len(m.artBlock(m.viewWidth())) > 0
 	m.skyOpens++
 	m.showSky, m.sky = true, sky.New(m.skySeed+m.skyOpens)
 	m.skyLast = time.Time{}
 	w, h := m.skySize()
 	m.sky.Step(w, h, skyStep.Seconds(), time.Time{}, skyTrack(m.nowPlaying, m.nowArtist))
+	if covered {
+		return m, tea.Batch(tea.ClearScreen, m.turnSky())
+	}
 	return m, m.turnSky()
 }
 

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/sky"
+	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
 func TestAPlanReachesTheVisualiserWithoutChangingTheScreen(t *testing.T) {
@@ -153,5 +156,36 @@ func TestAHeldPatternSaysItIsPausedRatherThanLookingStuck(t *testing.T) {
 
 	if frame := m.View(); !strings.Contains(frame, "paused") {
 		t.Errorf("a held pattern does not say it is paused:\n%s", frame)
+	}
+}
+
+func TestTheVisualiserOpenedOverAnAlbumWithACoverFillsTheScreen(t *testing.T) {
+	const w, h = 80, 40
+	m := New()
+	next, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	m = next.(Model)
+	next, _ = m.Update(AlbumLoaded(subsonic.Album{
+		ID: "al-1", Name: "Harbour", Artist: "Aoi",
+		Songs: []subsonic.Song{{ID: "tr-1", Title: "Slipway"}, {ID: "tr-2", Title: "Ballast"}},
+	}))
+	m = next.(Model)
+	art := make([]string, 6)
+	for i := range art {
+		art[i] = strings.Repeat(" ", 12)
+	}
+	next, _ = m.Update(CoverArt{AlbumID: "al-1", Lines: art})
+	m = next.(Model)
+
+	next, cmd := m.Update(ShowVisualiser{})
+	m = next.(Model)
+	if _, rows := m.skySize(); rows != h-chromeLines {
+		t.Errorf("the visualiser has %d rows of %d, want %d", rows, h, h-chromeLines)
+	}
+	if got := strings.Count(m.View(), "\n") + 1; got != h {
+		t.Errorf("the frame is %d rows in a terminal %d tall", got, h)
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || !slices.ContainsFunc(batch, func(c tea.Cmd) bool { return reflect.DeepEqual(c(), tea.ClearScreen()) }) {
+		t.Error("opening the visualiser over a cover did not ask for a repaint to take the cover away")
 	}
 }
