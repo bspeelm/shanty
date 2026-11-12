@@ -31,9 +31,13 @@ type State struct {
 	value   []float64
 	tone    []float64
 	post    post
-	sig     Signals
-	label   float64
-	frames  int
+	guard   flashGuard
+	// shift moves every cell along the palette, gliding towards the treble
+	// less the bass.
+	shift  float64
+	sig    Signals
+	label  float64
+	frames int
 
 	// foresight holds the plans of tracks measured ahead of playback.
 	foresight foresightState
@@ -50,6 +54,9 @@ const (
 	// driftChange is how far the music's character may move from the one
 	// the scene on screen was made for before it is replaced.
 	driftChange = 0.5
+	// shiftGlide is how quickly the palette's shift follows the music, in
+	// seconds.
+	shiftGlide = 0.4
 )
 
 // New returns a visualiser whose scenes are drawn from seed.
@@ -140,11 +147,14 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	}
 
 	s.f.dt, s.f.sig, s.f.history, s.f.rng = dt, sig, s.lis.history, s.sims
+	heard := s.lis.sig
+	s.shift = glide(s.shift, 0.15*(heard.Treble-heard.Bass), dt, shiftGlide)
 	s.cur.step(&s.f)
 	if s.next == nil {
 		copy(s.value, s.cur.value)
 		copy(s.tone, s.cur.tone)
 		s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
+		s.guard.apply(s.value, s.tone, dt, s.cur.halves())
 		return
 	}
 	s.next.step(&s.f)
@@ -155,6 +165,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 		s.tone[i] = s.cur.tone[i]*(1-t) + s.next.tone[i]*t
 	}
 	s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
+	s.guard.apply(s.value, s.tone, dt, s.cur.halves() || s.next.halves())
 	if s.fade >= 1 {
 		s.cur, s.next = s.next, nil
 		s.age, s.waiting, s.label = 0, 0, 0
@@ -177,6 +188,7 @@ func (s *State) resize(w, h int) {
 	f.radius = math.Min(float64(f.fw)/2, float64(f.fh)*f.aspect/2)
 	s.value, s.tone = make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)
 	s.post.resize(f)
+	s.guard.resize(f.fw, f.fh)
 }
 
 // change moves on from the current scene. Most often the scene grows into
@@ -242,9 +254,8 @@ func (s *State) Render(colour bool) Picture {
 	if s.cur == nil || s.w == 0 {
 		return Picture{}
 	}
-	sig := s.lis.sig
 	k := look{glyphs: s.cur.glyphs, next: s.cur.toGlyphs, fade: smooth(0, 1, s.cur.glyphsAt),
-		colour: colour, shift: 0.15 * (sig.Treble - sig.Bass)}
+		colour: colour, shift: s.shift}
 	palette := s.cur.palette
 	if s.next != nil {
 		t := smooth(0, 1, s.fade)
