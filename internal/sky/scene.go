@@ -1,6 +1,7 @@
 package sky
 
 import (
+	"cmp"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -93,7 +94,8 @@ func (s *scene) combo() string {
 }
 
 // newScene makes a scene in the given style. A busy or loud moment adds a
-// layer.
+// layer. A scene with a landscape keeps only the layers named in overLand,
+// at least one of them, and no warps.
 func newScene(rng *rand.Rand, st *style, c Character, mood Signals) *scene {
 	energy := clamp01(0.6*mood.Level + 0.6*mood.Busy)
 	g := glyphs(pick(rng, st.glyphs[:]))
@@ -108,6 +110,12 @@ func newScene(rng *rand.Rand, st *style, c Character, mood Signals) *scene {
 	}
 	land := s.landed()
 	if land {
+		s.layers = slices.DeleteFunc(s.layers, func(l *layer) bool {
+			return !isLandscape(l.name) && !slices.Contains(overLand, l.name)
+		})
+		for len(s.layers) < 2 {
+			s.layers = append(s.layers, newLayer(rng, pickKind(rng, st, s), st))
+		}
 		s.glyphs = landGlyphs(rng, st, s.glyphs)
 		s.toGlyphs = s.glyphs
 	}
@@ -127,6 +135,7 @@ func newScene(rng *rand.Rand, st *style, c Character, mood Signals) *scene {
 	if land {
 		s.ground()
 	}
+	s.warps = slices.DeleteFunc(s.warps, func(w *warp) bool { return w.goal == 0 })
 	for _, l := range s.layers {
 		l.presence = 1
 	}
@@ -178,10 +187,17 @@ func newWarp(rng *rand.Rand, st *style) *warp {
 // the style. A scene with a landscape in it, arriving, staying or leaving,
 // is not given another.
 func pickKind(rng *rand.Rand, st *style, s *scene) kind {
-	land := slices.ContainsFunc(s.layers, func(l *layer) bool { return isLandscape(l.name) })
+	return pickFrom(rng, st, s, true)
+}
+
+// pickFrom is pickKind, choosing a landscape only when lands is set, and
+// only a component named in overLand when the scene has a landscape.
+func pickFrom(rng *rand.Rand, st *style, s *scene, lands bool) kind {
+	land := !lands || slices.ContainsFunc(s.layers, func(l *layer) bool { return isLandscape(l.name) })
+	landed := s.landed()
 	weights := make([]float64, len(kinds))
 	for i, k := range kinds {
-		if land && isLandscape(k.name) {
+		if land && isLandscape(k.name) || landed && !slices.Contains(overLand, k.name) {
 			continue
 		}
 		if !slices.ContainsFunc(s.layers, func(l *layer) bool { return l.name == k.name }) {
@@ -200,12 +216,25 @@ func (s *scene) landed() bool {
 // landWeight is the steady weight a landscape is drawn at.
 const landWeight = 0.9
 
+// overLand names the components that may be drawn over a landscape.
+var overLand = []string{"stars", "sparks", "boids", "flow"}
+
+// suitsLand is 1 for a landscape or a layer that may be drawn over one, and
+// 0 for any other.
+func suitsLand(l *layer) int {
+	if isLandscape(l.name) || slices.Contains(overLand, l.name) {
+		return 1
+	}
+	return 0
+}
+
 // ground sets a scene up around the landscape in it. The landscape becomes
 // the first layer, added at a steady weight, so that every other layer is
-// drawn over it. The other layers are drawn at half their weight, or less
-// than a third for those that fill the frame, and any drawn by difference is
-// drawn by screen instead. The feedback neither zooms nor turns, and lets
-// less of the last frame through.
+// drawn over it. Layers not named in overLand leave, as do the warps. The
+// other layers are drawn at half their weight, or less than a third for
+// those that fill the frame, and any drawn by difference is drawn by screen
+// instead. The feedback neither zooms nor turns, and lets less of the last
+// frame through.
 func (s *scene) ground() {
 	i := slices.IndexFunc(s.layers, func(l *layer) bool { return l.goal > 0 && isLandscape(l.name) })
 	if i < 0 {
@@ -216,7 +245,13 @@ func (s *scene) ground() {
 	s.layers[0] = land
 	land.blend, land.weight, land.quiet = blendAdd, param{base: landWeight}, true
 	s.grounded = true
+	for _, w := range s.warps {
+		w.goal = 0
+	}
 	for _, l := range s.layers[1:] {
+		if !slices.Contains(overLand, l.name) {
+			l.goal = 0
+		}
 		if !l.quiet {
 			l.loud = l.weight.base
 			l.weight.base *= 0.5
@@ -266,7 +301,9 @@ func (s *scene) mutate(rng *rand.Rand, st *style) {
 
 // evolve starts the scene growing into a new one in the given style. One or
 // two layers leave and one or two arrive, keeping between one and three of
-// those it had, so that what stays carries on as it was. A warp may leave and
+// those it had, so that what stays carries on as it was. Layers that may be
+// drawn with a landscape are the last to leave, and a landscape arrives only
+// when one of them stays. A warp may leave and
 // one may arrive. The palette moves to a turned copy of itself or to a new
 // one, and the way of drawing sometimes changes.
 //
@@ -288,6 +325,7 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 	}
 	leave = min(leave, len(staying)-1)
 	rng.Shuffle(len(staying), func(i, j int) { staying[i], staying[j] = staying[j], staying[i] })
+	slices.SortStableFunc(staying, func(a, b *layer) int { return cmp.Compare(suitsLand(a), suitsLand(b)) })
 	for _, l := range staying[:max(leave, 0)] {
 		l.goal = 0
 	}
@@ -297,8 +335,9 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 		arrive = 2 + rng.IntN(2)
 	}
 	arrive = min(arrive, 4-kept)
+	lands := slices.ContainsFunc(staying[max(leave, 0):], func(l *layer) bool { return suitsLand(l) == 1 })
 	for range arrive {
-		l := newLayer(rng, pickKind(rng, st, s), st)
+		l := newLayer(rng, pickFrom(rng, st, s, lands), st)
 		s.layers = append(s.layers, l)
 	}
 
@@ -340,9 +379,10 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 }
 
 // unground undoes ground once a scene's landscape has gone: the layers take
-// back their weights, and the feedback moves again.
+// back their weights, a warp arrives, and the feedback moves again.
 func (s *scene) unground(rng *rand.Rand, st *style) {
 	s.grounded = false
+	s.warps = append(s.warps, newWarp(rng, st))
 	for _, l := range s.layers {
 		if l.quiet && !isLandscape(l.name) {
 			l.weight.base, l.quiet = l.loud, false

@@ -1,8 +1,10 @@
 package sky
 
 import (
+	"fmt"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"testing"
 )
 
@@ -311,4 +313,50 @@ func TestAScenePicksUpAgainOnceItsLandscapeHasGone(t *testing.T) {
 		return
 	}
 	t.Fatal("no seed made a scene with a landscape and a layer over it whose landscape then went")
+}
+
+// unbent reports what in a scene with a landscape could bend or cover it: a
+// warp still arriving or present, or a layer staying that is neither the
+// landscape nor one of those drawn over landscapes.
+func unbent(s *scene) string {
+	for _, w := range s.warps {
+		if w.goal > 0 {
+			return fmt.Sprintf("warp %d", w.kind)
+		}
+	}
+	for _, l := range s.layers {
+		if l.goal > 0 && !isLandscape(l.name) && !slices.Contains(overLand, l.name) {
+			return l.name
+		}
+	}
+	return ""
+}
+
+func TestALandscapeIsNeitherBentByWarpsNorCoveredByShapes(t *testing.T) {
+	scenes, changes := 0, 0
+	for _, c := range []Character{{Calm: 1}, {Flow: 1}, {Grit: 1}, {Drive: 1}} {
+		st := styleFor(c)
+		for seed := uint64(1); seed <= 150; seed++ {
+			rng := rand.New(rand.NewPCG(seed, 9))
+			s := newScene(rng, st, c, Signals{})
+			if s.landed() {
+				scenes++
+				if len(s.warps) > 0 || unbent(s) != "" {
+					t.Fatalf("a new scene with a %s also drew %q and %d warps", s.layers[0].name, unbent(s), len(s.warps))
+				}
+			}
+			for range 4 {
+				s.evolve(rng, st, c)
+				if s.landed() {
+					changes++
+					if got := unbent(s); got != "" {
+						t.Fatalf("a change to a scene with a landscape kept or brought %s", got)
+					}
+				}
+			}
+		}
+	}
+	if scenes == 0 || changes == 0 {
+		t.Fatalf("%d new scenes and %d changes had a landscape", scenes, changes)
+	}
 }
