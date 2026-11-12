@@ -118,3 +118,14 @@ func TestEvenGapsAreRegularAndUnevenOnesAreNot(t *testing.T) {
 		t.Errorf("unevenly spaced times were %.2f regular", r)
 	}
 }
+
+func TestLoudMusicWithoutASteadyPulseIsGrittyAndTheSameMusicQuietIsCalm(t *testing.T) {
+	wall := measures{steady: 0.3, busy: 0.1, bright: 0.45, dynamics: 0.2, sharp: 0.3, loud: 0.9}
+	if c := wall.character(); c.Grit <= c.Calm || c.Grit <= c.Drive || c.Grit <= c.Flow {
+		t.Errorf("a loud wall of sound read %+v, want Grit to lead", c)
+	}
+	wall.loud = 0.5
+	if c := wall.character(); c.Calm <= c.Grit {
+		t.Errorf("the same sound heard quietly read %+v, want Calm above Grit", c)
+	}
+}

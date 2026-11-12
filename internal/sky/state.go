@@ -96,7 +96,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	if changed {
 		s.lis.meter.restart()
 	}
-	char := s.lis.char
+	char := s.character()
 	st := styleFor(char)
 	sig, section, planned := s.foresee(sig, st, dt)
 	s.sig = sig
