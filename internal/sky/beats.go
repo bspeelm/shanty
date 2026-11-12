@@ -118,7 +118,11 @@ func bandOnsets(blocks []Block) *onsets {
 		o.at = append(o.at, b.At)
 		o.hop = math.Max(o.hop, b.Samples/float64(b.Rate))
 		for k := range bandCount {
-			o.level[k] = append(o.level[k], b.Bands[k])
+			v := b.Bands[k]
+			if math.IsNaN(v) {
+				v = math.Inf(-1)
+			}
+			o.level[k] = append(o.level[k], v)
 		}
 	}
 	n := len(o.at)
@@ -131,7 +135,7 @@ func bandOnsets(blocks []Block) *onsets {
 		o.loud[k] = math.Max(quantile(l, 0.95), silentBelow+floorBelow)
 		floor := o.loud[k] - floorBelow
 		for i, v := range l {
-			if math.IsNaN(v) || v < floor {
+			if v < floor {
 				l[i] = floor
 			}
 		}
@@ -663,9 +667,10 @@ func (p *Plan) BeatAt(t float64) (tempo, phase float64, beat, bar int, ok bool) 
 	return 60 / gap, (t - p.Beats[i]) / gap, i, p.bar[i], true
 }
 
-// HitsBetween returns the hits at or after a seconds and before b.
+// HitsBetween returns the hits at or after a seconds and before b, and none
+// when b is not after a.
 func (p *Plan) HitsBetween(a, b float64) []Hit {
-	if p == nil {
+	if p == nil || !(b > a) {
 		return nil
 	}
 	lo, _ := slices.BinarySearchFunc(p.Hits, a, func(h Hit, t float64) int { return cmp.Compare(h.At, t) })

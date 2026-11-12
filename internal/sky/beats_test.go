@@ -389,3 +389,37 @@ func TestHitKindsHaveNames(t *testing.T) {
 		}
 	}
 }
+
+func TestHitsBetweenAnEndBeforeItsStartIsEmpty(t *testing.T) {
+	g, bass := danceGroove(120, 30, 0.137)
+	p := NewPlan(banded(30, g.strikes, bass))
+	if got := p.HitsBetween(12.5, 11.5); len(got) != 0 {
+		t.Errorf("HitsBetween(12.5, 11.5) returned %d hits", len(got))
+	}
+}
+
+func TestBlocksOfNaNLeaveNoNaNInThePlan(t *testing.T) {
+	nan := math.NaN()
+	var blocks []Block
+	for i := range 3000 {
+		c := Channel{Loudness: nan, Difference: nan, Crossings: nan}
+		blocks = append(blocks, Block{At: float64(i) * synthBlock / synthRate, Samples: synthBlock, Rate: synthRate, Scale: 1,
+			Channels: []Channel{c, c}, Bands: []float64{nan, nan, nan, nan}})
+	}
+	p := NewPlan(blocks)
+	c := p.Character()
+	for name, v := range map[string]float64{"Pulse": p.Pulse, "Tempo": p.Tempo, "Sure": p.Sure, "Calm": c.Calm, "Drive": c.Drive,
+		"Grit": c.Grit, "Flow": c.Flow, "Level": p.At(10).Level, "Tension": p.Tension(10)} {
+		if math.IsNaN(v) {
+			t.Errorf("%s is NaN", name)
+		}
+	}
+	if len(p.Hits) != 0 || len(p.Beats) != 0 {
+		t.Errorf("blocks of NaN gave %d hits and %d beats", len(p.Hits), len(p.Beats))
+	}
+	for _, cue := range p.Cues {
+		if math.IsNaN(cue.At) || math.IsNaN(cue.Strength) {
+			t.Errorf("a cue is %+v", cue)
+		}
+	}
+}

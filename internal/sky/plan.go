@@ -146,10 +146,10 @@ func NewPlan(blocks []Block) *Plan {
 		}
 		var energy, diff, cross float64
 		for _, c := range b.Channels {
-			d := c.Difference / scale
+			d := finite(c.Difference) / scale
 			energy += power(c.Loudness)
 			diff += d * d
-			cross += c.Crossings
+			cross += finite(c.Crossings)
 		}
 		k := float64(len(b.Channels))
 		energy, diff, cross = energy/k, diff/k, cross/k
@@ -186,6 +186,14 @@ func NewPlan(blocks []Block) *Plan {
 	p.hushes(level)
 	slices.SortStableFunc(p.Cues, func(a, b Cue) int { return cmp.Compare(a.At, b.At) })
 	return p
+}
+
+// finite returns v, or 0 when v is not a finite number.
+func finite(v float64) float64 {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0
+	}
+	return v
 }
 
 // steps is the number of points on the curves in d seconds.
