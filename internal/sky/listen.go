@@ -40,11 +40,13 @@ type Channel struct {
 }
 
 // slice is what the audio held between two readings, placed at the point in
-// the track it describes. Every field but balance runs from 0 to 1; balance
-// runs from -1, all left, to 1, all right.
+// the track it describes. Every field but balance, low and high runs from 0
+// to 1; balance runs from -1, all left, to 1, all right. low and high are
+// bass and treble without the limit at 1.
 type slice struct {
 	at                                float64
 	level, bass, treble, air, balance float64
+	low, high                         float64
 }
 
 // earLead is the assumed distance in seconds between what the filter measures
@@ -174,11 +176,14 @@ func (e *ear) add(prev, r Reading) {
 func measure(energy, diff, cross, rate float64) slice {
 	gb, gt := band(bassHz, rate), band(trebleHz, rate)
 	treble := math.Min(energy, math.Max(0, (diff-energy*gb)/(gt-gb)))
+	low, high := heightOf(energy-treble, -50, -5), heightOf(treble, -45, -12)
 	return slice{
 		level:  levelOf(energy, -50, -5),
-		bass:   levelOf(energy-treble, -50, -5),
-		treble: levelOf(treble, -45, -12),
+		bass:   math.Min(low, 1),
+		treble: math.Min(high, 1),
 		air:    math.Min(cross/0.3, 1),
+		low:    low,
+		high:   high,
 	}
 }
 
@@ -255,11 +260,16 @@ func power(db float64) float64 {
 // levelOf maps a mean power to 0 at floor dB and below, rising evenly to 1 at
 // ceiling dB and above.
 func levelOf(energy, floor, ceiling float64) float64 {
+	return math.Min(heightOf(energy, floor, ceiling), 1)
+}
+
+// heightOf maps a mean power to 0 at floor dB and below, rising evenly
+// through 1 at ceiling dB.
+func heightOf(energy, floor, ceiling float64) float64 {
 	if energy <= 0 {
 		return 0
 	}
-	db := 10 * math.Log10(energy)
-	return clamp01((db - floor) / (ceiling - floor))
+	return math.Max((10*math.Log10(energy)-floor)/(ceiling-floor), 0)
 }
 
 func clamp01(v float64) float64 { return math.Min(math.Max(v, 0), 1) }
