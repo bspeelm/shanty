@@ -1735,3 +1735,10 @@ Tuning the live listener alone: it has too little to hear with. A setting to
 turn the guard off: ADR-001.
 
 ---
+
+## ADR-033 — A track carried by its arrangement is planned in parts
+
+**Status:** accepted. Builds on ADR-032. Raises the code budget from 14,500 to 16,000 lines. A track with
+a light kick takes its cuts, mood and weight from parts found in its texture: `docs/review/v0.4.0.md`.
+
+---
