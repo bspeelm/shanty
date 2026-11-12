@@ -48,7 +48,7 @@ type Hit struct {
 // The beat finder's measures. Times are in seconds.
 const (
 	// beatlessBelow is the Pulse under which a track has no beats.
-	beatlessBelow = 0.2
+	beatlessBelow = 0.3
 	// Tempos are looked for between slowestBPM and fastestBPM, and
 	// preferredBPM is the tempo favoured when two octaves fit about equally.
 	slowestBPM   = 55.0
@@ -79,14 +79,49 @@ const (
 	// with the onsets around it.
 	spreadSpan = 4.0
 	// tightness is how strongly the beat grid keeps to the local period.
-	tightness = 100.0
+	tightness = 400.0
 	// A hit rises by at least hitRise dB, to within hitBelow dB of its
-	// band's loud level.
-	hitRise  = 6.0
-	hitBelow = 25.0
+	// band's loud level, and from hitFrom to hitFull deviations above the
+	// mean rise within hitSpan, with a deviation of at least hitDeviation
+	// dB. Without support for the tempo a hit needs strength lone and must
+	// be lonelyGap seconds from any other.
+	hitRise      = 3.0
+	hitBelow     = 25.0
+	hitFrom      = 2.0
+	hitFull      = 8.0
+	hitSpan      = 2.0
+	hitDeviation = 1.0
+	lone         = 0.6
+	lonelyGap    = 2.5
 	// slipCost is the weight of downbeats a bar must lose before the
 	// downbeat moves to another beat.
 	slipCost = 8.0
+	// A beat whose support is under supportedAbove has no evidence of its
+	// own; a beat laid between two supported runs has confidence bridged; and
+	// a stretch with any band within soundBelow dB of its loud level has
+	// sound.
+	supportedAbove = 0.2
+	bridged        = 0.3
+	soundBelow     = 30.0
+	// coveredFull is the share of the track that, covered by beats of full
+	// confidence, allows a full Pulse.
+	coveredFull = 0.6
+	// A run of at least rephaseRun beats is moved half a beat when its onsets
+	// fall the other way round from the rest of the track, judged by the
+	// bands whose onsets are rephaseClear times stronger on the beat than
+	// halfway, or the other way, across the track.
+	rephaseRun   = 8
+	rephaseClear = 1.4
+	// A hit counts towards how busy a track is from strength busyAbove, and
+	// planBusyFull such hits a second over the whole track is full.
+	busyAbove    = 0.3
+	planBusyFull = 8.0
+	// smoothWithin is how far a beat may be from the line through the beats
+	// around it and be moved onto it.
+	smoothWithin = 0.025
+	// tempoBeats is how many beats either side a beat's tempo is measured
+	// over.
+	tempoBeats = 4
 	// snapWithin is how close a hit must be to a quarter of a beat to be
 	// moved onto it.
 	snapWithin = 0.03
@@ -212,22 +247,212 @@ func (p *Plan) beats(blocks []Block) {
 		return
 	}
 	p.banded = true
-	period, pulse := o.tempo()
+	period, support, pulse := o.tempo()
 	p.Pulse = pulse
+	var idx []int
 	if pulse >= beatlessBelow {
-		idx := o.grid(period)
+		idx = o.rephase(o.grid(period))
 		p.Beats = make([]float64, len(idx))
 		for i, j := range idx {
 			p.Beats[i] = o.onsetAt(j, o.strongest(j))
 		}
 		p.downbeats(o, idx)
+		p.confide(o, idx, support)
 	}
-	p.Tempo, p.Sure = 0, pulse
-	if n := len(p.Beats); n > 1 {
-		p.Tempo = 60 * float64(n-1) / (p.Beats[n-1] - p.Beats[0])
+	p.Tempo, p.Sure = 0, p.Pulse
+	if len(p.tempi) > 0 {
+		p.Tempo = quantile(p.tempi, 0.5)
 	}
-	p.hits(o)
+	p.hits(o, support)
 	p.char = p.character()
+}
+
+// joined reports whether beat i is followed by the next beat of the same run,
+// with no beats dropped between them.
+func (p *Plan) joined(i int) bool { return i+1 < len(p.Beats) && !p.broken[i] }
+
+// rephase moves each run of at least rephaseRun beats on which the bands'
+// onsets fall the other way round from the rest of the track onto the
+// points halfway between its beats. For each band, the share of onsets on
+// the beat rather than halfway is measured over the beats either side, and
+// a band whose share across the track is clearly one way or the other
+// votes on each beat by how far its share there agrees with the track's.
+func (o *onsets) rephase(idx []int) []int {
+	n := len(idx)
+	if n < 2*rephaseRun {
+		return idx
+	}
+	peak := func(k, i int) float64 {
+		v := 0.0
+		for j := max(i-1, 0); j <= min(i+1, len(o.at)-1); j++ {
+			v = math.Max(v, o.band[k][j])
+		}
+		return v
+	}
+	var lean [bandCount][]float64
+	for k := range bandCount {
+		on, off := make([]float64, n), make([]float64, n)
+		for b := 0; b+1 < n; b++ {
+			on[b], off[b] = peak(k, idx[b]), peak(k, (idx[b]+idx[b+1])/2)
+		}
+		on, off = movingMean(on, rephaseRun/2), movingMean(off, rephaseRun/2)
+		lean[k] = make([]float64, n)
+		for b := range n {
+			lean[k][b] = math.Log((on[b] + 0.1) / (off[b] + 0.1))
+		}
+	}
+	vote := make([]float64, n)
+	for k := range bandCount {
+		typical := quantile(lean[k], 0.5)
+		if math.Abs(typical) < math.Log(rephaseClear) {
+			continue
+		}
+		for b := range n {
+			vote[b] += lean[k][b] / typical
+		}
+	}
+	out := slices.Clone(idx)
+	for b := 0; b < n; {
+		e := b
+		for e < n-1 && vote[e] < 0 {
+			e++
+		}
+		if e-b >= rephaseRun {
+			for c := b; c < e; c++ {
+				out[c] = (idx[c] + idx[c+1]) / 2
+			}
+		}
+		b = e + 1
+	}
+	return out
+}
+
+// confide gives each beat a confidence, the support for the tempo where it
+// falls, or none when there is no sound within a block of it, and drops the
+// beats that have none. A run of beats under
+// supportedAbove between two supported runs is laid evenly between them,
+// with confidence bridged, when it has sound and the time between the runs
+// is within a fifth of a whole number of beats; otherwise it is dropped, as
+// are the runs before the first supported beat and after the last. Each
+// beat's tempo is then measured over tempoBeats beats of its run either
+// side, and a beat with that many either side that is within smoothWithin of
+// the line through them is moved onto it.
+func (p *Plan) confide(o *onsets, idx []int, support []float64) {
+	n := len(idx)
+	conf := make([]float64, n)
+	for b, i := range idx {
+		if o.sounding(max(i-1, 0), min(i+2, len(o.at))) {
+			conf[b] = support[i]
+		}
+	}
+	var beats, confs []float64
+	var bars []int
+	var broken []bool
+	keep := func(t, c float64, bar int, gap bool) {
+		if gap && len(broken) > 0 {
+			broken[len(broken)-1] = true
+		}
+		beats, confs, bars, broken = append(beats, t), append(confs, c), append(bars, bar), append(broken, false)
+	}
+	last := -1
+	for b := 0; b < n; {
+		if conf[b] >= supportedAbove {
+			keep(p.Beats[b], conf[b], p.bar[b], last >= 0 && last != b-1)
+			last = b
+			b++
+			continue
+		}
+		e := b
+		for e < n && conf[e] < supportedAbove {
+			e++
+		}
+		if last >= 0 && e < n && o.sounding(idx[last], idx[e]) {
+			a, z := p.Beats[last], p.Beats[e]
+			beat := (p.Beats[last] - p.Beats[max(last-4, 0)]) / float64(max(last-max(last-4, 0), 1))
+			count := math.Round((z - a) / beat)
+			if count >= 1 && math.Abs((z-a)/beat-count) < 0.2 {
+				for k := 1; k < int(count); k++ {
+					keep(a+float64(k)*(z-a)/count, bridged, (p.bar[last]+k)%p.Meter, false)
+				}
+				b = e
+				continue
+			}
+		}
+		b = e
+	}
+	if len(broken) > 0 {
+		broken[len(broken)-1] = true
+	}
+	p.Beats, p.conf, p.bar, p.broken = beats, confs, bars, broken
+	p.tempi = make([]float64, len(p.Beats))
+	for b := range p.Beats {
+		lo, hi := b, b
+		for lo > 0 && b-lo < tempoBeats && p.joined(lo-1) {
+			lo--
+		}
+		for hi < len(p.Beats)-1 && hi-b < tempoBeats && p.joined(hi) {
+			hi++
+		}
+		if hi > lo {
+			p.tempi[b] = 60 * float64(hi-lo) / (p.Beats[hi] - p.Beats[lo])
+		}
+	}
+	smooth := slices.Clone(p.Beats)
+	for b := range p.Beats {
+		lo, hi := b, b
+		for lo > 0 && b-lo < tempoBeats && p.joined(lo-1) {
+			lo--
+		}
+		for hi < len(p.Beats)-1 && hi-b < tempoBeats && p.joined(hi) {
+			hi++
+		}
+		if b-lo < tempoBeats || hi-b < tempoBeats {
+			continue
+		}
+		var mx, my, sxy, sxx float64
+		for c := lo; c <= hi; c++ {
+			mx, my = mx+float64(c), my+p.Beats[c]
+		}
+		k := float64(hi - lo + 1)
+		mx, my = mx/k, my/k
+		for c := lo; c <= hi; c++ {
+			sxy += (float64(c) - mx) * (p.Beats[c] - my)
+			sxx += (float64(c) - mx) * (float64(c) - mx)
+		}
+		if fit := my + sxy/sxx*(float64(b)-mx); math.Abs(fit-p.Beats[b]) < smoothWithin {
+			smooth[b] = fit
+		}
+	}
+	p.Beats = smooth
+	p.Downbeats = nil
+	for b, bar := range p.bar {
+		if bar == 0 {
+			p.Downbeats = append(p.Downbeats, p.Beats[b])
+		}
+	}
+	covered := 0.0
+	for b := range p.Beats {
+		if p.joined(b) {
+			covered += (p.Beats[b+1] - p.Beats[b]) * p.conf[b]
+		}
+	}
+	p.Pulse = math.Min(p.Pulse, covered/math.Max(p.Length, 1)/coveredFull)
+	if p.Pulse < beatlessBelow {
+		p.Beats, p.Downbeats, p.conf, p.bar, p.broken, p.tempi = nil, nil, nil, nil, nil, nil
+	}
+}
+
+// sounding reports whether any band is within soundBelow dB of its loud
+// level somewhere between blocks i and j.
+func (o *onsets) sounding(i, j int) bool {
+	for k := range bandCount {
+		for _, v := range o.level[k][i:j] {
+			if v >= o.loud[k]-soundBelow {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // fold moves each period that is within octaveNear octaves of a whole
@@ -260,7 +485,7 @@ func salience(a []float64, lag float64) float64 {
 // moved onto the median's octave. The Pulse is the median of how far the path's salience stands above each
 // window's mean salience, as a share of pulseFull, times the share of the
 // windows that follow on from the one before without a jump.
-func (o *onsets) tempo() ([]float64, float64) {
+func (o *onsets) tempo() ([]float64, []float64, float64) {
 	span, hop := o.blocks(tempoSpan), o.blocks(tempoHop)
 	slow := 60 / slowestBPM / o.hop
 	states := int(math.Log(fastestBPM/slowestBPM)/math.Log(tempoRatio)) + 1
@@ -331,10 +556,13 @@ func (o *onsets) tempo() ([]float64, float64) {
 		}
 	}
 	period := make([]float64, len(o.sum))
+	support := make([]float64, len(o.sum))
 	for i := range period {
-		period[i] = at(local, (float64(i)-float64(span)/2)/float64(hop))
+		x := (float64(i) - float64(span)/2) / float64(hop)
+		period[i] = at(local, x)
+		support[i] = clamp01(at(strength, x) / pulseFull)
 	}
-	return period, clamp01(quantile(strength, 0.5)/pulseFull) * steady / float64(len(sal))
+	return period, support, clamp01(quantile(strength, 0.5)/pulseFull) * steady / float64(len(sal))
 }
 
 // grid returns the blocks of the beats: the sequence of blocks with the most
@@ -474,11 +702,6 @@ func (p *Plan) downbeats(o *onsets, idx []int) {
 		p.Meter = 3
 	}
 	p.bar = barPlaces(f, p.Meter)
-	for b := range idx {
-		if p.bar[b] == 0 {
-			p.Downbeats = append(p.Downbeats, p.Beats[b])
-		}
-	}
 }
 
 // barPlaces returns the place in the bar of each beat, from 0 to meter-1,
@@ -521,18 +744,27 @@ func barPlaces(w []float64, meter int) []int {
 	return out
 }
 
-// hits finds the hits in each band. A hit is a block whose band rises by at
-// least hitRise dB over the three blocks before it, more than any block
-// within three either side, to within hitBelow dB of the band's loud level.
-// A hit in the middle or high band is a snare when it adds at least as much
-// power to the middle band as to the high band and the high band rises by
-// half a hit, and a hit in the high band that adds more power there is a
-// hat. A hit sounds from the first of its three blocks to carry a quarter of
-// the rise, and a hit within snapWithin of a quarter of a beat is moved onto
-// it.
-func (p *Plan) hits(o *onsets) {
+// hits finds the hits in each band. A block's rise is how far its band
+// rises over the three blocks before it, in dB, and it is measured against
+// the rises within hitSpan either side, each held between 0 and twice
+// hitRise: their mean and their mean deviation, no less than hitDeviation. A hit is a rise of at least
+// hitRise dB, more than any within three blocks either side, to within
+// hitBelow dB of the band's loud level, that stands hitFrom deviations above
+// the mean; its strength reaches 1 at hitFull deviations. A hit in the
+// middle or high band is a snare when it adds at least as much power to the
+// middle band as to the high band and the high band rises by half a hit, and
+// a hit in the high band that adds more power there is a hat. A kick and a
+// snare within a block of each other are one hit, of the stronger kind.
+// In a track with no beats, or where the tempo has less support than
+// supportedAbove, a hit is kept only
+// at strength lone or more and lonely seconds from any stronger hit kept
+// there. A hit sounds from the first of its three blocks to carry a quarter
+// of the rise, and a hit within snapWithin of a quarter of a beat is moved
+// onto it.
+func (p *Plan) hits(o *onsets, support []float64) {
 	n := len(o.at)
-	var rise, added [bandCount][]float64
+	span := o.blocks(hitSpan)
+	var rise, added, score [bandCount][]float64
 	for k := range bandCount {
 		l := o.level[k]
 		rise[k], added[k] = make([]float64, n), make([]float64, n)
@@ -541,10 +773,24 @@ func (p *Plan) hits(o *onsets) {
 			rise[k][i] = l[i] - low
 			added[k][i] = math.Exp(l[i]*math.Ln10/10) - math.Exp(low*math.Ln10/10)
 		}
+		bounded := make([]float64, n)
+		for i, r := range rise[k] {
+			bounded[i] = min(max(r, 0), 2*hitRise)
+		}
+		m := movingMean(bounded, span)
+		dev := make([]float64, n)
+		for i := range dev {
+			dev[i] = math.Abs(bounded[i] - m[i])
+		}
+		dev = movingMean(dev, span)
+		score[k] = make([]float64, n)
+		for i := range n {
+			score[k][i] = (rise[k][i] - m[i]) / math.Max(dev[i], hitDeviation)
+		}
 	}
 	hit := func(k, i int) bool {
 		r := rise[k][i]
-		if r < hitRise || o.level[k][i] < o.loud[k]-hitBelow {
+		if r < hitRise || score[k][i] < hitFrom || o.level[k][i] < o.loud[k]-hitBelow {
 			return false
 		}
 		for j := max(i-3, 0); j <= min(i+3, n-1); j++ {
@@ -554,6 +800,8 @@ func (p *Plan) hits(o *onsets) {
 		}
 		return true
 	}
+	var found []Hit
+	var block []int
 	add := func(kind HitKind, k, i int) {
 		start := i
 		for j := i; j >= max(i-2, 1); j-- {
@@ -561,7 +809,14 @@ func (p *Plan) hits(o *onsets) {
 				start = j
 			}
 		}
-		p.Hits = append(p.Hits, Hit{At: o.onsetAt(start, k), Kind: kind, Strength: clamp01((rise[k][i] - hitRise/2) / 15)})
+		h := Hit{At: o.onsetAt(start, k), Kind: kind, Strength: clamp01((score[k][i] - hitFrom) / (hitFull - hitFrom))}
+		if c := len(found) - 1; c >= 0 && i-block[c] <= 1 && (found[c].Kind == HitKick) != (kind == HitKick) {
+			if h.Strength > found[c].Strength {
+				found[c] = h
+			}
+			return
+		}
+		found, block = append(found, h), append(block, i)
 	}
 	for i := 1; i < n; i++ {
 		if hit(bandKick, i) {
@@ -575,6 +830,24 @@ func (p *Plan) hits(o *onsets) {
 			add(HitHat, bandHigh, i)
 		}
 	}
+	order := make([]int, len(found))
+	for h := range order {
+		order[h] = h
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return cmp.Compare(found[b].Strength, found[a].Strength) })
+	var lonely []float64
+	for _, h := range order {
+		if len(p.Beats) > 0 && support[block[h]] >= supportedAbove {
+			p.Hits = append(p.Hits, found[h])
+			continue
+		}
+		at := found[h].At
+		near := slices.ContainsFunc(lonely, func(t float64) bool { return math.Abs(t-at) < lonelyGap })
+		if found[h].Strength >= lone && !near {
+			lonely = append(lonely, at)
+			p.Hits = append(p.Hits, found[h])
+		}
+	}
 	for h := range p.Hits {
 		p.Hits[h].At = p.snap(p.Hits[h].At)
 	}
@@ -585,7 +858,7 @@ func (p *Plan) hits(o *onsets) {
 // snapWithin of one, and t otherwise.
 func (p *Plan) snap(t float64) float64 {
 	i, _ := slices.BinarySearch(p.Beats, t)
-	if i == 0 || i >= len(p.Beats) {
+	if i == 0 || i >= len(p.Beats) || !p.joined(i-1) {
 		return t
 	}
 	a, d := p.Beats[i-1], (p.Beats[i]-p.Beats[i-1])/4
@@ -597,7 +870,9 @@ func (p *Plan) snap(t float64) float64 {
 }
 
 // character weighs the whole track's measures into a character, with the
-// meaning each measure has in characterMeter.
+// meaning each measure has in characterMeter. Regular is the share of the
+// track covered by beats, weighed by their confidence, and busy counts the
+// hits of strength busyAbove or more, at planBusyFull a second for full.
 func (p *Plan) character() Character {
 	var bright, loud, swell float64
 	level := make([]float64, len(p.curve))
@@ -611,28 +886,32 @@ func (p *Plan) character() Character {
 	for i := 1; i < len(smooth); i++ {
 		swell += math.Abs(smooth[i]-smooth[i-1]) / planStep
 	}
-	var kicks, all []float64
+	var strong []float64
 	sharp := 0.0
 	for _, h := range p.Hits {
-		all = append(all, h.At)
 		sharp += h.Strength
-		if h.Kind == HitKick {
-			kicks = append(kicks, h.At)
+		if h.Strength >= busyAbove {
+			strong = append(strong, h.At)
 		}
 	}
-	var dynamics, regular, busy, windows float64
+	var dynamics, busy, windows float64
 	for t := 0.0; t+characterWindow <= p.Length; t += characterWindow / 2 {
 		lo, hi := steps(t), min(steps(t+characterWindow), len(level))
 		dynamics += spread(level[lo:hi])
-		regular += regularity(between(kicks, t, t+characterWindow))
-		busy += float64(len(between(all, t, t+characterWindow))) / characterWindow
+		busy += float64(len(between(strong, t, t+characterWindow))) / characterWindow
 		windows++
 	}
 	windows = math.Max(windows, 1)
+	regular := 0.0
+	for b := range p.Beats {
+		if p.joined(b) {
+			regular += (p.Beats[b+1] - p.Beats[b]) * p.conf[b]
+		}
+	}
 	m := measures{
 		steady:   clamp01(p.Pulse * 1.5),
-		regular:  regular / windows,
-		busy:     clamp01(busy / windows / 4),
+		regular:  clamp01(regular / math.Max(p.Length, 1) / coveredFull),
+		busy:     clamp01(busy / windows / planBusyFull),
 		bright:   bright / n,
 		dynamics: clamp01(dynamics / windows * 5),
 		swell:    clamp01(swell / math.Max(n-1, 1) * 6),
@@ -650,21 +929,35 @@ func between(times []float64, a, b float64) []float64 {
 	return times[lo:hi]
 }
 
-// BeatAt returns the beat playing at t seconds: the tempo between it and the
-// next beat, how far through it t is from 0 to 1, its number counting from 0
-// at the first beat, and its place in the bar counting from 0 on the
-// downbeat. It reports false before the first beat, from the last beat on,
-// and for a plan with no beats.
-func (p *Plan) BeatAt(t float64) (tempo, phase float64, beat, bar int, ok bool) {
-	if p == nil || len(p.Beats) < 2 || t < p.Beats[0] || t >= p.Beats[len(p.Beats)-1] {
-		return 0, 0, 0, 0, false
+// Beat is the beat playing at a time.
+type Beat struct {
+	// Tempo is the beats per minute over the beats around it.
+	Tempo float64
+	// Phase is how far through the beat the time is, from 0 to 1.
+	Phase float64
+	// Index counts the beats of the track from 0, and Bar is the beat's
+	// place in its bar, counting from 0 on the downbeat.
+	Index, Bar int
+	// Confidence is how well the music supports the beat, from 0 to 1.
+	Confidence float64
+}
+
+// BeatAt returns the beat playing at t seconds. It reports false before the
+// first beat, from the last beat of a run until the next run starts, after
+// the last beat, and for a plan with no beats.
+func (p *Plan) BeatAt(t float64) (Beat, bool) {
+	if p == nil || len(p.Beats) < 2 || t < p.Beats[0] {
+		return Beat{}, false
 	}
 	i, found := slices.BinarySearch(p.Beats, t)
 	if !found {
 		i--
 	}
+	if !p.joined(i) {
+		return Beat{}, false
+	}
 	gap := p.Beats[i+1] - p.Beats[i]
-	return 60 / gap, (t - p.Beats[i]) / gap, i, p.bar[i], true
+	return Beat{Tempo: p.tempi[i], Phase: (t - p.Beats[i]) / gap, Index: i, Bar: p.bar[i], Confidence: p.conf[i]}, true
 }
 
 // HitsBetween returns the hits at or after a seconds and before b, and none

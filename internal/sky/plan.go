@@ -70,13 +70,16 @@ type Plan struct {
 	Cues []Cue
 	// Tempo is the beats per minute of the track, or 0, and Sure is how
 	// strongly the onsets repeat at it, from 0 to 1. For a track measured in
-	// bands they come from its beats, and Sure is Pulse.
+	// bands Tempo is the median of the tempo at each beat, and Sure is
+	// Pulse.
 	Tempo, Sure float64
 	// Length is the length of the track in seconds.
 	Length float64
 	// Beats are the times of the beats in seconds, in order, and Downbeats
 	// are the beats that start a bar. Meter is the number of beats in a bar.
-	// A track measured without bands, or without a steady beat, has none.
+	// Stretches without evidence of a beat have none, and BeatAt reports
+	// no beat in them. A track measured without bands, or without a steady
+	// beat, has none at all.
 	Beats, Downbeats []float64
 	Meter            int
 	// Pulse is how strong and steady the beat is across the track, from 0 to
@@ -88,6 +91,9 @@ type Plan struct {
 	builds [][2]float64
 	banded bool
 	bar    []int
+	conf   []float64
+	broken []bool
+	tempi  []float64
 	char   Character
 }
 

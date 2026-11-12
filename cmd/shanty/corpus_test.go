@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 )
 
 // The corpus evaluation measures every audio file in SHANTY_CORPUS with the
-// real analyser, builds its plan, and compares the plan's beats with the
+// real analyser, one at a time, builds its plan, and compares the plan's beats with the
 // beats in SHANTY_CORPUS_REF/<name>.beats, one time in seconds per line, when
 // that file exists. SHANTY_CORPUS_CACHE, when set, is a directory where the
 // measured blocks are kept, so that a second run builds plans without
@@ -57,15 +56,9 @@ func TestCorpus(t *testing.T) {
 	slices.Sort(files)
 	measures := make([][]mpv.Block, len(files))
 	failures := make([]error, len(files))
-	var wg sync.WaitGroup
 	for i, file := range files {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			measures[i], failures[i] = measured(t, file, trackName(file))
-		}()
+		measures[i], failures[i] = measured(t, file, trackName(file))
 	}
-	wg.Wait()
 	for i, file := range files {
 		if failures[i] != nil {
 			t.Errorf("%s: %v", trackName(file), failures[i])
@@ -103,7 +96,12 @@ func evaluate(t *testing.T, file string, blocks []mpv.Block) string {
 	c := plan.Character()
 	fmt.Fprintf(&b, "  hits: %d kick, %d snare, %d hat; character calm %.2f drive %.2f grit %.2f flow %.2f\n",
 		counts[sky.HitKick], counts[sky.HitSnare], counts[sky.HitHat], c.Calm, c.Drive, c.Grit, c.Flow)
-	fmt.Fprintf(&b, "  kicks on our beats %.2f; downbeats: %s\n", onBeats(plan.Beats, plan.Hits), downbeatSanity(plan, in))
+	kicks := kickOnsets(in)
+	covered, confidence := coverage(plan)
+	fmt.Fprintf(&b, "  beats cover %.0f%% of the track at mean confidence %.2f; strong hits at most %.1f a second in 5 s\n",
+		100*covered, confidence, busiest(plan.Hits, 5))
+	fmt.Fprintf(&b, "  kick band against our beats: %s\n", alignment(plan.Beats, kicks))
+	fmt.Fprintf(&b, "  downbeats: %s\n", downbeatSanity(plan, in))
 	if out := os.Getenv(corpusOutEnv); out != "" {
 		for ext, times := range map[string][]float64{".beats": plan.Beats, ".downbeats": plan.Downbeats} {
 			var lines strings.Builder
@@ -135,8 +133,7 @@ func evaluate(t *testing.T, file string, blocks []mpv.Block) string {
 	fh0, _, _ := score(plan.Beats, half[0])
 	fh1, _, _ := score(plan.Beats, half[1])
 	refTempo := 60 * float64(len(ref)-1) / (ref[len(ref)-1] - ref[0])
-	fmt.Fprintf(&b, "  reference %.2f BPM, %d beats, kicks within 70 ms of its beats %.2f, of ours %.2f\n",
-		refTempo, len(ref), within(ref, plan.Hits, 0.07), within(plan.Beats, plan.Hits, 0.07))
+	fmt.Fprintf(&b, "  reference %.2f BPM, %d beats; kick band against its beats: %s\n", refTempo, len(ref), alignment(ref, kicks))
 	shifted := make([]float64, len(plan.Beats))
 	for i, t := range plan.Beats {
 		shifted[i] = t - offset
@@ -277,28 +274,110 @@ func halved(ref []float64) [2][]float64 {
 	return out
 }
 
-// onBeats is the share of beats with a kick within 30 ms of them.
-func onBeats(beats []float64, hits []sky.Hit) float64 { return within(beats, hits, 0.03) }
+// kickOnsets returns the kick onsets found from the measured blocks alone:
+// for each block whose lowest band rises by at least 6 dB over the three
+// blocks before it, more than any block within three either side, the start
+// of the block among it and the two before it with the steepest rise.
+func kickOnsets(blocks []sky.Block) []float64 {
+	var at, l []float64
+	for _, b := range blocks {
+		if len(b.Bands) > 0 {
+			at, l = append(at, b.At), append(l, math.Max(b.Bands[0], -150))
+		}
+	}
+	rise := make([]float64, len(l))
+	for i := 3; i < len(l); i++ {
+		rise[i] = l[i] - min(l[i-1], l[i-2], l[i-3])
+	}
+	var out []float64
+	for i := range rise {
+		peak := rise[i] >= 6
+		for j := max(i-3, 0); j <= min(i+3, len(rise)-1) && peak; j++ {
+			peak = j == i || rise[j] < rise[i] || (rise[j] == rise[i] && j > i)
+		}
+		if peak {
+			steep := i
+			for j := max(i-2, 1); j <= i; j++ {
+				if l[j]-l[j-1] > l[steep]-l[steep-1] {
+					steep = j
+				}
+			}
+			out = append(out, at[steep])
+		}
+	}
+	return out
+}
 
-// within is the share of beats with a kick within d seconds of them.
-func within(beats []float64, hits []sky.Hit, d float64) float64 {
-	var kicks []float64
+// alignment describes where the kick onsets fall against a list of beats:
+// the share of beats with one within 70 ms, the median time from a beat to
+// the nearest such onset and the median deviation from it, and the share of beats with an onset within 70 ms
+// of the point halfway to the next beat.
+func alignment(beats, kicks []float64) string {
+	if len(beats) < 2 || len(kicks) == 0 {
+		return "no beats"
+	}
+	nearest := func(t float64) (float64, bool) {
+		j, _ := slices.BinarySearch(kicks, t)
+		best, ok := 0.0, false
+		for _, k := range []int{j - 1, j} {
+			if k >= 0 && k < len(kicks) && math.Abs(kicks[k]-t) <= 0.07 && (!ok || math.Abs(kicks[k]-t) < math.Abs(best)) {
+				best, ok = kicks[k]-t, true
+			}
+		}
+		return best, ok
+	}
+	var offsets []float64
+	half := 0
+	for i, t := range beats {
+		if d, ok := nearest(t); ok {
+			offsets = append(offsets, d)
+		}
+		if i+1 < len(beats) {
+			if _, ok := nearest((t + beats[i+1]) / 2); ok {
+				half++
+			}
+		}
+	}
+	m := median(offsets)
+	spread := make([]float64, len(offsets))
+	for i, d := range offsets {
+		spread[i] = math.Abs(d - m)
+	}
+	return fmt.Sprintf("%.0f%% of beats have a kick onset within 70 ms, median offset %+.1f ms, median deviation %.1f ms; %.0f%% halfway between beats",
+		100*float64(len(offsets))/float64(len(beats)), 1000*m, 1000*median(spread), 100*float64(half)/float64(len(beats)-1))
+}
+
+// coverage is the share of the track between two beats of one run, and the
+// mean confidence of the beats.
+func coverage(p *sky.Plan) (float64, float64) {
+	var span, conf float64
+	for i := 0; i+1 < len(p.Beats); i++ {
+		if beat, ok := p.BeatAt(p.Beats[i]); ok {
+			span += p.Beats[i+1] - p.Beats[i]
+			conf += beat.Confidence
+		}
+	}
+	if len(p.Beats) == 0 {
+		return 0, 0
+	}
+	return span / p.Length, conf / float64(len(p.Beats))
+}
+
+// busiest is the most hits of strength 0.3 or more in any window of the
+// given seconds, a second.
+func busiest(hits []sky.Hit, window float64) float64 {
+	var strong []float64
 	for _, h := range hits {
-		if h.Kind == sky.HitKick {
-			kicks = append(kicks, h.At)
+		if h.Strength >= 0.3 {
+			strong = append(strong, h.At)
 		}
 	}
-	if len(beats) == 0 || len(kicks) == 0 {
-		return 0
+	most := 0
+	for i, t := range strong {
+		j, _ := slices.BinarySearch(strong, t+window)
+		most = max(most, j-i)
 	}
-	n := 0
-	for _, b := range beats {
-		j, _ := slices.BinarySearch(kicks, b-d)
-		if j < len(kicks) && kicks[j] <= b+d {
-			n++
-		}
-	}
-	return float64(n) / float64(len(beats))
+	return float64(most) / window
 }
 
 // downbeatSanity describes where the downbeats fall. Entries are the beats
@@ -337,9 +416,9 @@ func downbeatSanity(p *sky.Plan, blocks []sky.Block) string {
 	}
 	var jumps []jump
 	for i := 1; i+1 < len(p.Beats); i++ {
-		_, _, _, bar, ok := p.BeatAt(p.Beats[i])
+		beat, ok := p.BeatAt(p.Beats[i])
 		if ok {
-			jumps = append(jumps, jump{level(p.Beats[i], p.Beats[i+1]) - level(p.Beats[i-1], p.Beats[i]), bar})
+			jumps = append(jumps, jump{level(p.Beats[i], p.Beats[i+1]) - level(p.Beats[i-1], p.Beats[i]), beat.Bar})
 		}
 	}
 	slices.SortFunc(jumps, func(a, b jump) int { return cmp.Compare(b.rise, a.rise) })
@@ -356,7 +435,8 @@ func downbeatSanity(p *sky.Plan, blocks []sky.Block) string {
 	kick := make([]float64, p.Meter)
 	count := make([]float64, p.Meter)
 	for _, h := range p.Hits {
-		if _, phase, _, bar, ok := p.BeatAt(h.At); ok && h.Kind == sky.HitKick && (phase < 0.1 || phase > 0.9) {
+		if beat, ok := p.BeatAt(h.At); ok && h.Kind == sky.HitKick && (beat.Phase < 0.1 || beat.Phase > 0.9) {
+			phase, bar := beat.Phase, beat.Bar
 			if phase > 0.9 {
 				bar = (bar + 1) % p.Meter
 			}
@@ -364,8 +444,8 @@ func downbeatSanity(p *sky.Plan, blocks []sky.Block) string {
 		}
 	}
 	for b := range p.Beats {
-		if _, _, _, bar, ok := p.BeatAt(p.Beats[b]); ok {
-			count[bar]++
+		if beat, ok := p.BeatAt(p.Beats[b]); ok {
+			count[beat.Bar]++
 		}
 	}
 	parts := make([]string, p.Meter)
