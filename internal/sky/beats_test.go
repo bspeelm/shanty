@@ -701,3 +701,50 @@ func times(notes []Note) []float64 {
 	}
 	return out
 }
+
+func TestAKickThatBarelyLiftsItsBlocksIsFoundByItsPeak(t *testing.T) {
+	g, bass := danceGroove(128, 60, 0.3)
+	blocks := banded(60, g.strikes, bass)
+	// The kick barely shows in the levels of the bands it sounds in: the
+	// band where it starts is level, and the low band moves a tenth as far.
+	for i := range blocks {
+		blocks[i].Bands[bandKick] = -20 + (blocks[i].Bands[bandKick]+20)/10
+		blocks[i].Bands[bandPunch] = -20
+	}
+	share := func(p *Plan) float64 {
+		n := 0
+		for _, b := range g.beats {
+			if nearest(kickTimes(p), b) < 0.045 {
+				n++
+			}
+		}
+		return float64(n) / float64(len(g.beats))
+	}
+	before := NewPlan(blocks)
+	tracked(t, before, g.beats, 2, 57)
+	if got := share(before); got > 0.5 {
+		t.Fatalf("with the kick hidden %.0f%% of beats still had one, so this test proves nothing", 100*got)
+	}
+	hop := float64(synthBlock) / synthRate
+	for i := range blocks {
+		blocks[i].Punch = 0.02
+		// Each kick's peak is in the block it starts in.
+		if nearest(g.kicks, blocks[i].At+hop/2) <= hop/2 {
+			blocks[i].Punch = 0.5
+		}
+	}
+	if got := share(NewPlan(blocks)); got < 0.95 {
+		t.Errorf("with the peak of each kick measured, %.0f%% of beats had a kick", 100*got)
+	}
+}
+
+// kickTimes returns the times of a plan's kicks.
+func kickTimes(p *Plan) []float64 {
+	var out []float64
+	for _, h := range p.Hits {
+		if h.Kind == HitKick {
+			out = append(out, h.At)
+		}
+	}
+	return out
+}

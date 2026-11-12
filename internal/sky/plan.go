@@ -19,6 +19,9 @@ type Block struct {
 	// the order bandKick, bandLow, bandMid, bandHigh, bandPunch. It is empty for a block
 	// measured without bands.
 	Bands []float64
+	// Punch is the peak of the band where a kick starts, from 0 to 1 of
+	// full scale. It is 0 for a block measured without it.
+	Punch float64
 	// Rate is the sample rate, and Scale is the value of a full-scale sample
 	// in the units of Channel.Difference.
 	Rate  int
@@ -94,12 +97,15 @@ type Plan struct {
 	// usualKick is the strength of the track's stronger kicks, found when
 	// first asked for.
 	usualKick float64
-	banded    bool
-	bar       []int
-	conf      []float64
-	broken    []bool
-	tempi     []float64
-	char      Character
+	// edges are the times its sections start and end, and shares the share
+	// of each section's beats that carry a kick, found when first asked for.
+	edges, shares []float64
+	banded        bool
+	bar           []int
+	conf          []float64
+	broken        []bool
+	tempi         []float64
+	char          Character
 }
 
 // The planner's measures. Times are in seconds and levels are on the 0 to 1

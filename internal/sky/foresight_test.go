@@ -3,6 +3,7 @@ package sky
 import (
 	"fmt"
 	"math"
+	"slices"
 	"testing"
 	"time"
 )
@@ -359,5 +360,118 @@ func TestACutReplacesAChangeOfSceneAlreadyUnderWay(t *testing.T) {
 	}
 	if d := nearest(got, back); d > cutFade {
 		t.Errorf("with a change under way, cuts began at %v; the kicks come back at %.2f s", got, back)
+	}
+}
+
+func TestALoudWallOfSoundLedByGritIsHeavyAndTheSameSoundQuietOrDrivenIsNot(t *testing.T) {
+	grit := Character{Calm: 0.1, Drive: 0.3, Grit: 0.5, Flow: 0.1}
+	drive := Character{Calm: 0, Drive: 0.72, Grit: 0.21, Flow: 0.07}
+	for _, c := range []struct {
+		name  string
+		level float64
+		char  Character
+		want  float64
+	}{
+		{"a loud wall led by grit", 0.9, grit, 1},
+		{"the same wall heard quietly", 0.5, grit, 0},
+		{"a loud track carried by its kick", 0.9, drive, 0},
+	} {
+		s := New(1)
+		s.lis.meter.slow, s.lis.char = c.level, c.char
+		got := 0.0
+		for range 300 {
+			got = s.heavy(1.0 / 30)
+		}
+		if math.Abs(got-c.want) > 0.05 {
+			t.Errorf("%s was heavy %.2f, want %.2f", c.name, got, c.want)
+		}
+	}
+}
+
+func TestATrackLedByGritKeepsItsCharacterWhereItsKicksAreFew(t *testing.T) {
+	p, _ := breakdown(t)
+	p.char = Character{Calm: 0.1, Drive: 0.3, Grit: 0.5, Flow: 0.1}
+	if c := p.mood(48); c.Grit <= c.Calm || c.Grit <= c.Flow {
+		t.Errorf("without kicks the mood of a track led by grit was %+v", c)
+	}
+}
+
+func TestHeavyMusicIsDrawnBrighterAndMovesWithEveryRise(t *testing.T) {
+	if lift := exposureFor(Signals{Heavy: 1}) - exposureFor(Signals{}); lift < 0.05 {
+		t.Errorf("heavy music lifts the exposure by %.3f", lift)
+	}
+	s := New(1)
+	s.Step(40, 10, 1.0/30, time.Time{}, "")
+	s.lis.meter.slow, s.lis.char = 0.95, Character{Drive: 0.2, Grit: 0.6, Calm: 0.1, Flow: 0.1}
+	for range 200 {
+		s.heavy(1.0 / 30)
+	}
+	s.lis.thump = 0.9
+	s.Step(40, 10, 1.0/30, time.Time{}, "")
+	if k := s.Signals().Kick; k < 0.6 {
+		t.Errorf("a rise in heavy music gave a kick of %.2f", k)
+	}
+	if s.f.sx == 0 && s.f.sy == 0 {
+		t.Error("a hit in heavy music did not shake the picture")
+	}
+}
+
+func TestAKickIsSetOffOnTheFirstFrameAtOrAfterItsBeatAndNeverBefore(t *testing.T) {
+	p, _ := scored(40)
+	s := New(3)
+	s.Foresee("track", p)
+	var tr track
+	play(s, &tr, 0, 10, 40, 10)
+	dt := 1.0 / 30
+	last, seen := s.Signals().Kick, 0
+	for at := 10.0; at < 30; at += dt {
+		play(s, &tr, at, dt/2, 40, 10)
+		k, pos := s.Signals().Kick, s.lis.ear.now
+		if k > last+0.15 {
+			seen++
+			i, _ := slices.BinarySearch(p.Beats, pos)
+			if i < len(p.Beats) && p.Beats[i]-pos < dt/2 && (i == 0 || pos-p.Beats[i-1] > dt) {
+				t.Fatalf("a kick was set off at %.3f s, before its beat at %.3f s", pos, p.Beats[i])
+			}
+			if i == 0 || pos-p.Beats[i-1] > 1.5*dt {
+				t.Fatalf("a kick was set off at %.3f s, more than a frame after any beat", pos)
+			}
+		}
+		last = k
+	}
+	if seen < 38 {
+		t.Fatalf("%d kicks were set off in 20 s at 128 BPM", seen)
+	}
+}
+
+func TestEveryBeatOfADrummedSectionHasAnEvenKickAndASectionWithoutKicksHasNone(t *testing.T) {
+	p, back := breakdown(t)
+	s := New(3)
+	s.Foresee("track", p)
+	var tr track
+	dt := 1.0 / 30
+	var pos, kick []float64
+	for at := 0.0; at < 100; at += dt {
+		play(s, &tr, at, dt/2, 40, 10)
+		pos, kick = append(pos, s.lis.ear.now), append(kick, s.Signals().Kick)
+	}
+	peak := func(from, to float64) float64 {
+		v := 0.0
+		for i, at := range pos {
+			if at >= from && at < to {
+				v = math.Max(v, kick[i])
+			}
+		}
+		return v
+	}
+	for _, b := range p.Beats {
+		if (b > 5 && b < 37) || (b > back+3 && b < 95) {
+			if v := peak(b, b+2*dt); v < 0.6 {
+				t.Fatalf("the beat at %.2f s in a drummed section had a kick of %.2f", b, v)
+			}
+		}
+	}
+	if v := peak(45, 65); v > 0.2 {
+		t.Errorf("the section without kicks had a kick of %.2f", v)
 	}
 }
