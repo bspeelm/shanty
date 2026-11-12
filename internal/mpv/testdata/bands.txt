@@ -17,6 +17,9 @@ lavfi.astats.5.Zero_crossings=3.000000
 lavfi.astats.6.RMS_difference=0.000121
 lavfi.astats.6.RMS_level=-75.977048
 lavfi.astats.6.Zero_crossings=90.000000
+lavfi.astats.7.RMS_difference=0.000574
+lavfi.astats.7.RMS_level=-27.663779
+lavfi.astats.7.Zero_crossings=6.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:1    pts:1024    pts_time:0.0213333
 lavfi.astats.1.RMS_difference=0.001449
@@ -37,6 +40,9 @@ lavfi.astats.5.Zero_crossings=3.000000
 lavfi.astats.6.RMS_difference=0.000016
 lavfi.astats.6.RMS_level=-91.576787
 lavfi.astats.6.Zero_crossings=124.000000
+lavfi.astats.7.RMS_difference=0.000171
+lavfi.astats.7.RMS_level=-34.911232
+lavfi.astats.7.Zero_crossings=2.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:2    pts:2048    pts_time:0.0426667
 lavfi.astats.1.RMS_difference=0.006320
@@ -57,6 +63,9 @@ lavfi.astats.5.Zero_crossings=50.000000
 lavfi.astats.6.RMS_difference=0.007501
 lavfi.astats.6.RMS_level=-44.558922
 lavfi.astats.6.Zero_crossings=129.000000
+lavfi.astats.7.RMS_difference=0.000425
+lavfi.astats.7.RMS_level=-31.266570
+lavfi.astats.7.Zero_crossings=4.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:3    pts:3072    pts_time:0.064
 lavfi.astats.1.RMS_difference=0.000000
@@ -77,6 +86,9 @@ lavfi.astats.5.Zero_crossings=0.000000
 lavfi.astats.6.RMS_difference=0.000000
 lavfi.astats.6.RMS_level=-inf
 lavfi.astats.6.Zero_crossings=0.000000
+lavfi.astats.7.RMS_difference=0.000203
+lavfi.astats.7.RMS_level=-37.922950
+lavfi.astats.7.Zero_crossings=5.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:4    pts:4096    pts_time:0.0853333
 lavfi.astats.1.RMS_difference=0.000924
@@ -97,6 +109,9 @@ lavfi.astats.5.Zero_crossings=19.000000
 lavfi.astats.6.RMS_difference=0.001029
 lavfi.astats.6.RMS_level=-61.810914
 lavfi.astats.6.Zero_crossings=380.000000
+lavfi.astats.7.RMS_difference=0.000107
+lavfi.astats.7.RMS_level=-42.393933
+lavfi.astats.7.Zero_crossings=5.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:5    pts:5120    pts_time:0.106667
 lavfi.astats.1.RMS_difference=0.000297
@@ -117,6 +132,9 @@ lavfi.astats.5.Zero_crossings=2.000000
 lavfi.astats.6.RMS_difference=0.000016
 lavfi.astats.6.RMS_level=-99.106267
 lavfi.astats.6.Zero_crossings=544.000000
+lavfi.astats.7.RMS_difference=0.000037
+lavfi.astats.7.RMS_level=-50.282353
+lavfi.astats.7.Zero_crossings=3.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:22   pts:22528   pts_time:0.469333
 lavfi.astats.1.RMS_difference=0.000002
@@ -137,6 +155,9 @@ lavfi.astats.5.Zero_crossings=197.000000
 lavfi.astats.6.RMS_difference=0.000002
 lavfi.astats.6.RMS_level=-114.247531
 lavfi.astats.6.Zero_crossings=248.000000
+lavfi.astats.7.RMS_difference=0.000000
+lavfi.astats.7.RMS_level=-110.451364
+lavfi.astats.7.Zero_crossings=5.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:23   pts:23552   pts_time:0.490667
 lavfi.astats.1.RMS_difference=0.001998
@@ -157,6 +178,9 @@ lavfi.astats.5.Zero_crossings=96.000000
 lavfi.astats.6.RMS_difference=0.000119
 lavfi.astats.6.RMS_level=-76.079353
 lavfi.astats.6.Zero_crossings=162.000000
+lavfi.astats.7.RMS_difference=0.000518
+lavfi.astats.7.RMS_level=-28.875225
+lavfi.astats.7.Zero_crossings=3.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:24   pts:24576   pts_time:0.512
 lavfi.astats.1.RMS_difference=0.001740
@@ -177,6 +201,9 @@ lavfi.astats.5.Zero_crossings=3.000000
 lavfi.astats.6.RMS_difference=0.000016
 lavfi.astats.6.RMS_level=-90.138817
 lavfi.astats.6.Zero_crossings=98.000000
+lavfi.astats.7.RMS_difference=0.000294
+lavfi.astats.7.RMS_level=-31.774696
+lavfi.astats.7.Zero_crossings=4.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:25   pts:25600   pts_time:0.533333
 lavfi.astats.1.RMS_difference=0.001272
@@ -197,6 +224,9 @@ lavfi.astats.5.Zero_crossings=2.000000
 lavfi.astats.6.RMS_difference=0.000016
 lavfi.astats.6.RMS_level=-94.020198
 lavfi.astats.6.Zero_crossings=203.000000
+lavfi.astats.7.RMS_difference=0.000085
+lavfi.astats.7.RMS_level=-38.947952
+lavfi.astats.7.Zero_crossings=2.000000
 lavfi.astats.Overall.Number_of_samples=1024.000000
 frame:94   pts:96256   pts_time:2.005333
 lavfi.astats.1.RMS_difference=0.002898
@@ -217,4 +247,7 @@ lavfi.astats.5.Zero_crossings=0.000000
 lavfi.astats.6.RMS_difference=0.000022
 lavfi.astats.6.RMS_level=-90.037506
 lavfi.astats.6.Zero_crossings=37.000000
+lavfi.astats.7.RMS_difference=0.000839
+lavfi.astats.7.RMS_level=-23.823313
+lavfi.astats.7.Zero_crossings=0.000000
 lavfi.astats.Overall.Number_of_samples=224.000000

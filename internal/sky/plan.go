@@ -16,7 +16,7 @@ type Block struct {
 	// Channels holds the totals for each channel.
 	Channels []Channel
 	// Bands holds the RMS level in dB relative to full scale of each band, in
-	// the order bandKick, bandLow, bandMid, bandHigh. It is empty for a block
+	// the order bandKick, bandLow, bandMid, bandHigh, bandPunch. It is empty for a block
 	// measured without bands.
 	Bands []float64
 	// Rate is the sample rate, and Scale is the value of a full-scale sample

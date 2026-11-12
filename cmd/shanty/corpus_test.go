@@ -104,6 +104,9 @@ func evaluate(t *testing.T, file string, blocks []mpv.Block) string {
 	fmt.Fprintf(&b, "  kick band onsets in the blocks %.2f a second; hits %.2f kicks and %.2f snares a second\n",
 		float64(len(kicks))/plan.Length, float64(counts[sky.HitKick])/plan.Length, float64(counts[sky.HitSnare])/plan.Length)
 	fmt.Fprintf(&b, "  kick band against our beats: %s\n", alignment(plan.Beats, kicks))
+	if len(plan.Beats) > 0 {
+		fmt.Fprintf(&b, "  per 30 s, kick hits a beat (kick band rise on the beat/halfway, dB): %s\n", kickSegments(plan, in))
+	}
 	fmt.Fprintf(&b, "  downbeats: %s\n", downbeatSanity(plan, in))
 	if out := os.Getenv(corpusOutEnv); out != "" {
 		for ext, times := range map[string][]float64{".beats": plan.Beats, ".downbeats": plan.Downbeats} {
@@ -348,6 +351,56 @@ func alignment(beats, kicks []float64) string {
 	}
 	return fmt.Sprintf("%.0f%% of beats have a kick onset within 70 ms, median offset %+.1f ms, median deviation %.1f ms; %.0f%% halfway between beats",
 		100*float64(len(offsets))/float64(len(beats)), 1000*m, 1000*median(spread), 100*float64(half)/float64(len(beats)-1))
+}
+
+// kickSegments describes, for each 30 s of the track, the share of beats
+// with a kick hit within 40 ms, and the mean rise of the lowest band of the
+// measured blocks on the beats and halfway between them: its mean level over
+// the three blocks from the point less its mean over the three before.
+func kickSegments(p *sky.Plan, blocks []sky.Block) string {
+	var at, l []float64
+	for _, b := range blocks {
+		if len(b.Bands) > 0 {
+			at, l = append(at, b.At), append(l, math.Max(b.Bands[0], -150))
+		}
+	}
+	rise := func(t float64) float64 {
+		i, _ := slices.BinarySearch(at, t)
+		if i < 3 || i+3 > len(l) {
+			return 0
+		}
+		return (l[i] + l[i+1] + l[i+2] - l[i-3] - l[i-2] - l[i-1]) / 3
+	}
+	var kicks []float64
+	for _, h := range p.Hits {
+		if h.Kind == sky.HitKick {
+			kicks = append(kicks, h.At)
+		}
+	}
+	var out []string
+	for from := 0.0; from < p.Length; from += 30 {
+		var beats, hit int
+		var on, off float64
+		for i := 0; i+1 < len(p.Beats); i++ {
+			t := p.Beats[i]
+			if _, ok := p.BeatAt(t); !ok || t < from || t >= from+30 {
+				continue
+			}
+			beats++
+			j, _ := slices.BinarySearch(kicks, t-0.04)
+			if j < len(kicks) && kicks[j] <= t+0.04 {
+				hit++
+			}
+			on += rise(t)
+			off += rise((t + p.Beats[i+1]) / 2)
+		}
+		if beats == 0 {
+			out = append(out, "-")
+			continue
+		}
+		out = append(out, fmt.Sprintf("%.2f (%+.1f/%+.1f)", float64(hit)/float64(beats), on/float64(beats), off/float64(beats)))
+	}
+	return strings.Join(out, " ")
 }
 
 // coverage is the share of the track between two beats of one run, and the
