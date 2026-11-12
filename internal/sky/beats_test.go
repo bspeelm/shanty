@@ -7,19 +7,24 @@ import (
 	"testing"
 )
 
-// voice is a drum: its peak power in each band when it is struck, and the
-// time in seconds its power takes to fall by a factor of e.
+// voice is a sound: its peak power in each band, the time in seconds its
+// power takes to fall by a factor of e, and the time it takes to rise to its
+// peak, which is 0 for a drum.
 type voice struct {
-	power [bandCount]float64
-	decay float64
+	power  [bandCount]float64
+	decay  float64
+	attack float64
 }
 
 var (
-	kickVoice  = voice{[bandCount]float64{1, 0.15, 0.003, 0.0005}, 0.12}
-	clapVoice  = voice{[bandCount]float64{0.003, 0.03, 0.3, 0.15}, 0.08}
-	hatVoice   = voice{[bandCount]float64{0, 0, 0.004, 0.12}, 0.03}
-	rideVoice  = voice{[bandCount]float64{0, 0, 0.01, 0.1}, 0.2}
-	thumpVoice = voice{[bandCount]float64{0.3, 0.1, 0.001, 0}, 0.25}
+	kickVoice  = voice{[bandCount]float64{1, 0.15, 0.003, 0.0005}, 0.12, 0}
+	clapVoice  = voice{[bandCount]float64{0.003, 0.03, 0.3, 0.15}, 0.08, 0}
+	hatVoice   = voice{[bandCount]float64{0, 0, 0.004, 0.12}, 0.03, 0}
+	rideVoice  = voice{[bandCount]float64{0, 0, 0.01, 0.1}, 0.2, 0}
+	thumpVoice = voice{[bandCount]float64{0.3, 0.1, 0.001, 0}, 0.25, 0}
+	// shimmerVoice and swellVoice are soft sounds with no sharp start.
+	shimmerVoice = voice{[bandCount]float64{0, 0, 0.004, 0.12}, 0.3, 0.08}
+	swellVoice   = voice{[bandCount]float64{0.3, 0.1, 0.001, 0}, 0.4, 0.05}
 )
 
 // strike is a voice struck at a time with a gain.
@@ -67,8 +72,12 @@ func banded(seconds float64, strikes []strike, under bed) []Block {
 				if h.at > t {
 					break
 				}
+				rise := 1.0
+				if since := t - h.at; since < h.v.attack {
+					rise = since / h.v.attack
+				}
 				for k := range bandCount {
-					b[k] += h.gain * h.v.power[k] * math.Exp(-(t-h.at)/h.v.decay)
+					b[k] += h.gain * h.v.power[k] * rise * math.Exp(-(t-h.at)/h.v.decay)
 				}
 			}
 			for k := range bandCount {
@@ -306,16 +315,16 @@ func TestTheGridFollowsATempoThatRisesFrom120To128(t *testing.T) {
 	tracked(t, p, g.beats, 2, seconds-3)
 }
 
-// beatlessPad is three minutes of slow swells, random flickers in the high
-// band, and random low thumps.
+// beatlessPad is three minutes of slow swells, random soft flickers in the
+// high band, and random soft low swells.
 func beatlessPad() []Block {
 	r := rand.New(rand.NewPCG(1, 2))
 	var g groove
 	for at := 0.0; at < 180; at += r.ExpFloat64() / 1.5 {
-		g.play(at, hatVoice, 0.2+0.8*r.Float64(), nil)
+		g.play(at, shimmerVoice, 0.2+0.8*r.Float64(), nil)
 	}
 	for at := 0.0; at < 180; at += r.ExpFloat64() / 0.3 {
-		g.play(at, thumpVoice, 0.3+0.7*r.Float64(), nil)
+		g.play(at, swellVoice, 0.3+0.7*r.Float64(), nil)
 	}
 	swell := func(t float64) [bandCount]float64 {
 		a := 0.02 * (1.2 + math.Sin(2*math.Pi*t/7.3)) * (1.2 + math.Sin(2*math.Pi*t/12.9+1))
@@ -373,7 +382,7 @@ func TestAFourOnTheFloorTrackIsLedByDrive(t *testing.T) {
 func TestAFourOnTheFloorKickOverARollingBasslineIsFoundAndLedByDrive(t *testing.T) {
 	var g groove
 	beat := 60 / 126.0
-	roll := voice{[bandCount]float64{0.5, 0.4, 0.002, 0}, 0.06}
+	roll := voice{[bandCount]float64{0.5, 0.4, 0.002, 0}, 0.06, 0}
 	for i := 0; float64(i)*beat < 89; i++ {
 		at := 0.1 + float64(i)*beat
 		g.beats = append(g.beats, at)
@@ -574,4 +583,125 @@ func TestBlocksOfNaNLeaveNoNaNInThePlan(t *testing.T) {
 			t.Errorf("a cue is %+v", cue)
 		}
 	}
+}
+
+func TestStrumsAndSwellsAreNotesAndNotDrums(t *testing.T) {
+	r := rand.New(rand.NewPCG(3, 4))
+	strum := voice{[bandCount]float64{0.02, 0.2, 0.3, 0.02}, 1.5, 0.02}
+	voiceIn := voice{[bandCount]float64{0, 0.05, 0.2, 0.01}, 2, 0.3}
+	var g groove
+	var strums []float64
+	for at := 0.5; at < 118; at += 1.5 + r.Float64() {
+		g.play(at, strum, 0.5+0.5*r.Float64(), &strums)
+	}
+	for at := 4.0; at < 118; at += 6 + 4*r.Float64() {
+		g.play(at, voiceIn, 1, nil)
+	}
+	p := NewPlan(banded(120, g.strikes, quietBed))
+	for _, h := range p.Hits {
+		if h.Kind != HitHat {
+			t.Errorf("a %s at %.2f s in a track of strums and voices", h.Kind, h.At)
+		}
+	}
+	heard := 0
+	for _, at := range strums {
+		if nearest(times(p.Notes), at) <= 0.05 {
+			heard++
+		}
+	}
+	if float64(heard) < 0.8*float64(len(strums)) {
+		t.Errorf("%d of %d strums are notes", heard, len(strums))
+	}
+}
+
+func TestDrumsUnderAWallOfNoiseWithoutASteadyTempoAreHits(t *testing.T) {
+	var g groove
+	at := 0.3
+	for _, bpm := range []float64{100, 136, 116, 92, 128, 108, 140, 100, 124, 112} {
+		for end := at + 12; at < end; at += 60 / bpm {
+			g.play(at, kickVoice, 1, &g.kicks)
+			g.play(at+30/bpm, clapVoice, 1, &g.snares)
+		}
+	}
+	wall := func(float64) [bandCount]float64 { return [bandCount]float64{0.02, 0.1, 0.06, 0.03} }
+	p := NewPlan(banded(at+1, g.strikes, wall))
+	for _, c := range []struct {
+		kind  HitKind
+		truth []float64
+	}{{HitKick, g.kicks}, {HitSnare, g.snares}} {
+		var found []float64
+		for _, h := range p.Hits {
+			if h.Kind == c.kind {
+				found = append(found, h.At)
+			}
+		}
+		heard := 0
+		for _, x := range c.truth {
+			if nearest(found, x) <= 0.03 {
+				heard++
+			}
+		}
+		if float64(heard) < 0.8*float64(len(c.truth)) {
+			t.Errorf("%d of %d %ss under the noise were found", heard, len(c.truth), c.kind)
+		}
+	}
+}
+
+func TestNotesBetweenReturnsTheNotesInOrderWithinTheSpan(t *testing.T) {
+	p := &Plan{Notes: []Note{{1, 0.2}, {2, 0.3}, {3, 0.1}}}
+	if got := p.NotesBetween(1.5, 3); len(got) != 1 || got[0].At != 2 {
+		t.Errorf("NotesBetween(1.5, 3) = %v", got)
+	}
+	if got := p.NotesBetween(3, 1); len(got) != 0 {
+		t.Errorf("NotesBetween(3, 1) = %v", got)
+	}
+	if (*Plan)(nil).NotesBetween(0, 9) != nil {
+		t.Error("a nil plan has notes")
+	}
+}
+
+func TestTheBarsHoldAcrossABreakdownWithoutDrums(t *testing.T) {
+	var g groove
+	beat := 60 / 124.0
+	notes := []float64{0.08, 0.02, 0.05, 0.03}
+	for i := 0; float64(i)*beat < 99; i++ {
+		at := 0.2 + float64(i)*beat
+		if i%4 == 0 {
+			g.downbeats = append(g.downbeats, at)
+		}
+		if at > 40 && at < 58 {
+			continue
+		}
+		g.play(at, kickVoice, 1, nil)
+		if i%2 == 1 {
+			g.play(at, clapVoice, 1, nil)
+		}
+		g.play(at+beat/2, hatVoice, 1, nil)
+	}
+	bass := func(t float64) [bandCount]float64 {
+		v := notes[(int(math.Floor((t-0.2)/(4*beat)))%4+4)%4]
+		return [bandCount]float64{v, v, 0.002, 1e-5}
+	}
+	p := NewPlan(banded(100, g.strikes, bass))
+	on, after := 0, 0
+	for _, d := range p.Downbeats {
+		if d > 60 {
+			after++
+			if nearest(g.downbeats, d) <= 0.02 {
+				on++
+			}
+		}
+	}
+	if after == 0 || float64(on) < 0.9*float64(after) {
+		t.Errorf("%d of %d downbeats after the breakdown fall on a bar", on, after)
+	}
+}
+
+// times returns the times of a list of notes.
+func times(notes []Note) []float64 {
+	out := make([]float64, len(notes))
+	for i, n := range notes {
+		out[i] = n.At
+	}
+	return out
 }
