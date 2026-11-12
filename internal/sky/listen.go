@@ -74,6 +74,8 @@ type ear struct {
 	// behind the position, and fresh those the last call to take reached, in
 	// the order they were heard.
 	pending, fresh []slice
+	// restarts counts the times the ear has started again.
+	restarts int
 }
 
 // hear takes one reading. A fall in the sample count is an epoch ending when
@@ -109,8 +111,10 @@ func (e *ear) hear(r Reading) {
 	e.add(prev, r)
 }
 
+// restart starts the ear again, for a new track or a seek.
 func (e *ear) restart() {
 	e.epochs, e.slices, e.taken, e.pending = 0, nil, 0, nil
+	e.restarts++
 }
 
 // add works out the slice between two readings in the same epoch.

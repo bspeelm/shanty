@@ -252,7 +252,7 @@ func (a *automaton) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 		a.row[a.w/2] = true
 	}
 	steps, part := 0, 0.0
-	if f.sig.Tempo > 0 {
+	if f.sig.onTheBeat() {
 		if f.sig.Beat != a.beat {
 			steps, a.beat = 1, f.sig.Beat
 		}
@@ -594,7 +594,7 @@ func (m *maze) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 	}
 	rate := 20 + 80*v[0]
 	if f.sig.Tempo > 0 {
-		rate = f.sig.Tempo / 60 * (8 + 24*v[0])
+		rate = f.sig.blendBeat(f.sig.Tempo/60*(8+24*v[0]), rate)
 	}
 	m.carry += f.dt * rate
 	for ; m.carry >= 1 && len(m.stack) > 0; m.carry-- {
@@ -656,9 +656,9 @@ func (s *sorter) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 		s.i, s.j, s.rest = 0, 0, 0
 	}
 	steps := 0
-	if f.sig.Tempo > 0 && f.sig.Beat != s.beat {
+	if f.sig.onTheBeat() && f.sig.Beat != s.beat {
 		steps, s.beat = 1+int(7*v[0]), f.sig.Beat
-	} else if f.sig.Tempo == 0 {
+	} else if !f.sig.onTheBeat() {
 		s.carry += f.dt * (4 + 20*v[0])
 		steps = int(s.carry)
 		s.carry -= float64(steps)

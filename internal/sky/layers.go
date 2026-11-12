@@ -366,9 +366,9 @@ func (w *flow) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 }
 
 // beatGrid is a grid of tiles that light in a pattern, a new pattern on each
-// beat, each lit tile fading through the beat. While the tempo is little
-// trusted the fade follows the breath and the pattern changes once a bar.
-// Without a tempo a kick moves it on.
+// beat, each lit tile fading through the beat, blended towards the breath by
+// how little the tempo is trusted. While the beat is not trusted a kick moves
+// it on.
 type beatGrid struct {
 	beat    int
 	pattern int
@@ -381,10 +381,9 @@ const gridPatterns = 5
 
 func (g *beatGrid) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 	next := false
-	if f.sig.Tempo > 0 {
+	if f.sig.onTheBeat() {
 		if f.sig.Beat != g.beat {
-			g.beat = f.sig.Beat
-			next = f.sig.beatWeight() > 0.5 || g.beat%4 == 0
+			g.beat, next = f.sig.Beat, true
 		}
 		g.fade = f.sig.onBeat(math.Pow(1-f.sig.Phase, 2))
 	} else {
@@ -397,7 +396,7 @@ func (g *beatGrid) draw(f *frame, v [4]float64, clock float64, buf []float64) {
 	if next {
 		g.pattern = f.rng.IntN(gridPatterns)
 		g.seed = f.rng.IntN(1 << 16)
-		if f.sig.Tempo == 0 {
+		if !f.sig.onTheBeat() {
 			g.fade = 1
 		}
 	}

@@ -106,8 +106,10 @@ type replayWindow struct {
 // its confidence at the end, the share of frames with a tempo, the mean
 // phase at the kicks and how closely the kicks gather around it, and the
 // frames on which the phase moved more than 0.08 of a beat from where the
-// tempo would take it. With SKY_ESTIMATES set it also prints every estimate
-// of the tempo.
+// tempo would take it. At the end of each track it prints the kicks above
+// 0.6 heard without a tempo, the mean Busy and beat weight, and the
+// character. With SKY_ESTIMATES set it also prints every estimate of the
+// tempo.
 func TestReplayARecording(t *testing.T) {
 	path := os.Getenv("SKY_READINGS")
 	if path == "" {
@@ -124,6 +126,8 @@ func TestReplayARecording(t *testing.T) {
 		var l listener
 		var w replayWindow
 		var prev Signals
+		var flashes, frames int
+		var busy, weight float64
 		next, until := 0, 10.0
 		for at := 0.0; ; at += dt {
 			now := start.Add(time.Duration(at * float64(time.Second)))
@@ -140,6 +144,12 @@ func TestReplayARecording(t *testing.T) {
 				fmt.Printf("    %7.2f s  estimate %6.1f  strength %.2f  confidence %.2f\n", l.ear.now, l.tempo.bpm, l.tempo.sure, l.tempo.conf)
 			}
 			w.frames++
+			frames++
+			busy += s.Busy
+			weight += s.beatWeight()
+			if s.Tempo == 0 && s.Kick > 0.6 && prev.Kick <= 0.6 {
+				flashes++
+			}
 			if s.Kick > 0.5 && prev.Kick <= 0.5 {
 				w.kicks++
 				if s.Tempo > 0 {
@@ -170,5 +180,8 @@ func TestReplayARecording(t *testing.T) {
 				until += 10
 			}
 		}
+		c := l.char
+		fmt.Printf("  kicks above 0.6 without a tempo %d, mean busy %.2f, mean beat weight %.2f, character calm %.2f drive %.2f grit %.2f flow %.2f\n",
+			flashes, busy/float64(frames), weight/float64(frames), c.Calm, c.Drive, c.Grit, c.Flow)
 	}
 }

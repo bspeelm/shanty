@@ -206,7 +206,7 @@ func TestThePhaseGlidesOntoTheBeatAndNeverJumps(t *testing.T) {
 // offbeat. It returns the power at the low and high ends at t seconds.
 func sidechained(t float64) (float64, float64) {
 	x := math.Mod(t, 60.0/125)
-	bass := 0.05*(1-0.8*math.Exp(-x/0.15)) + 0.12*math.Exp(-x/0.04)
+	bass := 0.05*(1-0.8*math.Exp(-x/0.15)) + 0.4*math.Exp(-x/0.04)
 	hat := 0.0
 	if math.Abs(x-60.0/250) < 0.03 {
 		hat = 0.02
@@ -214,24 +214,69 @@ func sidechained(t float64) (float64, float64) {
 	return bass, hat
 }
 
-// swaying has no beat: the low end swells and fades over seven seconds, and
+// swaying has no beat: the low end swells and fades over seven seconds, soft
+// low notes come in over a tenth of a second and fade at random moments, and
 // the high end flickers at random moments.
 func swaying() func(t float64) (float64, float64) {
 	rng := rand.New(rand.NewPCG(7, 7))
-	var flickers []float64
+	var flickers, notes []float64
 	for t := 0.0; t < 300; t += 0.1 + 0.6*rng.Float64() {
 		flickers = append(flickers, t)
 	}
+	for t := 0.0; t < 300; t += 0.4 + 1.6*rng.Float64() {
+		notes = append(notes, t)
+	}
 	return func(t float64) (float64, float64) {
 		v := 0.5 + 0.5*math.Sin(2*math.Pi*t/7)
+		bass := 0.004 + 0.02*v*v
+		for _, n := range notes {
+			switch d := t - n; {
+			case d >= 0 && d < 0.12:
+				bass += 0.03 * d / 0.12
+			case d >= 0.12 && d < 3:
+				bass += 0.03 * math.Exp(-(d-0.12)/0.8)
+			}
+		}
 		hat := 0.0005
 		for _, f := range flickers {
 			if d := t - f; d >= 0 && d < 0.04 {
 				hat = 0.02
 			}
 		}
-		return 0.002 + 0.05*v*v, hat
+		return bass, hat
 	}
+}
+
+// pulseCount notes the times a value pulses: rises above 0.7 after falling
+// below 0.3.
+type pulseCount struct {
+	low   bool
+	times []float64
+}
+
+func (p *pulseCount) see(v, at float64) {
+	if v < 0.3 {
+		p.low = true
+	}
+	if v > 0.7 && p.low {
+		p.times = append(p.times, at)
+		p.low = false
+	}
+}
+
+// most returns the most pulses within any ten seconds.
+func (p *pulseCount) most() int {
+	most := 0
+	for i, at := range p.times {
+		n := 0
+		for _, later := range p.times[i:] {
+			if later < at+10 {
+				n++
+			}
+		}
+		most = max(most, n)
+	}
+	return most
 }
 
 // hearJittered runs a listener on a synthetic track for secs seconds, with
@@ -276,12 +321,20 @@ func TestKicksUnderASidechainedBasslineHoldTheBeatAndOffbeatHatsDoNot(t *testing
 func TestMusicWithoutABeatDoesNotPulse(t *testing.T) {
 	var tempos, frames int
 	var sure float64
-	// Each beat-driven source notes when it pulses: a rise above 0.7 after a
-	// fall below 0.3.
-	pulses := map[int][]float64{}
-	low := map[int]bool{}
+	names := []string{"the phase source", "the bar source", "the kick source", "the beat grid", "the landscape's pulse"}
+	counts := make([]pulseCount, len(names))
+	f := field(20, 8)
+	buf := make([]float64, f.fw*f.fh)
+	var grid beatGrid
+	set := settings["aurora"]
+	sky := newLandscape(rand.New(rand.NewPCG(2, 2)), set)
+	beat := 0
 	hearJittered(swaying(), 180, func(heard float64, s Signals) {
+		f.sig = s
+		grid.draw(f, [4]float64{0.5, 0.5, 0.5, 0.5}, heard, buf)
+		sky.draw(f, [4]float64{0.5, 0.5, 0.5, 0.5}, heard, buf)
 		if heard < 20 {
+			beat = grid.beat
 			return
 		}
 		frames++
@@ -289,34 +342,221 @@ func TestMusicWithoutABeatDoesNotPulse(t *testing.T) {
 			tempos++
 		}
 		sure = math.Max(sure, s.Sure)
-		for _, src := range []int{srcPhase, srcBar} {
-			v := s.source(src, heard)
-			if v < 0.3 {
-				low[src] = true
-			}
-			if v > 0.7 && low[src] {
-				pulses[src] = append(pulses[src], heard)
-				low[src] = false
-			}
+		counts[0].see(s.source(srcPhase, heard), heard)
+		counts[1].see(s.source(srcBar, heard), heard)
+		counts[2].see(s.source(srcKick, heard), heard)
+		if grid.beat != beat {
+			counts[3].times, beat = append(counts[3].times, heard), grid.beat
 		}
+		counts[4].see(sky.pulse, heard)
 	})
 	if tempos > 0 {
 		t.Errorf("music without a beat was given a tempo on %d of %d frames, %.2f sure", tempos, frames, sure)
 	}
-	for _, src := range []int{srcPhase, srcBar} {
-		// The most pulses within any ten seconds.
-		most := 0
-		for i, at := range pulses[src] {
-			n := 0
-			for _, later := range pulses[src][i:] {
-				if later < at+10 {
-					n++
+	for i, name := range names {
+		if hz := float64(counts[i].most()) / 10; hz > 0.5 {
+			t.Errorf("%s pulsed %.1f times a second on music without a beat", name, hz)
+		}
+	}
+}
+
+// drums plays a four-beat bar at bpm into a tempo for secs seconds, with
+// kicks and snares on the given beats of the bar, counted from 0, and frames
+// of 1/30 s varied by up to 10 ms. It calls each frame after the first
+// twenty seconds with the tempo reported.
+func drums(bpm float64, kicks, snares []float64, secs float64, each func(tempo float64)) {
+	var tp tempo
+	rng := rand.New(rand.NewPCG(1, 2))
+	period := 60 / bpm
+	for now := 0.0; now < secs; {
+		dt := 1.0/30 + (rng.Float64()*2-1)*0.01
+		before := now
+		now += dt
+		struck := func(beats []float64) float64 {
+			for _, b := range beats {
+				for bar := math.Floor(before / (4 * period)); bar <= math.Floor(now/(4*period)); bar++ {
+					if at := (bar*4 + b) * period; at > before && at <= now {
+						return 1
+					}
 				}
 			}
-			most = max(most, n)
+			return 0
 		}
-		if hz := float64(most) / 10; hz > 0.5 {
-			t.Errorf("source %d pulsed %.1f times a second on music without a beat", src, hz)
+		got, _, _ := tp.hear(struck(kicks), struck(snares), dt)
+		if now > 20 {
+			each(got)
 		}
+	}
+}
+
+func TestSyncopatedKicksLockOnTheBeatOfTheBar(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		bpm           float64
+		kicks, snares []float64
+		// tempos are the tempos, the beat or an octave of it, that count
+		// as found.
+		tempos []float64
+	}{
+		{"kicks on 1 and the and of 2 at 100 BPM", 100, []float64{0, 1.5}, []float64{1, 3}, []float64{100}},
+		{"hip-hop at 90 BPM", 90, []float64{0, 1.5, 2}, []float64{1, 3}, []float64{90}},
+		{"drum and bass at 170 BPM", 170, []float64{0, 1.5}, []float64{1, 3}, []float64{170, 85}},
+	} {
+		held, frames, wrong := 0, 0, 0.0
+		drums(tc.bpm, tc.kicks, tc.snares, 100, func(bpm float64) {
+			frames++
+			if bpm == 0 {
+				return
+			}
+			held++
+			found := false
+			for _, want := range tc.tempos {
+				found = found || math.Abs(bpm/want-1) < 0.02
+			}
+			if !found {
+				wrong = bpm
+			}
+		})
+		if held < frames*9/10 {
+			t.Errorf("%s held a tempo on %d of %d frames", tc.name, held, frames)
+		}
+		if wrong != 0 {
+			t.Errorf("%s was heard at %.1f BPM", tc.name, wrong)
+		}
+	}
+}
+
+func TestFourOnTheFloorAt175HoldsOneTempo(t *testing.T) {
+	held, frames := 0, 0
+	lo, hi := math.Inf(1), 0.0
+	drums(175, []float64{0, 1, 2, 3}, nil, 100, func(bpm float64) {
+		frames++
+		if bpm > 0 {
+			held++
+			lo, hi = math.Min(lo, bpm), math.Max(hi, bpm)
+		}
+	})
+	if held < frames*95/100 {
+		t.Errorf("a steady kick at 175 BPM held a tempo on %d of %d frames", held, frames)
+	}
+	if hi/lo > 1.02 {
+		t.Errorf("a steady kick at 175 BPM was heard anywhere from %.1f to %.1f BPM", lo, hi)
+	}
+	if mid := (lo + hi) / 2; math.Abs(mid/175-1) > 0.02 && math.Abs(mid/87.5-1) > 0.02 {
+		t.Errorf("a steady kick at 175 BPM was heard at %.1f BPM", mid)
+	}
+}
+
+func TestRefiningATempoIsNotPulledByOffbeatOnsetsOrHalfTime(t *testing.T) {
+	period := 60 / 125.0 / tempoStep
+	onsets := make([]float64, tempoWindow)
+	for i := range onsets {
+		x := math.Mod(float64(i), period)
+		if x < 1 || math.Abs(x-period/2) < 0.5 {
+			onsets[i] = 1
+		}
+	}
+	for _, tc := range []struct{ from, want float64 }{{122, 125}, {128, 125}, {62.5, 62.5}} {
+		if got := refine(onsets, tempoStep, tc.from); math.Abs(got/tc.want-1) > 0.005 {
+			t.Errorf("kicks at 125 BPM with offbeats, refined from %.1f, were heard at %.1f BPM, want %.1f", tc.from, got, tc.want)
+		}
+	}
+}
+
+func TestATempoThatChangesIsDroppedAndFoundAgainRatherThanDragged(t *testing.T) {
+	var tp tempo
+	dt := 1.0 / 30
+	var heard []float64
+	for now := 0.0; now < 80; now += dt {
+		bpm := 125.0
+		if now > 40 {
+			bpm = 117
+		}
+		onset := 0.0
+		if math.Floor(now*bpm/60) != math.Floor((now-dt)*bpm/60) {
+			onset = 1
+		}
+		if got, _, _ := tp.step(onset, dt); got > 0 {
+			heard = append(heard, got)
+		}
+	}
+	for _, got := range heard {
+		if math.Abs(got/125-1) > 0.02 && math.Abs(got/117-1) > 0.02 {
+			t.Fatalf("a tempo moving from 125 to 117 BPM was reported at %.1f BPM on the way", got)
+		}
+	}
+	if last := heard[len(heard)-1]; math.Abs(last/117-1) > 0.02 {
+		t.Errorf("after the change the tempo was %.1f BPM, want 117", last)
+	}
+}
+
+// segment is a stretch of a synthetic track heard from position from for
+// secs seconds.
+type segment struct {
+	snd        func(float64) (float64, float64)
+	from, secs float64
+}
+
+// hearSegments runs a listener through segments one after another, each
+// starting the measuring filter's count again as a new track or a seek does,
+// with frames of 1/30 s varied by up to 10 ms. It calls each frame with the
+// segment's index, the position heard and the signals.
+func hearSegments(segs []segment, each func(seg int, heard float64, s Signals)) {
+	var l listener
+	rng := rand.New(rand.NewPCG(3, 9))
+	for i, sg := range segs {
+		var tr track
+		for at := sg.from; at < sg.from+sg.secs; {
+			dt := 1.0/30 + (rng.Float64()*2-1)*0.01
+			at += dt
+			b, h := sg.snd(at)
+			diff := b*band(bassHz, trackRate) + h*band(trebleHz, trackRate)
+			l.ear.hear(tr.block(dt, both(b+h), both(diff), 0, at-0.27))
+			each(i, l.ear.now, l.step(dt, time.Time{}))
+		}
+	}
+}
+
+func TestANewTrackWithoutABeatDoesNotKeepTheLastTracksTempo(t *testing.T) {
+	kept, start := 0, -1.0
+	held := false
+	hearSegments([]segment{{sidechained, 0, 40}, {swaying(), 0, 30}}, func(seg int, heard float64, s Signals) {
+		if seg == 0 {
+			held = s.Tempo > 0
+			return
+		}
+		if start < 0 {
+			start = heard
+		}
+		if heard > start+1 && s.Tempo > 0 {
+			kept++
+		}
+	})
+	if !held {
+		t.Fatal("the techno before the change of track had no tempo to keep")
+	}
+	if kept > 0 {
+		t.Errorf("music without a beat kept the last track's tempo for %d frames", kept)
+	}
+}
+
+func TestAfterASeekThePhaseIsNotHeldConfidentlyOffTheKicks(t *testing.T) {
+	period := 60.0 / 125
+	// The seek lands 0.4 of a beat away from where the beat count was.
+	to := 100 + 0.4*period
+	worst, held := 0.0, 0
+	hearSegments([]segment{{sidechained, 0, 40}, {sidechained, to, 30}}, func(seg int, heard float64, s Signals) {
+		if seg == 0 || s.Tempo == 0 || heard < to+0.5 {
+			return
+		}
+		held++
+		off := s.Phase - math.Mod(heard/period, 1)
+		worst = math.Max(worst, math.Abs(off-math.Round(off)))
+	})
+	if worst > 0.1 {
+		t.Errorf("after a seek a tempo was reported with the phase %.2f of a beat from the kicks", worst)
+	}
+	if held < 15*30 {
+		t.Errorf("after a seek the tempo was held on only %d frames of the next thirty seconds", held)
 	}
 }
