@@ -36,6 +36,10 @@ const (
 	// downbeats are written, one time per line, as <name>.beats and
 	// <name>.downbeats, and its hits as <name>.hits.
 	corpusOutEnv = "SHANTY_CORPUS_OUT"
+	// corpusWholeEnv, when set, is a directory of blocks measured by the
+	// analyser before the bands, written by TestCorpusWholeSound in
+	// internal/mpv; the cues of the two analyses are compared.
+	corpusWholeEnv = "SHANTY_CORPUS_WHOLE"
 	// matchWithin is how close an estimated beat must be to a reference beat
 	// to count as the same beat.
 	matchWithin = 0.07
@@ -117,6 +121,9 @@ func evaluate(t *testing.T, file string, blocks []mpv.Block) string {
 		if err := os.WriteFile(filepath.Join(out, name+".hits"), []byte(lines.String()), 0o600); err != nil {
 			t.Error(err)
 		}
+	}
+	if whole := os.Getenv(corpusWholeEnv); whole != "" {
+		fmt.Fprintf(&b, "  cues against the analyser before the bands: %s\n", cueDiff(filepath.Join(whole, name+".gob"), plan))
 	}
 	ref, err := readBeats(filepath.Join(refDir(dir(file)), name+".beats"))
 	if err != nil {
@@ -367,6 +374,42 @@ func downbeatSanity(p *sky.Plan, blocks []sky.Block) string {
 	}
 	return fmt.Sprintf("%d of %d entries on a downbeat (%.0f%%, chance %.0f%%); kick by place in bar %s",
 		on, all, 100*float64(on)/math.Max(float64(all), 1), 100/float64(p.Meter), strings.Join(parts, " "))
+}
+
+// cueDiff compares a plan's cues with those of the plan built from the
+// blocks in path: how many match a cue of the same kind within half a
+// second, those that do not, and the largest difference in Tension.
+func cueDiff(path string, plan *sky.Plan) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return err.Error()
+	}
+	defer f.Close() // a read-only file has nothing to flush
+	var blocks []mpv.Block
+	if err := gob.NewDecoder(f).Decode(&blocks); err != nil {
+		return err.Error()
+	}
+	old := sky.NewPlan(planBlocks(blocks))
+	unmatched := func(a, b []sky.Cue) []string {
+		var out []string
+		for _, c := range a {
+			found := false
+			for _, d := range b {
+				found = found || (d.Kind == c.Kind && math.Abs(d.At-c.At) <= 0.5)
+			}
+			if !found {
+				out = append(out, fmt.Sprintf("%s %.1f", c.Kind, c.At))
+			}
+		}
+		return out
+	}
+	gone, added := unmatched(old.Cues, plan.Cues), unmatched(plan.Cues, old.Cues)
+	tension := 0.0
+	for t := 0.0; t < plan.Length; t += 0.5 {
+		tension = math.Max(tension, math.Abs(plan.Tension(t)-old.Tension(t)))
+	}
+	return fmt.Sprintf("%d of %d the same; only before: [%s]; only now: [%s]; Tension differs by at most %.2f",
+		len(old.Cues)-len(gone), len(old.Cues), strings.Join(gone, ", "), strings.Join(added, ", "), tension)
 }
 
 func gaps(v []float64) []float64 {

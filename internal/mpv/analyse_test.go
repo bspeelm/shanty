@@ -112,14 +112,17 @@ func TestAnalyseReturnsEveryBlockWithItsWholeSoundAndFourBands(t *testing.T) {
 		t.Fatalf("got %d blocks, want 11", len(blocks))
 	}
 	for _, b := range blocks {
-		if b.Rate != 48000 || b.Scale != 1 || len(b.Channels) != 1 || len(b.Bands) != 4 {
-			t.Fatalf("a block has rate %d, scale %v, %d channels and %d bands, want 48000, 1, 1 and 4",
+		if b.Rate != 48000 || b.Scale != 1 || len(b.Channels) != 2 || len(b.Bands) != 4 {
+			t.Fatalf("a block has rate %d, scale %v, %d channels and %d bands, want 48000, 1, 2 and 4",
 				b.Rate, b.Scale, len(b.Channels), len(b.Bands))
 		}
 	}
 	first := blocks[0]
-	if want := (Channel{Loudness: -6.860854, Difference: 0.003394, Crossings: 3}); first.Channels[0] != want {
-		t.Errorf("the whole sound of the first block is %+v, want %+v", first.Channels[0], want)
+	want := Channel{Loudness: -9.871154, Difference: 0.0024, Crossings: 3 * 48000.0 / 44100}
+	for i, c := range first.Channels {
+		if c != want {
+			t.Errorf("channel %d of the whole sound of the first block is %+v, want %+v", i+1, c, want)
+		}
 	}
 	if want := []float64{-7.215836, -18.148681, -38.191460, -75.977048}; !slices.Equal(first.Bands, want) {
 		t.Errorf("the bands of the first block are %v, want %v", first.Bands, want)
@@ -154,9 +157,81 @@ func TestTheAnalysingFilterMeasuresTheWholeSoundAndFourBandsAtAFixedRate(t *test
 	}
 }
 
+func TestTheWholeSoundIsMeasuredInTwoChannelsAndNotAMixToOne(t *testing.T) {
+	split := strings.Index(analyseFilter, "asplit=2")
+	if split < 0 || strings.Contains(analyseFilter[:split], "channel_layouts") {
+		t.Fatalf("the channels are changed before the whole sound is split from the bands:\n%s", analyseFilter)
+	}
+	whole, _, _ := strings.Cut(analyseFilter[split:], "[f]")
+	if !strings.Contains(whole, "channel_layouts=stereo") || strings.Contains(whole, "mono") {
+		t.Errorf("the whole sound is not measured in two channels:\n%s", whole)
+	}
+}
+
+func TestAntiphaseStereoIsMeasuredAtItsLevelAndNotAsSilence(t *testing.T) {
+	b, err := os.ReadFile(measuredAntiphase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := parseBlocks(strings.NewReader(string(b)))
+	if len(blocks) != 3 {
+		t.Fatalf("got %d blocks, want 3", len(blocks))
+	}
+	got := banded(blocks[0], audioParams{Rate: 44100, Channels: 2})
+	if len(got.Channels) != 2 || len(got.Bands) != 4 {
+		t.Fatalf("the block has %d channels and %d bands, want 2 and 4", len(got.Channels), len(got.Bands))
+	}
+	for i, c := range got.Channels {
+		if math.IsInf(c.Loudness, -1) || c.Loudness < -10 {
+			t.Errorf("channel %d of antiphase stereo measures %v dB", i+1, c.Loudness)
+		}
+	}
+}
+
+func TestAMonoTrackMeasuresItsWholeSoundAtTheLevelOfItsChannel(t *testing.T) {
+	blocks := parseBlocks(strings.NewReader(string(mustRead(t, measuredBands))))
+	stereo := banded(blocks[0], audioParams{Rate: 48000, Channels: 2})
+	mono := banded(blocks[0], audioParams{Rate: 48000, Channels: 1})
+	if d := mono.Channels[0].Loudness - stereo.Channels[0].Loudness; math.Abs(d-10*math.Log10(2)) > 1e-9 {
+		t.Errorf("a track with one channel is raised by %v dB, want 3.01", d)
+	}
+	if r := mono.Channels[0].Difference / stereo.Channels[0].Difference; math.Abs(r-math.Sqrt2) > 1e-9 {
+		t.Errorf("a track with one channel has its differences scaled by %v, want 1.414", r)
+	}
+}
+
+func TestZeroCrossingsAreCountedAsAtTheTracksOwnRate(t *testing.T) {
+	blocks := parseBlocks(strings.NewReader(string(mustRead(t, measuredBands))))
+	at48 := banded(blocks[0], audioParams{Rate: 48000, Channels: 2})
+	at96 := banded(blocks[0], audioParams{Rate: 96000, Channels: 2})
+	if at96.Channels[0].Crossings != at48.Channels[0].Crossings/2 {
+		t.Errorf("crossings at 96 kHz are %v, at 48 kHz %v; want half", at96.Channels[0].Crossings, at48.Channels[0].Crossings)
+	}
+	if at48.Bands[0] != blocks[0].Channels[2].Loudness {
+		t.Errorf("the lowest band is %v, want the third channel's %v", at48.Bands[0], blocks[0].Channels[2].Loudness)
+	}
+}
+
+func TestATrackMeasuredWithoutItsFormatIsAnError(t *testing.T) {
+	opt, _ := analysing(t, noParamsEnv+"=1")
+	blocks, err := Analyse(t.Context(), opt, streamURL())
+	if err == nil || !strings.Contains(err.Error(), "format") {
+		t.Errorf("got %d blocks and error %v, want an error saying the format is unknown", len(blocks), err)
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
 func TestABlockMeasuredWithoutBandsKeepsItsChannelsAndHasNoBands(t *testing.T) {
 	blocks := parseBlocks(strings.NewReader(recorded(t)))
-	b := banded(blocks[0])
+	b := banded(blocks[0], audioParams{})
 	if len(b.Channels) != 2 || len(b.Bands) != 0 || b.Rate != 48000 || b.Scale != 1 {
 		t.Errorf("a two-channel block became %+v", b)
 	}
