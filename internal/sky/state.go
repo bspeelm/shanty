@@ -105,6 +105,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	}
 	char := s.character()
 	st := styleFor(char)
+	st.steady(char, s.lis.sig.beatWeight())
 	sig, section, planned := s.foresee(sig, st, dt)
 	s.sig = sig
 	// With a plan, the plan's sections replace those heard live.

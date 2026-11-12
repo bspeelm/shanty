@@ -51,7 +51,7 @@ var profiles = [4]style{
 	},
 	{ // Drive
 		kinds: map[string]float64{"tunnel": favour, "lattice": favour, "rings": favour, "grid": favour, "rule": favour, "spiral": 2,
-			"aurora": 1, "night lake": 0.15, "dawn sea": 0.15, "storm": 0.15},
+			"aurora": 1, "night lake": 0.15, "dawn sea": 0.15, "storm": 0.03},
 		sources: [sources]float64{srcKick: 5, srcPhase: 5, srcBar: 4, srcBass: 2, srcLevel: 1, srcSnap: 1, srcRelease: 2},
 		warps:   [warpKinds]float64{warpKaleido: 5, warpRotate: 4, warpZoom: 3, warpMirror: 2, warpPolar: 1},
 		glyphs:  [4]float64{glyphHalf: 5, glyphBraille: 2, glyphShade: 2, glyphASCII: 1},
@@ -120,6 +120,18 @@ func styleFor(c Character) *style {
 		out.warps[j] += 0.2
 	}
 	return out
+}
+
+// steadyStorm is the storm's weight in the Grit profile for music whose
+// tempo is sure.
+const steadyStorm = 0.3
+
+// steady lowers the storm's weight for music with a steady beat. sure is how
+// sure the tempo is, from 0 to 1. As far as it is sure, the Grit profile
+// weighs the storm at steadyStorm rather than at its own weight.
+func (s *style) steady(c Character, sure float64) {
+	grit := c.sharpened().Grit
+	s.kinds["storm"] -= grit * clamp01(sure) * (profiles[2].kinds["storm"] - steadyStorm)
 }
 
 // kindWeight is how often a component is chosen.
