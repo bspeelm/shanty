@@ -399,7 +399,7 @@ func (l *landscape) feel(f *frame) {
 		pulseAt = sig.Kick
 		if sig.Tempo > 0 {
 			p := 1 - sig.Phase
-			pulseAt = p * p * p * p
+			pulseAt = sig.blendBeat(p*p*p*p, sig.Kick)
 		}
 	}
 	if !l.ready {

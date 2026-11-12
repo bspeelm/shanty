@@ -448,7 +448,7 @@ func (s *scene) step(f *frame) {
 		}
 		w.ready = true
 		turn := (w.v[1] - 0.5) * 1.5
-		if s.lock > 0.5 && sig.Tempo > 0 {
+		if s.lock > 0.5 && sig.onTheBeat() {
 			// Turning steps a little on each beat and settles between.
 			if sig.Beat != w.beat {
 				w.beat = sig.Beat

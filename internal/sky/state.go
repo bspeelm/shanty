@@ -125,7 +125,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 			if st.lock > 0.5 {
 				bars = 16
 			}
-			onBar := sig.Tempo == 0 || (sig.Beat%bars == 0 && sig.Phase < 0.2)
+			onBar := !sig.onTheBeat() || (sig.Beat%bars == 0 && sig.Phase < 0.2)
 			if onBar || s.waiting > 8 || changed || planned {
 				s.change(sig, st, char, changed || moved)
 				if planned {
@@ -134,7 +134,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 			}
 		}
 	}
-	if sig.Tempo > 0 && sig.Beat%8 == 0 && sig.Beat != s.moved && sig.Kick > 0.7 {
+	if sig.onTheBeat() && sig.Beat%8 == 0 && sig.Beat != s.moved && sig.Kick > 0.7 {
 		s.moved = sig.Beat
 		s.cur.mutate(s.sims, st)
 	}

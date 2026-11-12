@@ -35,10 +35,11 @@ lint:
 
 vet:
 	go vet ./...
-	# The integration test is behind a build tag, so the line above never
-	# compiles it. Vetting it needs no server and catches a change to a
-	# signature it uses, which is how it has been broken before.
+	# The integration test and the replay of a recording are behind build
+	# tags, so the line above never compiles them. Vetting them needs no
+	# server and no recording, and catches a change to a signature they use.
 	go vet -tags=integration ./...
+	go vet -tags=replay ./...
 
 test:
 	go test ./...

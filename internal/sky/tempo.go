@@ -9,17 +9,22 @@ const (
 	tempoStep   = 1.0 / 30
 )
 
-// tempo finds the beat from kicks: an autocorrelation over the last few
-// seconds gives the period, the way the kicks line up refines it, and a
-// phase-locked loop moves the phase towards each kick by a limited amount.
-// Kicks are kept on a grid of fixed steps in time, so frames of uneven length
-// measure the same period.
+// tempo finds the beat. An autocorrelation of the kicks and snaps over the
+// last few seconds gives the period, and the way they line up refines it.
+// A phase-locked loop moves the phase towards each kick by a limited amount
+// while the tempo is reported, and freely while it is not. Onsets are kept
+// on a grid of fixed steps in time, so frames of uneven length measure the
+// same period.
 type tempo struct {
+	// onsets holds the onset strength of each step, and kicks 1 for each
+	// step with a kick.
 	onsets []float64
+	kicks  []float64
 	blur   []float64
 	steps  int
 	since  float64
 	peak   float64
+	kick   bool
 	// bpm is the tempo held, sure how strongly the last estimate matched,
 	// and found the last tempoAgree estimates.
 	bpm   float64
@@ -31,10 +36,12 @@ type tempo struct {
 	locked bool
 	phase  float64
 	beat   int
-	// struck is whether the last frame's kick was strong, and kicked the
-	// beat count, with its phase, of the last kick that moved the phase.
+	// struck is whether the last frame's kick was strong, kicked the beat
+	// count, with its phase, of the last kick that moved the phase, and far
+	// the running share of recent kicks that fell far from a beat.
 	struck bool
 	kicked float64
+	far    float64
 }
 
 // The least strength an estimate needs to count, the least it needs when it
@@ -48,39 +55,61 @@ const (
 )
 
 // The confidence at which the tempo is reported and below which it is
-// dropped, and how far the confidence moves towards its target on each
-// estimate.
+// dropped, how far the confidence moves towards its target on each estimate,
+// and how far the tempo held moves towards an estimate that agrees with it.
 const (
 	tempoLock   = 0.35
 	tempoUnlock = 0.15
 	tempoRise   = 0.25
 	tempoFall   = 0.7
+	tempoFollow = 0.2
 )
 
 // tempoApart is the least distance in beats between two kicks that move the
 // phase.
 const tempoApart = 0.5
 
-// tempoPull is the share of a kick's distance from the beat that the phase
-// moves by, and tempoGlide the most it moves on one kick, in beats.
+// While the tempo is reported, a kick moves the phase by tempoPull of its
+// distance from the beat, and by at most tempoGlide, in beats. A kick
+// further than tempoNear from a beat moves it only while the running share
+// of such kicks, which moves by tempoFarRate on each kick, is above
+// tempoFarShare. While the tempo is not reported, a kick moves the phase by
+// tempoSeek of its distance.
 const (
-	tempoPull  = 0.3
-	tempoGlide = 0.05
+	tempoPull     = 0.3
+	tempoGlide    = 0.05
+	tempoNear     = 0.25
+	tempoFarRate  = 0.35
+	tempoFarShare = 0.7
+	tempoSeek     = 0.5
 )
 
-// step takes one frame's kick strength and returns the tempo, the phase within
-// the beat and the beat count. The tempo is found from the kicks of 0.5 and
-// above, and each kick moves the phase. The tempo is 0 while the confidence
-// is too low.
+// step takes one frame's kick strength and returns the tempo, the phase
+// within the beat and the beat count, as hear does with no snaps.
 func (t *tempo) step(kick, dt float64) (float64, float64, int) {
-	if kick >= 0.5 {
+	return t.hear(kick, 0, dt)
+}
+
+// hear takes one frame's kick and snap strengths and returns the tempo, the
+// phase within the beat and the beat count. The tempo is found from the
+// kicks and snaps of 0.5 and above, and kicks move the phase. The tempo is 0
+// while the confidence is too low.
+func (t *tempo) hear(kick, snap, dt float64) (float64, float64, int) {
+	if snap >= 0.5 {
 		t.peak = 1
 	}
+	if kick >= 0.5 {
+		t.peak, t.kick = 1, true
+	}
 	for t.since += dt; t.since >= tempoStep; t.since -= tempoStep {
-		t.onsets = append(t.onsets, t.peak)
-		t.peak = 0
+		k := 0.0
+		if t.kick {
+			k = 1
+		}
+		t.onsets, t.kicks = append(t.onsets, t.peak), append(t.kicks, k)
+		t.peak, t.kick = 0, false
 		if len(t.onsets) > tempoWindow {
-			t.onsets = t.onsets[1:]
+			t.onsets, t.kicks = t.onsets[1:], t.kicks[1:]
 		}
 		t.steps++
 		if t.steps%15 == 0 && len(t.onsets) >= tempoWindow/2 {
@@ -94,8 +123,7 @@ func (t *tempo) step(kick, dt float64) (float64, float64, int) {
 	at := float64(t.beat) + t.phase
 	if kick > 0.5 && !t.struck && at-t.kicked >= tempoApart {
 		t.kicked = at
-		off := t.phase - math.Round(t.phase)
-		t.phase -= math.Max(-tempoGlide, math.Min(tempoGlide, off*tempoPull))
+		t.pull(t.phase - math.Round(t.phase))
 	}
 	t.struck = kick > 0.5
 	for t.phase >= 1 {
@@ -111,23 +139,50 @@ func (t *tempo) step(kick, dt float64) (float64, float64, int) {
 	return t.bpm, t.phase, t.beat
 }
 
+// pull moves the phase for a kick off beats from the nearest beat.
+func (t *tempo) pull(off float64) {
+	far := math.Abs(off) >= tempoNear
+	v := 0.0
+	if far {
+		v = 1
+	}
+	t.far += (v - t.far) * tempoFarRate
+	switch {
+	case !t.locked:
+		t.phase -= off * tempoSeek
+	case !far || t.far > tempoFarShare:
+		t.phase -= math.Max(-tempoGlide, math.Min(tempoGlide, off*tempoPull))
+	}
+}
+
+// restart forgets the onsets and the confidence, for a new track or a seek.
+// It keeps the tempo held, and an estimate that agrees with that tempo needs
+// only a strength of tempoHold.
+func (t *tempo) restart() {
+	t.onsets, t.kicks, t.found = t.onsets[:0], t.kicks[:0], t.found[:0]
+	t.peak, t.kick, t.since = 0, false, 0
+	t.conf, t.locked, t.far = 0, false, 0
+}
+
 // estimate finds the tempo over the onsets held, spread by tempoBlur, and
-// moves the confidence: towards the estimate's strength when the last
-// tempoAgree estimates are strong enough, made from enough onsets, and agree,
-// and down otherwise.
+// moves the confidence. The confidence moves towards the estimate's strength
+// when the last tempoAgree estimates are strong enough, made from enough
+// onsets, and agree, and, while the tempo is reported, agree with the tempo
+// held; otherwise it falls.
 func (t *tempo) estimate() {
 	ref := t.bpm
 	if ref == 0 && len(t.found) > 0 {
 		ref = t.found[len(t.found)-1]
 	}
 	t.blur = blur(t.blur, t.onsets, tempoBlur)
-	bpm, sure := periodOf(t.blur, tempoStep)
+	bpm, sure := beatOf(t.blur, tempoStep)
 	bpm = refine(t.onsets, tempoStep, bpm)
 	bpm = sameOctave(bpm, ref)
 	t.sure = sure
-	held := t.bpm > 0 && math.Abs(bpm/t.bpm-1) <= tempoClose
+	held := t.bpm > 0 && sameTempo(bpm, t.bpm)
 	beats := float64(len(t.onsets)) * tempoStep * bpm / 60
-	few := float64(struckIn(t.onsets)) < math.Max(tempoFewest, tempoShare*beats)
+	few := float64(struckIn(t.onsets)) < math.Max(tempoFewest, tempoShare*beats) ||
+		float64(struckIn(t.kicks)) < tempoKicks*beats
 	if bpm == 0 || few || sure < tempoHold || sure < tempoSure && !held {
 		t.found = t.found[:0]
 	} else {
@@ -136,8 +191,16 @@ func (t *tempo) estimate() {
 			t.found = t.found[1:]
 		}
 	}
-	if agree(t.found) {
-		t.bpm = t.found[len(t.found)-1]
+	mean, ok := agree(t.found)
+	switch {
+	case ok && !t.locked:
+		t.bpm = mean
+	case ok && sameTempo(mean, t.bpm):
+		t.bpm += (mean - t.bpm) * tempoFollow
+	default:
+		ok = false
+	}
+	if ok {
 		t.conf += (clamp01(sure/0.6) - t.conf) * tempoRise
 	} else {
 		t.conf *= tempoFall
@@ -150,9 +213,62 @@ func (t *tempo) estimate() {
 	}
 }
 
+// beatOf returns the tempo in beats per minute between 60 and 180 whose beat
+// best matches the repeats in the onset strengths, and how strongly it
+// matches, from 0 to 1. A beat is matched by the mean autocorrelation at
+// one, two, three and four beats, which matches a pattern that repeats each
+// bar at its beat even when some beats have no onset. Tempos near 120 are
+// preferred when two match about equally.
+func beatOf(onsets []float64, dt float64) (float64, float64) {
+	n := len(onsets)
+	mean := 0.0
+	for _, v := range onsets {
+		mean += v
+	}
+	mean /= float64(n)
+	zero := 0.0
+	for _, v := range onsets {
+		zero += (v - mean) * (v - mean)
+	}
+	if zero == 0 {
+		return 0, 0
+	}
+	corr := func(lag int) float64 {
+		sum := 0.0
+		for i := lag; i < n; i++ {
+			sum += (onsets[i] - mean) * (onsets[i-lag] - mean)
+		}
+		return sum / float64(n-lag) / (zero / float64(n))
+	}
+	lo, hi := 60/180/dt, 60/60/dt
+	best, bestLag, bestScore := 0.0, 0.0, math.Inf(-1)
+	for lag := lo; lag <= hi && tempoComb*lag < float64(n-1); lag += 0.25 {
+		match := 0.0
+		for k := 1; k <= tempoComb; k++ {
+			match += corr(int(math.Round(float64(k)*lag))) / tempoComb
+		}
+		bpm := 60 / (lag * dt)
+		if score := match * math.Exp(-math.Pow(math.Log2(bpm/120), 2)); score > bestScore {
+			best, bestLag, bestScore = match, lag, score
+		}
+	}
+	if bestLag == 0 || best <= 0 {
+		return 0, 0
+	}
+	return 60 / (bestLag * dt), clamp01(best)
+}
+
+// tempoComb is how many multiples of a beat beatOf matches it at. Beats are
+// tried a quarter of a step apart.
+const tempoComb = 4
+
+// sameTempo reports whether two tempos are within tempoClose of each other.
+func sameTempo(a, b float64) bool { return math.Abs(a/b-1) <= tempoClose }
+
 // refine returns the tempo within tempoSpread of bpm on which the onsets
-// line up best: the period for which the onsets, placed on a circle by their
-// time modulo the period, have the largest resultant.
+// line up best. Each onset is placed on a circle by its time as a share of
+// the beat, of half the beat and of a quarter of it, and the fit is the sum
+// of the squared resultants of the three.
 func refine(onsets []float64, dt, bpm float64) float64 {
 	if bpm == 0 {
 		return 0
@@ -161,14 +277,22 @@ func refine(onsets []float64, dt, bpm float64) float64 {
 	for k := -tempoTries; k <= tempoTries; k++ {
 		try := bpm * (1 + tempoSpread*float64(k)/tempoTries)
 		step := 2 * math.Pi * dt * try / 60
-		var x, y float64
+		var x, y [3]float64
 		for i, v := range onsets {
-			if v != 0 {
-				sn, cs := math.Sincos(step * float64(i))
-				x, y = x+v*cs, y+v*sn
+			if v == 0 {
+				continue
+			}
+			sn, cs := math.Sincos(step * float64(i))
+			for h := range 3 {
+				x[h], y[h] = x[h]+v*cs, y[h]+v*sn
+				sn, cs = 2*sn*cs, cs*cs-sn*sn
 			}
 		}
-		if fit := x*x + y*y; fit > bestFit {
+		fit := 0.0
+		for h := range 3 {
+			fit += x[h]*x[h] + y[h]*y[h]
+		}
+		if fit > bestFit {
 			best, bestFit = try, fit
 		}
 	}
@@ -208,31 +332,33 @@ func abs(i int) int {
 	return i
 }
 
-// tempoFewest is the least number of onsets an estimate is made from, and
-// tempoShare the least share of the beats in the window that must have one.
+// tempoFewest is the least number of onsets an estimate is made from,
+// tempoShare the least share of the beats in the window that must have an
+// onset, and tempoKicks the least share that must have a kick.
 const (
 	tempoFewest = 6
 	tempoShare  = 0.6
+	tempoKicks  = 0.25
 )
 
-// struckIn counts the onsets in a run of onset strengths: the steps at or
-// above 0.5 that follow one below it.
+// struckIn counts the onsets in a run of onset strengths: the steps above 0
+// that follow a step of 0.
 func struckIn(onsets []float64) int {
 	n, was := 0, false
 	for _, v := range onsets {
-		if v >= 0.5 && !was {
+		if v > 0 && !was {
 			n++
 		}
-		was = v >= 0.5
+		was = v > 0
 	}
 	return n
 }
 
-// agree reports whether there are tempoAgree estimates, all within
-// tempoClose of their mean.
-func agree(found []float64) bool {
+// agree returns the mean of the estimates, and whether there are tempoAgree
+// of them, all within tempoClose of their mean.
+func agree(found []float64) (float64, bool) {
 	if len(found) < tempoAgree {
-		return false
+		return 0, false
 	}
 	mean := 0.0
 	for _, v := range found {
@@ -240,11 +366,11 @@ func agree(found []float64) bool {
 	}
 	mean /= float64(len(found))
 	for _, v := range found {
-		if math.Abs(v/mean-1) > tempoClose {
-			return false
+		if !sameTempo(v, mean) {
+			return mean, false
 		}
 	}
-	return true
+	return mean, true
 }
 
 // sameOctave returns bpm moved onto the octave of the tempo held, when it is
