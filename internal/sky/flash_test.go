@@ -448,12 +448,34 @@ func TestTowardsWhiteFindsTheLightAskedFor(t *testing.T) {
 	}
 }
 
-func TestAResizeForgetsTheReferences(t *testing.T) {
+func TestAResizeDoesNotLetAFlashThrough(t *testing.T) {
+	g := guarded(make([]float64, 40*20), 40, 20, false)
+	g.resize(50, 20)
+	bright := make([]float64, 50*20)
+	fill(bright, 1)
+	g.apply(bright, slices.Clone(bright), 1.0/30, false)
+	if m := mean(bright); m > 0.5 {
+		t.Errorf("a white frame straight after a resize was drawn at a mean of %.2f over a dark picture", m)
+	}
+}
+
+func TestAValueThatIsNotANumberDoesNotSwitchTheGuardOff(t *testing.T) {
 	field := make([]float64, 40*20)
 	g := guarded(field, 40, 20, false)
-	g.resize(50, 20)
-	if g.ready {
-		t.Error("the guard kept its references across a resize")
+	field[17] = math.NaN()
+	g.apply(field, make([]float64, len(field)), 1.0/30, false)
+	for w := range g.ref {
+		for k, r := range g.ref[w] {
+			if math.IsNaN(r) {
+				t.Fatalf("region %d's reference is not a number", k)
+			}
+		}
+	}
+	bright := make([]float64, len(field))
+	fill(bright, 1)
+	g.apply(bright, slices.Clone(bright), 1.0/30, false)
+	if m := mean(bright); m > 0.5 {
+		t.Errorf("after a value that is not a number, a white frame was drawn at a mean of %.2f", m)
 	}
 }
 

@@ -52,9 +52,10 @@ type flashGuard struct {
 	xreg []int
 }
 
-// resize sets the guard for a field fw by fh and forgets every reference.
+// resize sets the guard for a field fw by fh. It keeps every reference: a
+// region's light is the same share of the picture at any size.
 func (g *flashGuard) resize(fw, fh int) {
-	g.fw, g.fh, g.ready = fw, fh, false
+	g.fw, g.fh = fw, fh
 	g.xcell, g.xfrac = spans(fw, guardCols)
 	g.ycell, g.yfrac = spans(fh, guardRows)
 	g.xreg = make([]int, fw)
@@ -95,6 +96,15 @@ func (g *flashGuard) apply(value, tone []float64, dt float64, half bool) {
 	way, power := lightDots, 3.0
 	if half {
 		way, power = lightHalf, 2
+	}
+	// A value or a tone that is not a number is drawn as nothing.
+	for i := range value {
+		if math.IsNaN(value[i]) {
+			value[i] = 0
+		}
+		if math.IsNaN(tone[i]) {
+			tone[i] = 0
+		}
 	}
 	for pass := range guardPasses {
 		lit, dark := g.measure(value, tone)
