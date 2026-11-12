@@ -409,6 +409,11 @@ func (s *scene) drawnGlyphs() glyphs {
 	return s.glyphs
 }
 
+// halves reports whether the scene draws any of its cells as half blocks.
+func (s *scene) halves() bool {
+	return s != nil && (s.glyphs == glyphHalf || s.toGlyphs == glyphHalf)
+}
+
 // changing reports whether the scene is still growing into its last change.
 func (s *scene) changing() bool {
 	for _, l := range s.layers {
