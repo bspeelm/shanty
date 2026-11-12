@@ -360,3 +360,110 @@ func TestALandscapeIsNeitherBentByWarpsNorCoveredByShapes(t *testing.T) {
 		t.Fatalf("%d new scenes and %d changes had a landscape", scenes, changes)
 	}
 }
+
+// tintedFrom is the largest difference in any channel of any step between a
+// palette and a setting's own.
+func tintedFrom(p []RGB, set setting) float64 {
+	own := set.paletteOf(nil)
+	most := 0.0
+	for i := range own {
+		for _, d := range [3]float64{
+			float64(p[i].R) - float64(own[i].R), float64(p[i].G) - float64(own[i].G), float64(p[i].B) - float64(own[i].B),
+		} {
+			most = math.Max(most, math.Abs(d))
+		}
+	}
+	return most
+}
+
+// landFor returns the name of the landscape a scene is arranged around, or
+// empty.
+func landFor(s *scene) string {
+	if !s.landed() {
+		return ""
+	}
+	return s.layers[0].name
+}
+
+func TestALandscapeIsDrawnInItsSettingsColoursNotTheScenesRandomOnes(t *testing.T) {
+	limit := landTint*255 + 1
+	for name, set := range settings {
+		st := styleFor(Character{Grit: 1})
+		st.kinds[name] = 1e6
+		for seed := range uint64(20) {
+			rng := rand.New(rand.NewPCG(seed, 3))
+			s := newScene(rng, st, Character{Grit: 1}, Signals{})
+			if landFor(s) != name {
+				t.Fatalf("seed %d made %q, not a scene with the %s", seed, s.combo(), name)
+			}
+			if d := tintedFrom(s.palette, set); d > limit {
+				t.Errorf("a new %s scene's palette was %.0f from the setting's in one channel, want at most %.0f", name, d, limit)
+			}
+		}
+	}
+}
+
+func TestAScenePaletteGlidesToTheLandscapeThatArrivesInIt(t *testing.T) {
+	limit := landTint*255 + 1
+	plain := styleFor(Character{Drive: 1})
+	for _, name := range []string{"night lake", "dawn sea", "storm", "aurora"} {
+		lands := styleFor(Character{Calm: 1})
+		lands.kinds[name] = 1e6
+		found := false
+		for seed := uint64(1); seed <= 200 && !found; seed++ {
+			rng := rand.New(rand.NewPCG(seed, 5))
+			s := newScene(rng, plain, Character{Drive: 1}, Signals{})
+			if s.landed() || !slices.ContainsFunc(s.layers, func(l *layer) bool { return suitsLand(l) == 1 }) {
+				continue
+			}
+			before := slices.Clone(s.palette)
+			s.evolve(rng, lands, Character{Calm: 1})
+			if landFor(s) != name {
+				continue
+			}
+			found = true
+			if !slices.Equal(s.palette, before) {
+				t.Errorf("the %s's palette was put on screen at once rather than glided to", name)
+			}
+			for range int(s.morph*30) + 2 {
+				s.advance(1.0 / 30)
+			}
+			if d := tintedFrom(s.palette, settings[name]); d > limit {
+				t.Errorf("after its glide a scene with the %s had a palette %.0f from the setting's in one channel", name, d)
+			}
+		}
+		if !found {
+			t.Errorf("no seed grew a scene into one with the %s", name)
+		}
+	}
+}
+
+// stormShare is the storm's share of the weights of every component in a
+// style.
+func stormShare(st *style) float64 {
+	total := 0.0
+	for _, k := range kinds {
+		total += st.kindWeight(k.name)
+	}
+	return st.kindWeight("storm") / total
+}
+
+func TestAStormIsRareForMusicWithASteadyBeat(t *testing.T) {
+	// The storm's share under driving music when the Drive profile weighed
+	// it at 0.15.
+	const before = 0.15 / 60.45
+	if got := stormShare(styleFor(Character{Drive: 1})); got >= before {
+		t.Errorf("a storm had a share of %.4f under driving music, want less than %.4f", got, before)
+	}
+	dance := Character{Drive: 0.6, Grit: 0.4}
+	free, steady := styleFor(dance), styleFor(dance)
+	steady.steady(dance, 1)
+	if a, b := stormShare(steady), stormShare(free); a > b/3 {
+		t.Errorf("gritty, driving music had a storm share of %.4f with a steady beat and %.4f without, want a third or less", a, b)
+	}
+	heavy, unsure := styleFor(Character{Grit: 1}), styleFor(Character{Grit: 1})
+	unsure.steady(Character{Grit: 1}, 0)
+	if stormShare(unsure) != stormShare(heavy) || stormShare(heavy) < 0.02 {
+		t.Errorf("heavy music without a steady beat gave a storm a share of %.4f", stormShare(unsure))
+	}
+}

@@ -44,6 +44,9 @@ type setting struct {
 	// storm flashes lightning on a snap. pulse brightens the aurora on the
 	// beat.
 	sea, storm, pulse bool
+	// colours are the setting's own colours from dark to bright, spread
+	// evenly along its palette.
+	colours []RGB
 }
 
 // settings holds each kind of landscape by name. Calm favours the night lake,
@@ -53,21 +56,25 @@ var settings = map[string]setting{
 		tod: [2]float64{0, 0.08}, water: 0.9, body: 0.9, aurora: 0.1, ridges: [2]int{1, 3},
 		weather: [weathers]float64{weatherNone: 3, weatherSnow: 2, weatherFireflies: 2, weatherCloud: 1},
 		cloud:   0.1,
+		colours: []RGB{{3, 6, 18}, {10, 24, 60}, {28, 56, 112}, {84, 116, 168}, {226, 234, 248}},
 	},
 	"dawn sea": {
 		tod: [2]float64{0.25, 0.65}, water: 1, body: 0.9, ridges: [2]int{0, 2},
 		weather: [weathers]float64{weatherNone: 3, weatherCloud: 3, weatherFireflies: 1},
 		cloud:   0.2, sea: true,
+		colours: []RGB{{22, 26, 56}, {72, 92, 146}, {186, 110, 132}, {238, 156, 92}, {255, 232, 196}},
 	},
 	"storm": {
 		tod: [2]float64{0.3, 0.6}, water: 0.5, body: 0.4, ridges: [2]int{1, 3},
 		weather: [weathers]float64{weatherRain: 5, weatherSnow: 1, weatherEmbers: 1, weatherCloud: 1},
 		cloud:   0.6, storm: true,
+		colours: []RGB{{14, 16, 22}, {44, 52, 66}, {84, 96, 116}, {146, 158, 176}, {240, 244, 255}},
 	},
 	"aurora": {
 		tod: [2]float64{0, 0.05}, water: 0.5, body: 0.3, aurora: 1, ridges: [2]int{1, 2},
 		weather: [weathers]float64{weatherNone: 3, weatherSnow: 2},
 		pulse:   true,
+		colours: []RGB{{2, 6, 8}, {6, 36, 40}, {18, 104, 88}, {58, 196, 128}, {204, 255, 224}},
 	},
 }
 
@@ -76,6 +83,26 @@ var settings = map[string]setting{
 func isLandscape(name string) bool {
 	_, ok := settings[name]
 	return ok
+}
+
+// landTint is how much of a scene's own palette shows through a setting's.
+const landTint = 0.15
+
+// paletteOf returns the setting's palette: its colours spread evenly from the
+// first step to the last, with landTint of tint mixed into each step.
+func (set setting) paletteOf(tint []RGB) []RGB {
+	p := make([]RGB, paletteSize)
+	stops := len(set.colours) - 1
+	for i := range p {
+		u := float64(i) / float64(paletteSize-1) * float64(stops)
+		k := min(int(u), stops-1)
+		c := blendPalettes(set.colours[k:k+1], set.colours[k+1:k+2], u-float64(k))
+		if i < len(tint) {
+			c = blendPalettes(c, tint[i:i+1], landTint)
+		}
+		p[i] = c[0]
+	}
+	return p
 }
 
 // Whether a landscape has a sun, a moon or neither.

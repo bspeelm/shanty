@@ -228,7 +228,9 @@ func suitsLand(l *layer) int {
 	return 0
 }
 
-// ground sets a scene up around the landscape in it. The landscape becomes
+// ground sets a scene up around the landscape in it. The scene's palette, or
+// the palette it is moving to, becomes the setting's, tinted by the one it
+// replaces. The landscape becomes
 // the first layer, added at a steady weight, so that every other layer is
 // drawn over it. Layers not named in overLand leave, as do the warps. The
 // other layers are drawn at half their weight, or less than a third for
@@ -245,6 +247,11 @@ func (s *scene) ground() {
 	s.layers[0] = land
 	land.blend, land.weight, land.quiet = blendAdd, param{base: landWeight}, true
 	s.grounded = true
+	if set := settings[land.name]; s.toPalette != nil {
+		s.toPalette = set.paletteOf(s.toPalette)
+	} else {
+		s.palette = set.paletteOf(s.palette)
+	}
 	for _, w := range s.warps {
 		w.goal = 0
 	}
@@ -379,9 +386,11 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 }
 
 // unground undoes ground once a scene's landscape has gone: the layers take
-// back their weights, a warp arrives, and the feedback moves again.
+// back their weights, a warp arrives, the feedback moves again, and the
+// palette moves to one of the style's.
 func (s *scene) unground(rng *rand.Rand, st *style) {
 	s.grounded = false
+	s.toPalette = st.palette(rng, s.char)
 	s.warps = append(s.warps, newWarp(rng, st))
 	for _, l := range s.layers {
 		if l.quiet && !isLandscape(l.name) {
