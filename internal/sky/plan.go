@@ -85,8 +85,10 @@ type Plan struct {
 	// Pulse is how strong and steady the beat is across the track, from 0 to
 	// 1. A track with a Pulse below beatlessBelow has no beats.
 	Pulse float64
-	// Hits are the kicks, snares and hats of the track, in order of time.
+	// Hits are the kicks, snares and hats of the track, in order of time,
+	// and Notes are the starts of other sounds.
 	Hits   []Hit
+	Notes  []Note
 	curve  []Moment
 	builds [][2]float64
 	banded bool

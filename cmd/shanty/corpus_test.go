@@ -98,8 +98,11 @@ func evaluate(t *testing.T, file string, blocks []mpv.Block) string {
 		counts[sky.HitKick], counts[sky.HitSnare], counts[sky.HitHat], c.Calm, c.Drive, c.Grit, c.Flow)
 	kicks := kickOnsets(in)
 	covered, confidence := coverage(plan)
-	fmt.Fprintf(&b, "  beats cover %.0f%% of the track at mean confidence %.2f; strong hits at most %.1f a second in 5 s\n",
-		100*covered, confidence, busiest(plan.Hits, 5))
+	strong, most := strongHits(plan.Hits, 5)
+	fmt.Fprintf(&b, "  beats cover %.0f%% of the track at mean confidence %.2f; hits %.2f a second, strong %.2f a second, at most %d strong in 5 s; notes %.2f a second\n",
+		100*covered, confidence, float64(len(plan.Hits))/plan.Length, strong/plan.Length, most, float64(len(plan.Notes))/plan.Length)
+	fmt.Fprintf(&b, "  kick band onsets in the blocks %.2f a second; hits %.2f kicks and %.2f snares a second\n",
+		float64(len(kicks))/plan.Length, float64(counts[sky.HitKick])/plan.Length, float64(counts[sky.HitSnare])/plan.Length)
 	fmt.Fprintf(&b, "  kick band against our beats: %s\n", alignment(plan.Beats, kicks))
 	fmt.Fprintf(&b, "  downbeats: %s\n", downbeatSanity(plan, in))
 	if out := os.Getenv(corpusOutEnv); out != "" {
@@ -363,9 +366,9 @@ func coverage(p *sky.Plan) (float64, float64) {
 	return span / p.Length, conf / float64(len(p.Beats))
 }
 
-// busiest is the most hits of strength 0.3 or more in any window of the
-// given seconds, a second.
-func busiest(hits []sky.Hit, window float64) float64 {
+// strongHits counts the hits of strength 0.3 or more, and the most of them
+// in any window of the given seconds.
+func strongHits(hits []sky.Hit, window float64) (float64, int) {
 	var strong []float64
 	for _, h := range hits {
 		if h.Strength >= 0.3 {
@@ -377,7 +380,7 @@ func busiest(hits []sky.Hit, window float64) float64 {
 		j, _ := slices.BinarySearch(strong, t+window)
 		most = max(most, j-i)
 	}
-	return float64(most) / window
+	return float64(len(strong)), most
 }
 
 // downbeatSanity describes where the downbeats fall. Entries are the beats
@@ -423,11 +426,13 @@ func downbeatSanity(p *sky.Plan, blocks []sky.Block) string {
 	}
 	slices.SortFunc(jumps, func(a, b jump) int { return cmp.Compare(b.rise, a.rise) })
 	on, all := 0, 0
+	places := make([]int, p.Meter)
 	for _, j := range jumps[:len(jumps)/10] {
 		if j.rise < 3 {
 			break
 		}
 		all++
+		places[j.bar]++
 		if j.bar == 0 {
 			on++
 		}
@@ -452,8 +457,8 @@ func downbeatSanity(p *sky.Plan, blocks []sky.Block) string {
 	for i := range kick {
 		parts[i] = fmt.Sprintf("%.2f", kick[i]/math.Max(count[i], 1))
 	}
-	return fmt.Sprintf("%d of %d entries on a downbeat (%.0f%%, chance %.0f%%); kick by place in bar %s",
-		on, all, 100*float64(on)/math.Max(float64(all), 1), 100/float64(p.Meter), strings.Join(parts, " "))
+	return fmt.Sprintf("%d of %d entries on a downbeat (%.0f%%, chance %.0f%%), by place in bar %v; kick by place in bar %s",
+		on, all, 100*float64(on)/math.Max(float64(all), 1), 100/float64(p.Meter), places, strings.Join(parts, " "))
 }
 
 // cueDiff compares a plan's cues with those of the plan built from the
