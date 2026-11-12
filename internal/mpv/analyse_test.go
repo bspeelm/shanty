@@ -150,8 +150,8 @@ func TestAnalyseReturnsEveryBlockWithItsWholeSoundAndFiveBands(t *testing.T) {
 	}
 }
 
-func TestTheAnalysingFilterMeasuresTheWholeSoundAndFiveBandsAtAFixedRate(t *testing.T) {
-	for _, want := range []string{"aresample=48000", "channel_layouts=mono", "asetnsamples=n=1024", "bandpass=f=125:width_type=h:w=50,bandpass=f=125:width_type=h:w=50", "amerge=inputs=6"} {
+func TestTheAnalysingFilterMeasuresTheWholeSoundFiveBandsAndTheSideAtAFixedRate(t *testing.T) {
+	for _, want := range []string{"aresample=48000", "channel_layouts=mono", "asetnsamples=n=1024", "bandpass=f=125:width_type=h:w=50,bandpass=f=125:width_type=h:w=50", "pan=mono|c0=0.5*c0-0.5*c1", "amerge=inputs=7"} {
 		if !strings.Contains(analyseFilter, want) {
 			t.Errorf("the analysing filter lacks %s:\n%s", want, analyseFilter)
 		}
@@ -316,5 +316,22 @@ func TestThePeakOfTheLastBandIsTheBlocksPunch(t *testing.T) {
 	}
 	if p := banded(parseBlocks(strings.NewReader(recorded(t)))[0], audioParams{}).Punch; p != 0 {
 		t.Errorf("a block measured without bands has a punch of %v", p)
+	}
+}
+
+func TestTheChannelAfterTheBandsIsTheBlocksSide(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("frame:0    pts:0       pts_time:0\n")
+	for c := 1; c <= analyseWhole+analyseBands+1; c++ {
+		fmt.Fprintf(&b, "lavfi.astats.%d.RMS_level=-%d.000000\n", c, 10+c)
+	}
+	b.WriteString("lavfi.astats.Overall.Number_of_samples=1024.000000\n")
+	got := banded(parseBlocks(strings.NewReader(b.String()))[0], audioParams{})
+	// The eighth channel is at -18 dB.
+	if want := math.Pow(10, -18.0/20); math.Abs(got.Side-want) > 1e-6 {
+		t.Errorf("the side was %.4f, want %.4f", got.Side, want)
+	}
+	if len(got.Bands) != analyseBands || len(got.Channels) != analyseWhole {
+		t.Errorf("a block with a side has %d bands and %d channels", len(got.Bands), len(got.Channels))
 	}
 }

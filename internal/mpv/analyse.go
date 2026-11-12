@@ -31,16 +31,18 @@ const (
 // blockSamples, and measures each block on its own: the whole sound in two
 // channels, then five bands of a mix to one channel, which are below 150 Hz,
 // 100 to 400 Hz, 1 to 4 kHz, above 6 kHz, and 100 to 150 Hz through two
-// filters in a row. It prints every block's totals to standard output.
+// filters in a row, and last half the difference between the two channels.
+// It prints every block's totals to standard output.
 var analyseFilter = fmt.Sprintf("lavfi=[asplit=2[g][b];"+
-	"[g]aresample=%[1]d,aformat=sample_fmts=flt:channel_layouts=stereo,asetnsamples=n=%[2]d:p=0[f];"+
+	"[g]aresample=%[1]d,aformat=sample_fmts=flt:channel_layouts=stereo,asetnsamples=n=%[2]d:p=0,asplit=2[f][e];"+
+	"[e]pan=mono|c0=0.5*c0-0.5*c1[s];"+
 	"[b]aresample=%[1]d,aformat=sample_fmts=flt:channel_layouts=mono,asetnsamples=n=%[2]d:p=0,asplit=5[w][x][y][z][v];"+
 	"[w]lowpass=f=150,aformat=channel_layouts=mono[k];"+
 	"[x]bandpass=f=250:width_type=h:w=300,aformat=channel_layouts=mono[l];"+
 	"[y]bandpass=f=2500:width_type=h:w=3000,aformat=channel_layouts=mono[m];"+
 	"[z]highpass=f=6000,aformat=channel_layouts=mono[h];"+
 	"[v]bandpass=f=125:width_type=h:w=50,bandpass=f=125:width_type=h:w=50,aformat=channel_layouts=mono[p];"+
-	"[f][k][l][m][h][p]amerge=inputs=6,"+
+	"[f][k][l][m][h][p][s]amerge=inputs=7,"+
 	"astats=metadata=1:reset=1:measure_perchannel=RMS_level+Peak_level+RMS_difference+Zero_crossings:measure_overall=Number_of_samples,"+
 	"ametadata=mode=print:file=-]", analyseRate, blockSamples)
 
@@ -61,6 +63,10 @@ type Block struct {
 	// 6 kHz, and 100 to 150 Hz. It is empty for a block measured without
 	// bands.
 	Bands []float64
+	// Side is the RMS of half the difference between the two channels,
+	// from 0 to 1 of full scale. It is 0 for sound that is the same in both
+	// and for a block measured without it.
+	Side float64
 	// Punch is the peak of the 100 to 150 Hz band, from 0 to 1 of full
 	// scale. It is 0 for a block measured without it.
 	Punch float64
@@ -155,21 +161,26 @@ func analyse(ctx context.Context, opt Options, url, filter string) ([]Block, aud
 
 // banded returns a block measured by analyseFilter with its rate and scale
 // set. A block with the channels of the whole sound and one for each band
-// keeps the first as its channels and the rest as its bands, with the peak of
-// the last band as its punch; any other block keeps all its channels and has
-// no bands. The whole sound of a track with
+// keeps the first as its channels and the next five as its bands, with the
+// peak of the last band as its punch and a further channel, when there is
+// one, as its side; any other block keeps all its channels and has no bands. The whole sound of a track with
 // one channel is raised to the level of that channel, and the zero crossings
 // are scaled to what they are at the track's own sample rate.
 func banded(b Block, params audioParams) Block {
 	b.Rate, b.Scale = analyseRate, 1
-	if len(b.Channels) != analyseWhole+analyseBands {
+	if n := len(b.Channels); n != analyseWhole+analyseBands && n != analyseWhole+analyseBands+1 {
 		return b
 	}
+	if len(b.Channels) > analyseWhole+analyseBands {
+		if side := b.Channels[analyseWhole+analyseBands].Loudness; !math.IsNaN(side) && !math.IsInf(side, 0) {
+			b.Side = math.Min(math.Pow(10, side/20), 1)
+		}
+	}
 	b.Bands = make([]float64, analyseBands)
-	for i, c := range b.Channels[analyseWhole:] {
+	for i, c := range b.Channels[analyseWhole : analyseWhole+analyseBands] {
 		b.Bands[i] = c.Loudness
 	}
-	if peak := b.Channels[len(b.Channels)-1].Peak; peak != 0 && !math.IsNaN(peak) {
+	if peak := b.Channels[analyseWhole+analyseBands-1].Peak; peak != 0 && !math.IsNaN(peak) {
 		b.Punch = math.Min(math.Pow(10, peak/20), 1)
 	}
 	b.Channels = slices.Clone(b.Channels[:analyseWhole])

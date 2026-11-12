@@ -19,6 +19,9 @@ type Block struct {
 	// the order bandKick, bandLow, bandMid, bandHigh, bandPunch. It is empty for a block
 	// measured without bands.
 	Bands []float64
+	// Side is the RMS of half the difference between the two channels,
+	// from 0 to 1 of full scale, or 0 for a block measured without it.
+	Side float64
 	// Punch is the peak of the band where a kick starts, from 0 to 1 of
 	// full scale. It is 0 for a block measured without it.
 	Punch float64
@@ -100,12 +103,18 @@ type Plan struct {
 	// edges are the times its sections start and end, and shares the share
 	// of each section's beats that carry a kick, found when first asked for.
 	edges, shares []float64
-	banded        bool
-	bar           []int
-	conf          []float64
-	broken        []bool
-	tempi         []float64
-	char          Character
+	// Parts are the stretches the track falls into and Bounds the
+	// boundaries between them, for a track measured in bands. arranged is
+	// set for a track carried by its arrangement and not its beat.
+	Parts    []Part
+	Bounds   []Boundary
+	arranged bool
+	banded   bool
+	bar      []int
+	conf     []float64
+	broken   []bool
+	tempi    []float64
+	char     Character
 }
 
 // The planner's measures. Times are in seconds and levels are on the 0 to 1
@@ -201,6 +210,7 @@ func NewPlan(blocks []Block) *Plan {
 	p.findBuilds(level)
 	p.climax(level)
 	p.hushes(level)
+	p.arrange(blocks)
 	slices.SortStableFunc(p.Cues, func(a, b Cue) int { return cmp.Compare(a.At, b.At) })
 	return p
 }

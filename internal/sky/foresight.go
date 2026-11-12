@@ -30,8 +30,10 @@ type foresightState struct {
 	// cue the last cut was made for.
 	cut   bool
 	cutAt float64
-	// near is set while a cut is less than cutClear away.
-	near bool
+	// near is set while a cut is less than cutClear away, and cutFade is
+	// how long the cut being made takes.
+	near    bool
+	cutFade float64
 }
 
 type foreseen struct {
@@ -82,6 +84,9 @@ const (
 	// and gridKick the strength of a kick set off on a beat.
 	beatReach = 0.06
 	gridKick  = 0.9
+	// playedLeast is the strength of a kick in the quietest part of a track
+	// carried by its arrangement, against 1 in its most intense.
+	playedLeast = 0.35
 	// Kicks fade by the share of their section's beats that carry a kick:
 	// none at fadeFrom, and in full at fadeOver above it. Every beat of a
 	// section where that share is at least fillFrom is given a kick. A
@@ -118,6 +123,15 @@ const (
 	gritBehind = 0.1
 	heavyAhead = 2
 	heavyGlide = 1.5
+	// partGlide is how long Heavy and Weight take to reach a new part's,
+	// and middling the intensity of a part that hits neither hard nor soft.
+	partGlide = 0.15
+	middling  = 0.75
+	// silentWeight is the Weight of a part with no sound, under which the
+	// picture is dark and still.
+	silentWeight = -1.25
+	// hardFade is how long a cut to a hard boundary takes.
+	hardFade = 0.07
 	// moodSpan is the stretch a mood is measured over, moodAhead how far
 	// ahead of the position the frame's mood is taken, and drummedFrom the
 	// share of beats with a kick from which a stretch counts as drummed.
@@ -167,11 +181,16 @@ func (p *Plan) kickStrength() float64 {
 	return p.usualKick
 }
 
-// mood returns the character of the stretch that starts at t: the track's
-// own where its beats carry kicks or the track has no beats at all, and a
-// soft one, between calm and flowing, where they do not.
+// mood returns the character of the stretch that starts at t. In a track
+// carried by its arrangement it is the mood of the part playing. In any
+// other it is the track's own where its beats carry kicks or the track has
+// no beats at all, and a soft one, between calm and flowing, where they do
+// not.
 func (p *Plan) mood(t float64) Character {
 	c := p.Character()
+	if part, ok := p.partAt(t); ok && p.arranged {
+		return part.mood()
+	}
 	if len(p.Beats) == 0 {
 		return c
 	}
@@ -183,6 +202,21 @@ func (p *Plan) mood(t float64) Character {
 	return Character{mix(0), mix(1), mix(2), mix(3)}
 }
 
+// mood returns the character a part is drawn for: calm at its quietest,
+// an even blend as its intensity rises, and led by grit as far as it is
+// heavy.
+func (part Part) mood() Character {
+	calm := Character{Calm: 0.55, Drive: 0.05, Grit: 0.05, Flow: 0.35}
+	even := Character{Calm: 0.2, Drive: 0.3, Grit: 0.2, Flow: 0.3}
+	heavy := Character{Calm: 0, Drive: 0.3, Grit: 0.6, Flow: 0.1}
+	lerp := func(a, b Character, w float64) Character {
+		x, y := a.axes(), b.axes()
+		mix := func(i int) float64 { return (1-w)*x[i] + w*y[i] }
+		return Character{mix(0), mix(1), mix(2), mix(3)}
+	}
+	return lerp(lerp(calm, even, clamp01((part.Intensity-0.4)/0.4)), heavy, part.Heavy)
+}
+
 // gritLed is how far a character is led by grit over drive, from 0 where
 // drive is ahead by gritBehind to 1 where grit is ahead by as much.
 func gritLed(c Character) float64 {
@@ -190,12 +224,17 @@ func gritLed(c Character) float64 {
 }
 
 // heavy follows how far the music is a loud wall of sound with no steady
-// kick to carry it: how loud it is, heard and with a trusted plan planned
-// for the seconds ahead, by how far its character is led by grit over
-// drive.
+// kick to carry it. With a trusted plan of a track carried by its
+// arrangement it is how heavy the part playing is. Otherwise it is how loud
+// the music is, heard and with a trusted plan planned for the seconds
+// ahead, by how far its character is led by grit over drive.
 func (s *State) heavy(dt float64) float64 {
 	level, c := s.lis.meter.slow, s.lis.char
 	if p := s.trusted(); p != nil {
+		if part, ok := p.partAt(s.lis.ear.now); ok && p.arranged {
+			s.weight = glide(s.weight, part.Heavy, dt, partGlide)
+			return s.weight
+		}
 		level = planShare*p.At(s.lis.ear.now+heavyAhead).Level + (1-planShare)*level
 		c = p.Character()
 	}
@@ -204,15 +243,36 @@ func (s *State) heavy(dt float64) float64 {
 	return s.weight
 }
 
+// weigh follows how hard the part playing hits, for a trusted plan of a
+// track carried by its arrangement: its intensity less middling, held
+// between -0.5 and 0.25, or silentWeight for a part with no sound. It is 0
+// for any other track.
+func (s *State) weigh(dt float64) float64 {
+	want := 0.0
+	if p := s.trusted(); p != nil && p.arranged {
+		if part, ok := p.partAt(s.lis.ear.now); ok {
+			want = clamp(part.Intensity-middling, -0.5, 0.25)
+			if part.Silent || part.Level <= quietLevel {
+				want = silentWeight
+			}
+		}
+	}
+	s.bearing = glide(s.bearing, want, dt, partGlide)
+	return s.bearing
+}
+
 // cutDue reports whether the cue c of a plan measured in bands is one to
-// cut to: a drop, a strong section, or a section where the kicks start or
-// stop.
+// cut to: a drop, a strong section, or, in a track carried by its beat, a
+// section where the kicks start or stop.
 func (p *Plan) cutDue(c Cue) bool {
 	if !p.banded {
 		return false
 	}
 	if c.Kind == CueDrop || c.Strength >= cutStrength {
 		return true
+	}
+	if p.arranged {
+		return false
 	}
 	return math.Abs(p.drummed(c.At, c.At+moodSpan)-p.drummed(c.At-moodSpan, c.At)) >= cutTurn
 }
@@ -317,9 +377,15 @@ func (s *State) score(sig Signals, p *Plan, from, pos, dt float64) Signals {
 	lo, hi := math.Nextafter(from, math.Inf(1)), math.Nextafter(pos, math.Inf(1))
 	// A kick beside a beat of the grid is set off on the beat, at an even
 	// strength, and every beat of a drummed section is given one.
+	// In a track carried by its arrangement every kick is set off where it
+	// falls, as strong as its part is intense.
+	played := 0.0
+	if part, ok := p.partAt(pos); ok && p.arranged {
+		played = playedLeast + (1-playedLeast)*part.Intensity
+	}
 	for _, at := range between(p.Beats, lo, hi) {
 		beat, ok := p.BeatAt(at)
-		if !ok || beat.Confidence < kickConfidence {
+		if !ok || beat.Confidence < kickConfidence || p.arranged {
 			continue
 		}
 		if share := p.sectionShare(at); share >= fillFrom || p.kicked(at) {
@@ -335,7 +401,10 @@ func (s *State) score(sig Signals, p *Plan, from, pos, dt float64) Signals {
 		v := clamp01(0.35 + 0.65*h.Strength)
 		switch h.Kind {
 		case HitKick:
-			if !p.onBeat(h.At) {
+			switch {
+			case p.arranged:
+				f.kick = math.Max(f.kick, played*math.Max(v, gridKick))
+			case !p.onBeat(h.At):
 				f.kick = math.Max(f.kick, drummed*v)
 			}
 		case HitSnare:
@@ -442,16 +511,25 @@ func (s *State) foresee(sig Signals, st *style, dt float64) (Signals, float64, b
 
 	// The next drop or section worth a cut is cut to so that the cut is half
 	// done as it is heard.
+	// A cut is begun on the frame nearest to half its length before its
+	// cue, and a cue this frame has stepped past is cut to as well.
 	f.near = false
-	for _, kind := range []CueKind{CueDrop, CueSection} {
-		c, ok := p.Next(pos, kind)
-		if !ok || c.At == f.cutAt || !p.cutDue(c) {
+	for _, c := range p.Cues {
+		if c.Kind != CueDrop && c.Kind != CueSection || c.At <= from || c.At == f.cutAt || !p.cutDue(c) {
 			continue
 		}
-		if c.At-pos <= cutFade/2 {
-			f.cut, f.cutAt, f.section = true, c.At, c.At
-		} else if c.At-pos <= cutClear {
+		fade := cutFade
+		if p.hardAt(c.At) {
+			fade = hardFade
+		}
+		switch {
+		case c.At-fade/2 <= pos+dt/2:
+			f.cut, f.cutAt, f.section, f.cutFade = true, c.At, c.At, fade
+		case c.At-pos <= cutClear:
 			f.near = true
+		}
+		if c.At > pos+cutClear {
+			break
 		}
 	}
 

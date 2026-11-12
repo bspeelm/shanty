@@ -93,9 +93,10 @@ func breathBars(bpm float64) int {
 
 // exposureFor is the mean brightness a frame is scaled towards: 0.4 on steady
 // music, falling towards 0.2 in a hush, rising to 0.45 on a release and by
-// heavyLight for heavy music, and moving a few percent with the breath.
+// heavyLight for heavy music, moving a few percent with the breath, and
+// scaled by weightLight for each unit of Weight.
 func exposureFor(s Signals) float64 {
-	return (exposure - 0.2*s.Hush + 0.05*s.Release + heavyLight*s.Heavy) * (1 + 0.08*(s.Breath-0.5))
+	return (exposure - 0.2*s.Hush + 0.05*s.Release + heavyLight*s.Heavy) * (1 + 0.08*(s.Breath-0.5)) * math.Max(1+weightLight*s.Weight, 0)
 }
 
 // What Heavy adds: heavyLight to the exposure, heavySpeed times the speed
@@ -107,6 +108,14 @@ const (
 	heavySpeed = 0.8
 	heavyShake = 0.04
 	heavyTurn  = 2.0
+	// weightLight and weightSpeed are how far a unit of Weight scales the
+	// exposure and the speed of every layer.
+	weightLight = 0.8
+	weightSpeed = 1.0
+	// stillSpeed is the least Weight scales the speed of a layer to.
+	stillSpeed = 0.05
+	// rareBelow is the heaviness under which a rare scene may be chosen.
+	rareBelow = 0.3
 )
 
 // post is the light laid over a composited frame: a glow around its bright

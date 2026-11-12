@@ -30,12 +30,16 @@ type State struct {
 	// reshaped the scene, and lurch the way the picture was last shaken.
 	weight, turned float64
 	lurch          float64
-	w, h           int
-	f              frame
-	value          []float64
-	tone           []float64
-	post           post
-	guard          flashGuard
+	// cutting is set while the change of scene under way is a cut, and
+	// bearing is Weight as it glides.
+	cutting bool
+	bearing float64
+	w, h    int
+	f       frame
+	value   []float64
+	tone    []float64
+	post    post
+	guard   flashGuard
 	// shift moves every cell along the palette, gliding towards the treble
 	// less the bass.
 	shift  float64
@@ -113,6 +117,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	sig, section, planned := s.foresee(sig, st, dt)
 	// Heavy music moves with every rise in its sound, as far as it is heavy.
 	sig.Heavy = s.heavy(dt)
+	sig.Weight = s.weigh(dt)
 	sig.Kick = math.Max(sig.Kick, sig.Heavy*s.lis.thump)
 	sig.Snap = math.Max(sig.Snap, sig.Heavy*s.lis.crack)
 	s.sig = sig
@@ -124,7 +129,8 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	// A cut replaces a change of scene already under way.
 	if s.foresight.cut && s.cur != nil {
 		s.next = s.make(sig, st, char)
-		s.fade, s.fadeLen, s.waiting = 0, cutFade, 0
+		s.fade, s.fadeLen, s.waiting = 0, s.foresight.cutFade, 0
+		s.cutting = true
 	}
 
 	if s.cur == nil {
@@ -198,11 +204,12 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
 	// A cut is one change of light and not a flash, so the guard takes the
 	// picture as it finds it while a cut is under way.
-	if s.fadeLen == cutFade {
+	if s.cutting {
 		s.guard.ready = false
 	}
 	s.guard.apply(s.value, s.tone, dt, s.cur.halves() || s.next.halves())
 	if s.fade >= 1 {
+		s.cutting = false
 		s.cur, s.next = s.next, nil
 		s.age, s.waiting, s.label = 0, 0, 0
 	}
@@ -237,7 +244,8 @@ func (s *State) change(sig Signals, st *style, c Character, fresh bool) {
 	rng := s.rng()
 	s.age, s.waiting = 0, 0
 	s.life = st.life[0] + (st.life[1]-st.life[0])*rng.Float64()
-	rare := s.cur.label == "" && rng.IntN(15) == 0
+	// A rare scene is for music that is neither heavy nor planned in parts.
+	rare := s.cur.label == "" && rng.IntN(15) == 0 && sig.Heavy < rareBelow && sig.Weight == 0
 	unlike := s.cur.char == (Character{}) || s.cur.char.distance(c) > freshChange
 	if fresh || unlike || rare || s.cur.label != "" || rng.IntN(8) == 0 {
 		if rare {

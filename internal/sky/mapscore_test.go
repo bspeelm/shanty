@@ -28,8 +28,10 @@ type songMap struct {
 	}
 	Boundaries []struct {
 		T, Cue, Arrival float64
-		Rank, Kind      string
-		Respond         string
+		// Onset is when the new part is first heard.
+		Onset      float64
+		Rank, Kind string
+		Respond    string
 	}
 }
 
@@ -181,6 +183,7 @@ func TestReplayAgainstAMap(t *testing.T) {
 		tempo                           float64
 	}
 	var run []frame
+	var scenes []string
 	var cuts []float64
 	var prev []float64
 	last := 0.0
@@ -204,8 +207,9 @@ func TestReplayAgainstAMap(t *testing.T) {
 		}
 		prev = cells
 		run = append(run, f)
-		if s.next != nil && s.next != was && s.fadeLen == cutFade {
-			cuts = append(cuts, s.lis.ear.now+cutFade/2)
+		scenes = append(scenes, s.cur.combo())
+		if s.next != nil && s.next != was && s.cutting {
+			cuts = append(cuts, s.lis.ear.now+s.fadeLen/2)
 		}
 	}
 
@@ -215,7 +219,7 @@ func TestReplayAgainstAMap(t *testing.T) {
 	var majors []float64
 	for _, b := range m.Boundaries {
 		if b.Rank == "major" {
-			majors = append(majors, b.Arrival)
+			majors = append(majors, b.Onset)
 		}
 	}
 	fmt.Printf("\nscene changes: %d in the map, %d cuts made\n", len(majors), len(cuts))
@@ -273,11 +277,15 @@ func TestReplayAgainstAMap(t *testing.T) {
 	for _, part := range m.Parts {
 		var n, tempo, heavy, change, light, kick float64
 		var c [4]float64
+		scene := ""
 		for i, f := range run {
 			if f.pos < part.Start || f.pos >= part.End {
 				continue
 			}
 			n++
+			if f.pos < (part.Start+part.End)/2 {
+				scene = scenes[i]
+			}
 			tempo, heavy, change, light = tempo+f.tempo, heavy+f.heavy, change+f.change, light+f.light
 			for k, v := range f.char.axes() {
 				c[k] += v
@@ -290,8 +298,8 @@ func TestReplayAgainstAMap(t *testing.T) {
 			continue
 		}
 		want, _ := part.Tempo.(float64)
-		fmt.Printf("%-4s %-20s %-9s %5.1f | %6.1f %6.1f | %5.2f %5.2f %5.2f %5.2f %5.2f | %7.4f %6.3f | %6.2f\n",
-			part.ID, part.Name, part.Mode, part.Vibe, want, tempo/n, c[0]/n, c[1]/n, c[2]/n, c[3]/n, heavy/n, change/n, light/n, kick/math.Max(float64(len(between(pulses, part.Start, part.End))), 1))
+		fmt.Printf("%-4s %-20s %-9s %5.1f | %6.1f %6.1f | %5.2f %5.2f %5.2f %5.2f %5.2f | %7.4f %6.3f | %6.2f | %s\n",
+			part.ID, part.Name, part.Mode, part.Vibe, want, tempo/n, c[0]/n, c[1]/n, c[2]/n, c[3]/n, heavy/n, change/n, light/n, kick/math.Max(float64(len(between(pulses, part.Start, part.End))), 1), scene)
 		if part.End-part.Start >= 5 {
 			vibes, moved, lit = append(vibes, part.Vibe), append(moved, change/n), append(lit, light/n)
 		}
