@@ -57,9 +57,11 @@ One-time setup:
 ```sh
 copr-cli create shanty \
     --chroot fedora-rawhide-x86_64 \
+    --chroot fedora-45-x86_64 \
+    --chroot fedora-45-aarch64 \
     --chroot fedora-44-x86_64 \
-    --chroot fedora-43-x86_64 \
     --chroot fedora-44-aarch64 \
+    --chroot fedora-43-x86_64 \
     --description "A terminal client for Navidrome and other Subsonic servers" \
     --instructions "dnf copr enable bspeelman/shanty && dnf install shanty"
 ```
