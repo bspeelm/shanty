@@ -35,8 +35,14 @@ jobs:
           fi
           cat /tmp/vuln.txt
 
+      # -mod=readonly makes go read go.mod and ask the proxy. With vendor/
+      # present and no flag, go list refuses to look for upgrades. A failure
+      # here fails the job.
       - name: newer versions
-        run: go list -m -u all > /tmp/outdated.txt 2>&1 || true
+        run: |
+          go list -mod=readonly -m -u all > /tmp/outdated.txt 2>&1 || {
+            cat /tmp/outdated.txt
+            echo "::error::go list could not look for newer versions"; exit 1; }
 
       - name: open or update the tracking issue
         env:
