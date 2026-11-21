@@ -37,9 +37,9 @@ func TestEveryLibraryRowOpensItsScreen(t *testing.T) {
 		// because the screen it opens has to be fetched first.
 		intent any
 	}{
-		{"Playlists", ScreenPlaylists, ShowPlaylists{}},
+		{"Playlists", ScreenPlaylists, FetchPlaylists{}},
 		{"Artists", ScreenArtists, nil},
-		{"Albums", ScreenEveryAlbum, ShowEveryAlbum{}},
+		{"Albums", ScreenEveryAlbum, FetchEveryAlbum{}},
 		{"Starred", ScreenStarred, nil},
 		{"Queue", ScreenQueue, nil},
 	} {

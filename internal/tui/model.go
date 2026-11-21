@@ -107,7 +107,7 @@ type Model struct {
 	// skyLast is when the last frame of the visualiser was due.
 	skyLast time.Time
 	// bigArt is a cover filling the screen. While it is set it is all there is
-	// to see, and any key takes it away.
+	// to see. The player keys work under it and any other key takes it away.
 	bigArt []string
 	// artBlank is an empty block the shape of a cover. The rows are held from
 	// the moment an album with a cover opens, so that the list does not move
@@ -186,10 +186,10 @@ type Model struct {
 	// to do if the answer is yes.
 	asking string
 	agreed tea.Msg
-	// wanted is the identifier of what was last asked to be opened and has not
-	// arrived. strayed is the identifiers asked for and then abandoned, whose
-	// answers are dropped.
-	wanted  string
+	// flying is the identifiers asked for whose answers have not arrived, one
+	// entry for each request. strayed is the identifiers asked for and then
+	// abandoned, whose answers are dropped.
+	flying  []string
 	strayed []string
 	// keep is what was selected when a reload was asked for, so the cursor can
 	// go back to it once the answer arrives.

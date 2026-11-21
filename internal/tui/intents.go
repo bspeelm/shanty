@@ -77,11 +77,14 @@ type (
 	Reload struct{}
 	// Scan asks the server to look at its music folder again.
 	Scan struct{}
-	// ShowPlaylists asks for the list of playlists.
-	ShowPlaylists struct{}
-	// ShowEveryAlbum asks for every album on the server. The jump to that
-	// screen only moves to it; this also fetches.
+	// ShowPlaylists and ShowEveryAlbum, sent to the interface, move it to
+	// that screen. The interface does not emit them.
+	ShowPlaylists  struct{}
 	ShowEveryAlbum struct{}
+	// FetchPlaylists and FetchEveryAlbum ask for what a screen the interface
+	// has already moved to shows. Nothing is sent back but the list.
+	FetchPlaylists  struct{}
+	FetchEveryAlbum struct{}
 	// Playlist is one thing to do to a playlist, named by what it is called.
 	Playlist struct {
 		Verb string
