@@ -11,12 +11,26 @@ import (
 )
 
 // Update applies a message to the model and returns any intent it produces.
+// An arrangement being made of a playlist is forgotten when the message leaves
+// that playlist's screen.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	after, cmd := m.update(msg)
+	next := after.(Model)
+	if next.reordering && next.screen != ScreenPlaylist {
+		next.reordering, next.order, next.drawnFrom = false, nil, nil
+	}
+	return next, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlC && (m.mode == modeFilter || m.mode == modeCommand) {
+			return m, emit(Quit{})
+		}
 		switch m.mode {
 		case modeFilter:
 			return m.filterKey(msg)
@@ -36,12 +50,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.artist, m.loading = artist, false
 			return m.reloaded(ScreenAlbums, plural(len(artist.Albums), "album")), nil
 		}
-		m.artist, m.screen, m.loading, m.status = artist, ScreenAlbums, false, ""
-		m = m.selecting(ScreenAlbums, 0)
-		m.filter = ""
-		return m, nil
+		m, wanted := m.arrived(artist.ID)
+		if !wanted {
+			return m, nil
+		}
+		m = m.show(ScreenAlbums)
+		m.artist, m.loading = artist, false
+		return m.selecting(ScreenAlbums, 0), nil
 	case AlbumLoaded:
 		album := subsonic.Album(msg)
+		reload := m.keep != "" && m.screen == ScreenTracks && album.ID == m.album.ID
+		m, wanted := m.arrived(album.ID)
+		if !wanted && !reload {
+			return m, nil
+		}
 		if album.ID != m.album.ID {
 			// An album with a cover holds the rows for it straight away. The
 			// picture is a request away and the list would otherwise jump
@@ -51,14 +73,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.art = m.artBlank
 			}
 		}
-		if m.keep != "" && m.screen == ScreenTracks && album.ID == m.album.ID {
+		if reload {
 			m.album, m.loading = album, false
 			return m.reloaded(ScreenTracks, plural(len(album.Songs), "track")), nil
 		}
-		m.album, m.screen, m.loading, m.status = album, ScreenTracks, false, ""
-		m = m.selecting(ScreenTracks, 0)
-		m.filter = ""
-		return m, nil
+		m = m.show(ScreenTracks)
+		m.album, m.loading = album, false
+		return m.selecting(ScreenTracks, 0), nil
 
 	case NowPlaying:
 		m.nowPlaying, m.nowArtist, m.duration = msg.Title, msg.Artist, msg.Duration
@@ -80,19 +101,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case Failed:
 		m.loading, m.status, m.statusFailed = false, msg.Message, true
+		m.keep, m.wanted = "", ""
 		return m.remember(msg.Message), nil
 	case Notice:
 		m.status, m.statusFailed = string(msg), false
 		return m.remember(string(msg)), nil
 	case StarredChanged:
 		m.starredRows, m.starred = flatten(msg.Results), msg.IDs
+		if m.screen == ScreenStarred && m.keep != "" {
+			m.loading = false
+			return m.reloaded(ScreenStarred, plural(len(msg.IDs), "starred thing")).ontoARow(), nil
+		}
 		if m.screen == ScreenStarred {
 			m = m.selecting(ScreenStarred, min(m.cursor[ScreenStarred], max(0, len(m.starredRows)-1))).ontoARow()
 		}
 		return m, nil
 	case SearchLoaded:
-		m.found, m.query = flatten(msg.Results), msg.Query
-		m.screen, m.loading, m.status, m.filter = ScreenSearch, false, "", ""
+		m = m.show(ScreenSearch)
+		m.found, m.query, m.loading = flatten(msg.Results), msg.Query, false
 		return m.selecting(ScreenSearch, firstSelectable(m.found)), nil
 	case Reload:
 		// What was selected is remembered, so a reload leaves the cursor
@@ -105,6 +131,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case PlaylistsLoaded:
 		m.playlists, m.loading, m.status = msg, false, ""
+		if msg == nil {
+			// An answer holding no playlists is still an answer.
+			m.playlists = []subsonic.Playlist{}
+		}
+		m = m.within(ScreenPlaylists, len(msg))
 		if m.screen != ScreenPlaylists {
 			return m, nil
 		}
@@ -120,11 +151,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		m.playlist, m.loading, m.status = loaded, false, ""
-		if m.screen == ScreenPlaylist {
+		if m.screen == ScreenPlaylist && loaded.ID == m.playlist.ID {
+			m.playlist, m.loading, m.status = loaded, false, ""
 			return m.reloaded(ScreenPlaylist, plural(len(loaded.Songs), "track")), nil
 		}
-		m.screen, m.filter = ScreenPlaylist, ""
+		m, wanted := m.arrived(loaded.ID)
+		if !wanted {
+			return m, nil
+		}
+		m = m.show(ScreenPlaylist)
+		m.playlist, m.loading = loaded, false
 		return m.selecting(ScreenPlaylist, 0), nil
 	case FullArt:
 		m.bigArt = msg
@@ -150,23 +186,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case EditingPlaylist:
 		// Editing shows the library, because that is where the music is.
 		m.editing, m.inPlaylist = subsonic.Playlist(msg), holding(subsonic.Playlist(msg))
-		m.screen, m.filter, m.loading = ScreenArtists, "", false
+		m = m.show(ScreenArtists)
+		m.loading = false
 		m.status = editingHint(m.editing.Name)
 		return m.remember(m.status), nil
 	case Confirm:
 		m.mode, m.asking, m.agreed = modeConfirm, msg.Question, msg.Do
 		return m, nil
 	case ShowPlaylists:
-		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
-		return m.selecting(ScreenPlaylists, 0), nil
+		m = m.show(ScreenPlaylists)
+		if m.playlists == nil {
+			m.loading = true
+		}
+		return m, nil
 	case ShowEveryAlbum:
-		m.screen, m.status, m.filter = ScreenEveryAlbum, "", ""
+		m = m.show(ScreenEveryAlbum)
 		if len(m.albums) == 0 {
 			m.loading = true
 		}
-		return m.selecting(ScreenEveryAlbum, 0), nil
+		return m, nil
 	case AlbumsLoaded:
 		m.albums, m.loading, m.status = msg, false, ""
+		m = m.within(ScreenEveryAlbum, len(msg))
 		if m.screen != ScreenEveryAlbum {
 			return m, nil
 		}
@@ -204,11 +245,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.turnSky()
 	case ShowWiki:
-		m.screen, m.status, m.filter, m.topic = ScreenWiki, "", "", ""
+		m = m.show(ScreenWiki)
+		m.topic = ""
 		return m.selecting(ScreenWiki, 0), nil
 	case ShowMessages:
-		m.screen, m.status, m.filter = ScreenMessages, "", ""
-		return m.selecting(ScreenMessages, 0), nil
+		return m.show(ScreenMessages).selecting(ScreenMessages, 0), nil
 	case QueueChanged:
 		m.queued, m.queuedAt, m.queuedFrom = msg.Tracks, msg.At, msg.From
 		if m.screen == ScreenQueue {
@@ -221,6 +262,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	// A key clears the message on the last row, unless the message is about
+	// something still arriving.
+	if !m.loading {
+		m.status, m.statusFailed = "", false
+	}
 
 	// A pending prefix takes the next key, whatever it is, so an unrecognised
 	// second key cancels the prefix rather than acting on its own.
@@ -238,10 +284,27 @@ func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	repeat, counted := m.take()
 
 	action, bound := m.bound()[key]
+	if (m.showSky || len(m.bigArt) > 0) && !overCover[action.Name] {
+		// The list underneath cannot be seen, so nothing acts on it. A cover
+		// goes away on any key that does not work the player.
+		if !m.showSky {
+			m.bigArt = nil
+			return m, tea.ClearScreen
+		}
+		return m, nil
+	}
 	if !bound {
 		return m, nil
 	}
 	return action.do(m, repeat, counted)
+}
+
+// overCover is the actions that work while the visualiser or a cover fills the
+// screen: leaving it, the player, the command line and quitting.
+var overCover = map[string]bool{
+	"back": true, "command": true, "pause": true, "next": true, "previous": true,
+	"seek-forward": true, "seek-back": true, "seek-percent": true,
+	"volume-up": true, "volume-down": true, "quit": true, "quit-hint": true,
 }
 
 // bound is the key to action map in force, which is the default one until
@@ -319,7 +382,7 @@ func (m Model) commandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // not a command and an argument a command could not use.
 func (m Model) runCommand() (tea.Model, tea.Cmd) {
 	line := m.line
-	m.mode, m.line = modeNormal, ""
+	m.mode, m.line, m.statusFailed = modeNormal, "", false
 
 	name, arg := split(line)
 	if name == "" {
@@ -327,13 +390,11 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 	}
 	c, found := lookup(line)
 	if !found {
-		m.status = "no such command: " + Sanitise(name)
-		return m, nil
+		return m.refuse("no such command: " + Sanitise(name)), nil
 	}
 	intent, err := c.run(arg)
 	if err != nil {
-		m.status = err.Error()
-		return m, nil
+		return m.refuse(err.Error()), nil
 	}
 	// A rename's argument is the new name, and the playlist is the one on
 	// screen -- the rule ADR-019 set for e and r. Resolved here because this
@@ -342,23 +403,20 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 	// a question anybody has to answer.
 	if p, ok := intent.(Playlist); ok && p.Verb == "reorder" {
 		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
-			m.status = "reorder needs a playlist on screen — gp, enter, then :playlist reorder"
-			return m, nil
+			return m.refuse("reorder needs a playlist on screen — gp, enter, then :playlist reorder"), nil
 		}
 		return m.startReorder(), nil
 	}
 	if p, ok := intent.(Playlist); ok && p.Verb == "delete" && p.Name == "" {
 		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
-			m.status = "delete needs a playlist on screen, or a name — :playlist delete <name>"
-			return m, nil
+			return m.refuse("delete needs a playlist on screen, or a name — :playlist delete <name>"), nil
 		}
 		return m, emit(DeletePlaylist{ID: m.playlist.ID, Name: m.playlist.Name,
 			Tracks: len(m.playlist.Songs)})
 	}
 	if p, ok := intent.(Playlist); ok && p.Verb == "rename" {
 		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
-			m.status = "rename needs a playlist on screen — gp, enter, then :playlist rename <new name>"
-			return m, nil
+			return m.refuse("rename needs a playlist on screen — gp, enter, then :playlist rename <new name>"), nil
 		}
 		return m, emit(RenamePlaylist{ID: m.playlist.ID, Name: p.Name})
 	}
@@ -479,24 +537,24 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 	case "g":
 		return m.moveTo(0).ontoARow(), nil
 	case "l":
-		m.screen, m.status, m.filter = ScreenLibrary, "", ""
-		return m, nil
+		return m.show(ScreenLibrary), nil
 	case "a":
-		m.screen, m.status, m.filter = ScreenArtists, "", ""
-		return m, nil
+		return m.show(ScreenArtists), nil
 	case "b":
-		m.screen, m.status, m.filter = ScreenEveryAlbum, "", ""
-		return m.selecting(ScreenEveryAlbum, 0), nil
+		// The screen is shown at once and the albums are asked for, as the
+		// library row does.
+		next, _ := m.update(ShowEveryAlbum{})
+		return next, emit(ShowEveryAlbum{})
 	case "v":
 		return m.openSky()
 	case "p":
-		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
-		return m.selecting(ScreenPlaylists, 0), nil
+		next, _ := m.update(ShowPlaylists{})
+		return next, emit(ShowPlaylists{})
 	case "q":
-		m.screen, m.status, m.filter = ScreenQueue, "", ""
+		m = m.show(ScreenQueue)
 		return m.selecting(ScreenQueue, max(0, min(len(m.queued)-1, m.queuedAt))), nil
 	case "s":
-		m.screen, m.status, m.filter = ScreenStarred, "", ""
+		m = m.show(ScreenStarred)
 		return m.selecting(ScreenStarred, firstSelectable(m.starredRows)), nil
 	}
 	return m, nil
@@ -558,23 +616,19 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		// cursor as that screen wants it.
 		return m.goTo(dest.key)
 	case ScreenArtists:
-		m.loading, m.status = true, "opening "+Sanitise(m.artists[at].Name)
-		return m, emit(OpenArtist{ID: m.artists[at].ID})
+		return m.opening("opening "+m.artists[at].Name, m.artists[at].ID), emit(OpenArtist{ID: m.artists[at].ID})
 	case ScreenAlbums:
-		m.loading, m.status = true, "opening "+Sanitise(m.artist.Albums[at].Name)
 		m.fromTracks = ScreenAlbums
-		return m, emit(OpenAlbum{ID: m.artist.Albums[at].ID})
+		return m.opening("opening "+m.artist.Albums[at].Name, m.artist.Albums[at].ID), emit(OpenAlbum{ID: m.artist.Albums[at].ID})
 	case ScreenEveryAlbum:
-		m.loading, m.status = true, "opening "+Sanitise(m.albums[at].Name)
 		m.fromTracks = ScreenEveryAlbum
-		return m, emit(OpenAlbum{ID: m.albums[at].ID})
+		return m.opening("opening "+m.albums[at].Name, m.albums[at].ID), emit(OpenAlbum{ID: m.albums[at].ID})
 	case ScreenTracks:
 		return m, emit(PlayFrom{Album: m.album, Index: at})
 	case ScreenQueue:
 		return m, emit(JumpTo(at))
 	case ScreenPlaylists:
-		m.loading, m.status = true, "opening "+Sanitise(m.playlists[at].Name)
-		return m, emit(OpenPlaylist{ID: m.playlists[at].ID})
+		return m.opening("opening "+m.playlists[at].Name, m.playlists[at].ID), emit(OpenPlaylist{ID: m.playlists[at].ID})
 	case ScreenPlaylist:
 		return m, emit(PlayFrom{Album: asAlbum(m.playlist), Index: at,
 			Playlist: m.playlist.ID})
@@ -588,11 +642,10 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		r := m.grouped()[at]
 		switch r.kind {
 		case kindArtist:
-			m.loading, m.status = true, "opening "+Sanitise(r.name)
-			return m, emit(OpenArtist{ID: r.id})
+			return m.opening("opening "+r.name, r.id), emit(OpenArtist{ID: r.id})
 		case kindAlbum:
-			m.loading, m.status = true, "opening "+Sanitise(r.name)
-			return m, emit(OpenAlbum{ID: r.id})
+			m.fromTracks = m.screen
+			return m.opening("opening "+r.name, r.id), emit(OpenAlbum{ID: r.id})
 		case kindSong:
 			return m, emit(PlayFrom{Album: r.album, Index: 0})
 		}
@@ -728,17 +781,17 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 	}
 	switch m.screen {
 	case ScreenTracks:
-		// An album is reached from one artist's list or from every album, and
-		// back returns to the one it was opened from.
+		// An album is reached from one artist's list, every album, a search or
+		// the starred list, and back returns to the one it was opened from.
 		up := m.fromTracks
-		if up != ScreenEveryAlbum {
+		if up != ScreenEveryAlbum && up != ScreenSearch && up != ScreenStarred {
 			up = ScreenAlbums
 		}
-		m.screen, m.status, m.filter = up, "", ""
+		return m.show(up), nil
 	case ScreenAlbums:
-		m.screen, m.status, m.filter = ScreenArtists, "", ""
+		return m.show(ScreenArtists), nil
 	case ScreenPlaylist:
-		m.screen, m.status, m.filter = ScreenPlaylists, "", ""
+		return m.show(ScreenPlaylists), nil
 	case ScreenWiki:
 		// Reading about a command goes back to the list of them before it
 		// leaves the wiki altogether.
@@ -746,7 +799,7 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 			m.topic, m.status = "", ""
 			return m.selecting(ScreenWiki, 0), nil
 		}
-		m.screen, m.status, m.filter = ScreenLibrary, "", ""
+		return m.show(ScreenLibrary), nil
 	case ScreenArtists, ScreenEveryAlbum, ScreenQueue, ScreenSearch, ScreenStarred,
 		ScreenMessages, ScreenPlaylists:
 		// Each of these is opened from the library, or reached from anywhere,
@@ -754,9 +807,82 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		// from. On the library itself back does nothing, because there is
 		// nothing above it: that is what stops a key held down closing the
 		// program.
-		m.screen, m.status, m.filter = ScreenLibrary, "", ""
+		return m.show(ScreenLibrary), nil
 	}
 	return m, nil
+}
+
+// show moves to a screen. The filter on the screen being left is dropped with
+// the cursor kept on the row it was on, and an answer still on its way from
+// the server no longer moves the screen when it arrives.
+func (m Model) show(s Screen) Model {
+	if m.filter != "" {
+		if rows := m.matches(); len(rows) > 0 {
+			m = m.selecting(m.screen, rows[min(m.cursor[m.screen], len(rows)-1)])
+		}
+		m.filter = ""
+	}
+	if m.wanted != "" {
+		m = m.abandon()
+		m.loading = false
+	}
+	m.screen, m.status = s, ""
+	return m
+}
+
+// strayedKept is how many abandoned requests are remembered.
+const strayedKept = 8
+
+// abandon stops waiting for what was asked for, and remembers it so that its
+// answer is dropped when it arrives.
+func (m Model) abandon() Model {
+	strayed := append(append([]string(nil), m.strayed...), m.wanted)
+	if len(strayed) > strayedKept {
+		strayed = strayed[len(strayed)-strayedKept:]
+	}
+	m.wanted, m.strayed = "", strayed
+	return m
+}
+
+// opening records that the thing with this identifier was asked for, and says
+// so while it arrives.
+func (m Model) opening(status, id string) Model {
+	if m.wanted != "" && m.wanted != id {
+		m = m.abandon()
+	}
+	m.loading, m.status, m.wanted = true, Sanitise(status), id
+	return m
+}
+
+// arrived reports whether something loaded should be shown. It should unless
+// it was asked for and then abandoned, by leaving the screen that asked or by
+// asking for something else.
+func (m Model) arrived(id string) (Model, bool) {
+	if m.wanted == id {
+		m.wanted = ""
+		return m, true
+	}
+	for i, was := range m.strayed {
+		if was == id {
+			m.strayed = append(append([]string(nil), m.strayed[:i]...), m.strayed[i+1:]...)
+			return m, false
+		}
+	}
+	return m, true
+}
+
+// within keeps the cursor of a screen on a row of a list that now holds n.
+func (m Model) within(s Screen, n int) Model {
+	if m.screen == s {
+		n = m.rows()
+	}
+	return m.selecting(s, max(0, min(n-1, m.cursor[s])))
+}
+
+// refuse says why something asked for was not done.
+func (m Model) refuse(why string) Model {
+	m.status, m.statusFailed = why, true
+	return m
 }
 
 func (m Model) move(by int) Model {
@@ -821,7 +947,7 @@ func (m Model) selecting(screen Screen, to int) Model {
 
 // page is how many rows pgup and pgdown move.
 func (m Model) page() int {
-	if n := m.height - chromeLines; n > 1 {
+	if n := m.height - m.chrome(); n > 1 {
 		return n
 	}
 	return 1
@@ -832,16 +958,7 @@ func (m Model) selectedID() string {
 	if m.rows() == 0 {
 		return ""
 	}
-	at := m.matches()[m.cursor[m.screen]]
-	switch m.screen {
-	case ScreenArtists:
-		return m.artists[at].ID
-	case ScreenAlbums:
-		return m.artist.Albums[at].ID
-	case ScreenTracks:
-		return m.album.Songs[at].ID
-	}
-	return ""
+	return m.idAt(m.matches()[m.cursor[m.screen]])
 }
 
 // reloaded puts the cursor back on what was selected before, and says what came
@@ -877,8 +994,16 @@ func (m Model) idAt(i int) string {
 		return m.artists[i].ID
 	case ScreenAlbums:
 		return m.artist.Albums[i].ID
+	case ScreenEveryAlbum:
+		return m.albums[i].ID
 	case ScreenTracks:
 		return m.album.Songs[i].ID
+	case ScreenStarred:
+		return m.starredRows[i].id
+	case ScreenPlaylists:
+		return m.playlists[i].ID
+	case ScreenPlaylist:
+		return m.playlist.Songs[i].ID
 	}
 	return ""
 }
@@ -903,7 +1028,8 @@ func (m Model) confirmKey(key string) (tea.Model, tea.Cmd) {
 // in. It is what `:playlist edit` arrives at and what `e` does on a playlist.
 func (m Model) editPlaylist(p subsonic.Playlist) (tea.Model, tea.Cmd) {
 	m.editing, m.inPlaylist = p, holding(p)
-	m.screen, m.filter, m.loading = ScreenArtists, "", false
+	m = m.show(ScreenArtists)
+	m.loading = false
 	m.status = editingHint(p.Name)
 	return m.remember(m.status), nil
 }
