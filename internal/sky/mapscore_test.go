@@ -77,33 +77,6 @@ func timesOf(t *testing.T, path, timeCol, by string, keep func(string) bool) []f
 	return out
 }
 
-// cellsOf is the light of each cell of a picture: ink times luminance.
-func cellsOf(p Picture, w, h int) []float64 {
-	out := make([]float64, w*h)
-	lum := func(i int) float64 {
-		if i < 0 || i >= len(p.Palette) {
-			return 0
-		}
-		return relLum(p.Palette[i])
-	}
-	for r, line := range p.Lines {
-		c := 0
-		for _, run := range line {
-			for _, ch := range run.Text {
-				l := ink(ch) * lum(run.Fg)
-				if ch == '▀' {
-					l = (lum(run.Fg) + lum(run.Bg)) / 2
-				}
-				if r < h && c < w {
-					out[r*w+c] = l
-				}
-				c++
-			}
-		}
-	}
-	return out
-}
-
 // ranks returns the rank of each value, the smallest first.
 func ranks(v []float64) []float64 {
 	idx := make([]int, len(v))
