@@ -102,10 +102,10 @@ Pausing holds the picture where it is.
 
 ## shuffle
 
-Plays everything on your server in a random order.
-
-It shuffles once, into a queue you can look at with `gq`. It is not a mode that
-keeps reshuffling. `:playlist shuffle <name>` does the same to one playlist.
+Plays everything on your server in a random order. `:playlist shuffle <name>`
+does one playlist, and `S` does the artist, album, playlist or list of tracks
+under the cursor, or what follows the track playing when pressed on the queue.
+It shuffles once, into a queue you can look at with `gq`. It is not a mode.
 
 ## resume
 

@@ -343,6 +343,10 @@ func TestEveryIntentIsWiredUp(t *testing.T) {
 		"JumpTo":          tui.JumpTo(0),
 		"SetPaused":       tui.SetPaused(true),
 		"SeekTo":          tui.SeekTo(time.Minute),
+		"Shuffle":         tui.Shuffle{},
+		"ShuffleThis":     tui.ShuffleThis{Scope: tui.ScopeAlbum, ID: "al-1"},
+		"ShuffleSongs":    tui.ShuffleSongs{Songs: album.Songs, What: "1 starred track"},
+		"Playlist":        tui.Playlist{Verb: "create", Name: "Evening"},
 		"FetchPlaylists":  tui.FetchPlaylists{},
 		"FetchEveryAlbum": tui.FetchEveryAlbum{},
 	} {

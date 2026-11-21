@@ -29,7 +29,7 @@ them is a list.
 | `a` | Add the selected track to the end of the queue |
 | `A` | Play the selected track after the one playing |
 | `e` | Add to the playlist you are looking at, or leave the one you are adding to |
-| `S` | Shuffle the artist, album or playlist the cursor names |
+| `S` | Shuffle the artist, album, playlist or list of tracks under the cursor, or the rest of the queue |
 | `K` | While reordering a playlist, move the selected track up one place |
 | `J` | While reordering a playlist, move the selected track down one place |
 | `*` | Star the selected artist, album or track, or unstar it |
@@ -304,12 +304,12 @@ a tool such as rsgain, and a scheduled job afterwards keeps new music covered.
 
 ## Shuffling
 
-`:playlist shuffle Evening` plays a playlist in a random order, and `:shuffle`
-does the same with everything on the server. `shanty shuffle` does it to a
-detached session from another shell.
-
-It shuffles once, into a queue you can see with `gq`. It is not a mode that
-keeps reshuffling.
+`S` shuffles the artist, album or playlist under the cursor. On a track it is
+the album or playlist holding it, or every track a search or the starred screen
+lists. On the queue it is what follows the track playing. On the library it is
+everything, everything starred or the queue, by row. `:shuffle` is everything,
+`:playlist shuffle Evening` is one playlist, and `shanty shuffle` does it to a
+detached session. It shuffles once, into the queue `gq` shows; it is not a mode.
 
 ## Starred
 

@@ -126,7 +126,7 @@ func Actions() []Action {
 		},
 		{
 			Name:    "shuffle-selected",
-			Summary: "shuffle the artist, album or playlist the cursor names",
+			Summary: "shuffle the artist, album, playlist or list of tracks the cursor is on, or the rest of the queue",
 			Keys:    []string{"S"},
 			do:      modelCmd((Model).shuffleSelected),
 		},

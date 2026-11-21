@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -383,5 +384,84 @@ func TestShufflingNothingIsNothing(t *testing.T) {
 
 	if !got.Empty() || !got.Done() {
 		t.Errorf("shuffling an empty queue gave %+v", got)
+	}
+}
+
+// TestShufflingTheRestKeepsEveryTrackAndWhatHasPlayed is the property the
+// queue screen relies on: the track playing and those before it stay where
+// they are, and nothing is gained or lost after them.
+func TestShufflingTheRestKeepsEveryTrackAndWhatHasPlayed(t *testing.T) {
+	for n := range 12 {
+		for at := 0; at <= n; at++ {
+			start := New(tracks(n)...).Jump(at)
+			for seed := range uint64(20) {
+				got := start.ShuffleRest(rand.New(rand.NewPCG(seed, 0)))
+
+				if got.At() != start.At() || got.Len() != start.Len() {
+					t.Fatalf("%d tracks at %d, seed %d: now %d tracks at %d", n, at, seed, got.Len(), got.At())
+				}
+				upTo := min(at+1, n)
+				if !reflect.DeepEqual(ids(got)[:upTo], ids(start)[:upTo]) {
+					t.Fatalf("%d tracks at %d, seed %d: the tracks up to the one playing moved", n, at, seed)
+				}
+				before, after := ids(start)[upTo:], ids(got)[upTo:]
+				sort.Strings(before)
+				sort.Strings(after)
+				if !reflect.DeepEqual(before, after) {
+					t.Fatalf("%d tracks at %d, seed %d: the rest holds %v, want %v", n, at, seed, after, before)
+				}
+			}
+		}
+	}
+}
+
+func TestShufflingTheRestActuallyChangesTheOrder(t *testing.T) {
+	start := New(tracks(20)...).Jump(4)
+
+	var moved int
+	for seed := range uint64(20) {
+		if got := start.ShuffleRest(rand.New(rand.NewPCG(seed, 0))); !reflect.DeepEqual(ids(got), ids(start)) {
+			moved++
+		}
+	}
+	if moved == 0 {
+		t.Error("twenty shuffles of fifteen tracks all came back in the same order")
+	}
+}
+
+func TestShufflingTheRestDoesNotDisturbTheQueueItCameFrom(t *testing.T) {
+	start := New(tracks(10)...).Jump(3)
+	was := ids(start)
+
+	_ = start.ShuffleRest(rand.New(rand.NewPCG(1, 2)))
+
+	if got := ids(start); !reflect.DeepEqual(got, was) || start.At() != 3 {
+		t.Errorf("shuffling the rest changed the queue it came from: %v at %d", got, start.At())
+	}
+}
+
+func TestShufflingTheRestGivesTheSameOrderForTheSameSeed(t *testing.T) {
+	start := New(tracks(12)...).Jump(2)
+
+	one := start.ShuffleRest(rand.New(rand.NewPCG(7, 9)))
+	two := start.ShuffleRest(rand.New(rand.NewPCG(7, 9)))
+	if !reflect.DeepEqual(ids(one), ids(two)) {
+		t.Errorf("the same seed gave %v and then %v", ids(one), ids(two))
+	}
+}
+
+// TestShufflingTheRestOfAQueueWithNothingToShuffleReturnsIt covers a queue
+// that is empty, finished, on its last track, or has one track left.
+func TestShufflingTheRestOfAQueueWithNothingToShuffleReturnsIt(t *testing.T) {
+	for name, start := range map[string]Queue{
+		"empty":     New(),
+		"finished":  New(tracks(3)...).Jump(3),
+		"last":      New(tracks(3)...).Jump(2),
+		"one after": New(tracks(3)...).Jump(1),
+	} {
+		got := start.ShuffleRest(rand.New(rand.NewPCG(1, 2)))
+		if !reflect.DeepEqual(ids(got), ids(start)) || got.At() != start.At() {
+			t.Errorf("%s: the queue changed to %v at %d", name, ids(got), got.At())
+		}
 	}
 }
