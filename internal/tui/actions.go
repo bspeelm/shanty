@@ -54,16 +54,15 @@ func Actions() []Action {
 		{Name: "filter", Summary: "narrow the list you are looking at", Keys: []string{"/"},
 			do: func(m Model, _ int, _ bool) (tea.Model, tea.Cmd) {
 				if m.reordering {
-					m.status = "the list cannot be narrowed while it is being reordered — enter saves, esc discards"
-					return m, nil
+					return m.say("the list cannot be narrowed while it is being reordered — enter saves, esc discards"), nil
 				}
 				m.mode, m.filter = modeFilter, ""
-				return m.moveTo(0), nil
+				return m.moveTo(0).ontoARow(), nil
 			}},
 		{Name: "command", Summary: "type a command", Keys: []string{":"},
 			do: func(m Model, _ int, _ bool) (tea.Model, tea.Cmd) {
-				m.mode, m.line, m.status = modeCommand, "", ""
-				return m, nil
+				m.mode, m.line = modeCommand, ""
+				return m.say(""), nil
 			}},
 		{Name: "go-prefix", Summary: "begin a two-key jump, as in gg or gq", Keys: []string{"g"},
 			do: func(m Model, _ int, _ bool) (tea.Model, tea.Cmd) {
@@ -85,8 +84,7 @@ func Actions() []Action {
 				if m.editing.ID != "" {
 					name := m.editing.Name
 					m.editing, m.inPlaylist = subsonic.Playlist{}, nil
-					m.status = "finished with " + Sanitise(name)
-					return m.remember(m.status), nil
+					return m.say("finished with " + Sanitise(name)).remember("finished with " + Sanitise(name)), nil
 				}
 				// Looking at a playlist is knowing which one to add to, so the
 				// key that leaves is the key that starts. `:playlist edit` is
@@ -152,8 +150,7 @@ func Actions() []Action {
 		{Name: "seek-percent", Summary: "seek to a percentage of the track, as in 50%", Keys: []string{"%"},
 			do: func(m Model, repeat int, counted bool) (tea.Model, tea.Cmd) {
 				if !counted {
-					m.status = "type a percentage first, as in 50%"
-					return m, nil
+					return m.say("type a percentage first, as in 50%"), nil
 				}
 				return m, emit(SeekToPercent(min(100, repeat)))
 			}},
@@ -165,8 +162,7 @@ func Actions() []Action {
 				// Quitting ends the session and is a command rather than a key
 				// (ADR-016). Saying so beats doing nothing for anyone who
 				// learned q somewhere else.
-				m.status = "type :q to quit"
-				return m, nil
+				return m.say("type :q to quit"), nil
 			}},
 	}
 }

@@ -26,8 +26,8 @@ func TestTheJumpToPlaylistsAsksTheServerForThem(t *testing.T) {
 	m, _ := press(t, loaded(t), "g")
 	m, msg := press(t, m, "p")
 
-	if _, ok := msg.(ShowPlaylists); !ok {
-		t.Fatalf("gp emitted %T, want ShowPlaylists so the playlists are fetched", msg)
+	if _, ok := msg.(FetchPlaylists); !ok {
+		t.Fatalf("gp emitted %T, want FetchPlaylists so the playlists are fetched", msg)
 	}
 	if m.Screen() != ScreenPlaylists {
 		t.Fatalf("gp went to %s", m.Screen())
@@ -41,8 +41,8 @@ func TestTheJumpToEveryAlbumAsksTheServerForThem(t *testing.T) {
 	m, _ := press(t, loaded(t), "g")
 	m, msg := press(t, m, "b")
 
-	if _, ok := msg.(ShowEveryAlbum); !ok {
-		t.Fatalf("gb emitted %T, want ShowEveryAlbum so the albums are fetched", msg)
+	if _, ok := msg.(FetchEveryAlbum); !ok {
+		t.Fatalf("gb emitted %T, want FetchEveryAlbum so the albums are fetched", msg)
 	}
 	if m.Screen() != ScreenEveryAlbum {
 		t.Fatalf("gb went to %s", m.Screen())

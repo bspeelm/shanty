@@ -278,6 +278,13 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.forward(msg)
 		}
 		return a.forwardAnd(msg, a.fetchAlbums())
+	case tui.FetchPlaylists:
+		return a, a.fetchPlaylists()
+	case tui.FetchEveryAlbum:
+		if len(a.ui.Albums()) > 0 {
+			return a, nil
+		}
+		return a, a.fetchAlbums()
 	case tui.OpenPlaylist:
 		return a, a.fetchPlaylist(msg.ID)
 	case tui.Playlist:

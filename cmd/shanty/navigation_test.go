@@ -86,3 +86,47 @@ func TestAReloadWithNothingToFetchIsNotMistakenForTheNextListToArrive(t *testing
 		t.Errorf("a list that arrived afterwards was reported as the reload: %q", a.ui.Status())
 	}
 }
+
+// deliver applies messages that were held back, and everything they lead to.
+func deliver(t *testing.T, a app, held ...[]tea.Msg) app {
+	t.Helper()
+	for _, msgs := range held {
+		for _, m := range msgs {
+			a = settle(t, a, m)
+		}
+	}
+	return a
+}
+
+func TestWhatAJumpAsksForCannotUndoAKeyPressedBeforeItIsAnswered(t *testing.T) {
+	a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2"}})
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+
+	// The jump and the key after it are both pressed before either is answered.
+	a, _ = step(t, a, keyRunes("g"))
+	a, jumped := step(t, a, keyRunes("p"))
+	a, opened := step(t, a, tea.KeyMsg{Type: tea.KeyEnter})
+	a = deliver(t, a, jumped, opened)
+	if a.ui.Screen() != tui.ScreenPlaylist {
+		t.Errorf("a playlist opened straight after gp is not shown; the screen is %s", a.ui.Screen())
+	}
+
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	a, _ = step(t, a, keyRunes("g"))
+	a, jumped = step(t, a, keyRunes("p"))
+	a, left := step(t, a, tea.KeyMsg{Type: tea.KeyEsc})
+	a = deliver(t, a, jumped, left)
+	if a.ui.Screen() != tui.ScreenLibrary {
+		t.Errorf("esc straight after gp was undone; the screen is %s", a.ui.Screen())
+	}
+
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	a, _ = step(t, a, keyRunes("g"))
+	a, jumped = step(t, a, keyRunes("b"))
+	a, left = step(t, a, tea.KeyMsg{Type: tea.KeyEsc})
+	a = deliver(t, a, jumped, left)
+	if a.ui.Screen() != tui.ScreenLibrary {
+		t.Errorf("esc straight after gb was undone; the screen is %s", a.ui.Screen())
+	}
+}
