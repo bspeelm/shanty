@@ -5,10 +5,8 @@ package sky
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -33,13 +31,6 @@ func planOf(t *testing.T, path string) *Plan {
 	return NewPlan(out)
 }
 
-// played is what a visualiser did over a whole track: each frame's heard
-// position, kick and heaviness, and the position of each cut.
-type played struct {
-	pos, kick, heavy []float64
-	cuts             []float64
-}
-
 // playWhole plays a file's live readings through a visualiser that is given
 // the file's plan two seconds in, as the app gives it.
 func playWhole(m measured, p *Plan) played {
@@ -62,41 +53,6 @@ func playWhole(m measured, p *Plan) played {
 		}
 	}
 	return out
-}
-
-// onBeats reports how the kick answered the beats from a to b: the share of
-// them with a kick of at least 0.6 beginning within 60 ms before or 150 ms
-// after, and the mean and spread, in milliseconds, of how long after the
-// beat it began.
-func (d played) onBeats(beats []float64, a, b float64) (share, lag, spread float64) {
-	var lags []float64
-	n := 0
-	for _, at := range beats {
-		if at < a || at >= b {
-			continue
-		}
-		n++
-		best, rise, when := 0.0, 0.0, 0.0
-		for k := sort.SearchFloat64s(d.pos, at-0.06); k > 0 && k < len(d.pos) && d.pos[k] <= at+0.15; k++ {
-			best = math.Max(best, d.kick[k])
-			if up := d.kick[k] - d.kick[k-1]; up > rise {
-				rise, when = up, d.pos[k]-at
-			}
-		}
-		if rise >= 0.1 && best >= 0.6 {
-			lags = append(lags, 1000*when)
-		}
-	}
-	if n == 0 || len(lags) == 0 {
-		return 0, 0, 0
-	}
-	for _, l := range lags {
-		lag += l / float64(len(lags))
-	}
-	for _, l := range lags {
-		spread += (l - lag) * (l - lag) / float64(len(lags))
-	}
-	return float64(len(lags)) / float64(n), lag, math.Sqrt(spread)
 }
 
 // kickedShare returns the share of a plan's beats from a to b that have a
