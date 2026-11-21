@@ -17,6 +17,7 @@ const (
 	kindArtist
 	kindAlbum
 	kindSong
+	kindPlaylist
 )
 
 // result is one row of a search result.

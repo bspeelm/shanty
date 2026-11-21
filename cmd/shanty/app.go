@@ -306,7 +306,12 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.Shuffle:
 		return a, a.shuffleEverything()
 	case tui.ShuffleThis:
+		if msg.Scope == tui.ScopeQueue {
+			return a.shuffleRest()
+		}
 		return a, a.shuffleThis(msg)
+	case tui.ShuffleSongs:
+		return a, emit(shuffled{tracks: msg.Songs, what: msg.What})
 	case deletePlaylist:
 		return a, a.removePlaylist(msg)
 	case shuffled:
@@ -1303,31 +1308,90 @@ func (a app) shuffleEverything() tea.Cmd {
 	}
 }
 
-// shuffleThis plays one artist, album or playlist in a random order.
+// shuffleRest puts the tracks after the one playing in a random order. The
+// track playing carries on, and mpv is told which track now follows it.
+func (a app) shuffleRest() (tea.Model, tea.Cmd) {
+	switch after := a.queue.Len() - a.queue.At() - 1; {
+	case a.queue.Empty():
+		return a.forward(tui.Failed{Message: "the queue is empty, so there is nothing to shuffle\nenter on a track plays it"})
+	case after < 2:
+		return a.forward(tui.Failed{Message: "fewer than two tracks follow the one playing, so there is nothing to shuffle\na on a track adds it to the queue"})
+	}
+	a.queue = a.queue.ShuffleRest(a.shuffler())
+	return a, tea.Batch(a.prefetch(), a.queueChanged(),
+		emit(tui.Notice("shuffling the rest of the queue")), a.foresee())
+}
+
+// everythingStarred is every starred track, and every track of every starred
+// album and artist, each once.
+func everythingStarred(ctx context.Context, client *subsonic.Client) ([]subsonic.Song, error) {
+	found, err := client.Starred(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var songs []subsonic.Song
+	seen := map[string]bool{}
+	add := func(more []subsonic.Song) {
+		for _, s := range more {
+			if !seen[s.ID] {
+				seen[s.ID] = true
+				songs = append(songs, s)
+			}
+		}
+	}
+	add(found.Songs)
+	for _, al := range found.Albums {
+		album, err := client.Album(ctx, al.ID)
+		if err != nil {
+			return nil, err
+		}
+		add(album.Songs)
+	}
+	for _, ar := range found.Artists {
+		theirs, _, err := songsByArtist(ctx, client, ar.ID)
+		if err != nil {
+			return nil, err
+		}
+		add(theirs)
+	}
+	return songs, nil
+}
+
+// shuffleThis plays one artist, album or playlist, or everything starred, in
+// a random order. A scope it has no case for is reported.
 func (a app) shuffleThis(msg tui.ShuffleThis) tea.Cmd {
 	client := a.client
 	return func() tea.Msg {
 		switch msg.Scope {
-		case "artist":
+		case tui.ScopeStarred:
+			songs, err := everythingStarred(a.ctx, client)
+			if err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			if len(songs) == 0 {
+				return tui.Failed{Message: "nothing is starred, so there is nothing to shuffle\npress * on an artist, an album or a track to star it"}
+			}
+			return shuffled{tracks: songs, what: "everything starred"}
+		case tui.ScopeArtist:
 			songs, name, err := songsByArtist(a.ctx, client, msg.ID)
 			if err != nil {
 				return tui.Failed{Message: err.Error()}
 			}
 			return shuffled{tracks: songs, what: name}
-		case "album":
+		case tui.ScopeAlbum:
 			album, err := client.Album(a.ctx, msg.ID)
 			if err != nil {
 				return tui.Failed{Message: err.Error()}
 			}
 			return shuffled{tracks: album.Songs, what: album.Name}
-		case "playlist":
+		case tui.ScopePlaylist:
 			full, err := client.Playlist(a.ctx, msg.ID)
 			if err != nil {
 				return tui.Failed{Message: err.Error()}
 			}
 			return shuffled{tracks: full.Songs, what: full.Name, playlist: msg.ID}
 		}
-		return tui.Failed{Message: "shanty does not know how to shuffle " + msg.Scope}
+		return tui.Failed{Message: "shanty does not know how to shuffle " + string(msg.Scope)}
 	}
 }
 

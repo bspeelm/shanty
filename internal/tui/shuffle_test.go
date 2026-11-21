@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -81,16 +82,125 @@ func TestShuffleOnAPlaylistRowAndInsideOneBothAskForThatPlaylist(t *testing.T) {
 }
 
 func TestShuffleWhereThereIsNothingToShuffleSaysWherePressingItWorks(t *testing.T) {
-	// The queue is reached from anywhere and holds tracks rather than a
-	// collection with an order of its own.
-	m := onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued(), At: 0}))
-	m, msg := press(t, m, "S")
-
-	if msg != nil {
-		t.Errorf("S on the queue emitted %#v, want nothing", msg)
+	// The wiki and the messages hold nothing that can be played.
+	for name, m := range map[string]Model{
+		"wiki":     send(t, loaded(t), ShowWiki{}),
+		"messages": send(t, loaded(t), Notice("playing Ballast next"), ShowMessages{}),
+	} {
+		m, msg := press(t, m, "S")
+		if msg != nil {
+			t.Errorf("S on the %s emitted %#v, want nothing", name, msg)
+		}
+		if !strings.Contains(m.status, "press S on") {
+			t.Errorf("the status on the %s does not say where S does work: %q", name, m.status)
+		}
 	}
-	if !strings.Contains(m.status, "press S on") {
-		t.Errorf("the status does not say where S does work: %q", m.status)
+}
+
+// narrowed types a filter and keeps it.
+func narrowed(t *testing.T, m Model, by string) Model {
+	t.Helper()
+	m, _ = press(t, m, "/")
+	m, _ = press(t, typed(t, m, by), "enter")
+	return m
+}
+
+// down moves the cursor down n rows.
+func down(t *testing.T, m Model, n int) Model {
+	t.Helper()
+	for range n {
+		m, _ = press(t, m, "j")
+	}
+	return m
+}
+
+// TestShuffleAsksForWhatTheCursorIsOnOrTheListItIsIn holds every kind of row
+// on every screen against what S asks for there.
+func TestShuffleAsksForWhatTheCursorIsOnOrTheListItIsIn(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
+	base := send(t, loaded(t), PlaylistsLoaded(lists), starredChanged(), AlbumsLoaded(everyAlbum()))
+	library := send(t, base, QueueChanged{Tracks: queued()})
+	library.screen = ScreenLibrary
+	found := send(t, base, SearchLoaded{Query: "water", Results: results()})
+	starred := onStarred(t, base)
+	albums := send(t, base, ArtistLoaded(library.artists[0]))
+	everyAlbums := send(t, base, ShowEveryAlbum{})
+	inPlaylist := send(t, base, PlaylistLoaded(eveningOf(3)))
+	onLibrary := func(row string) Model { return onRow(t, library, row) }
+
+	for _, tc := range []struct {
+		name string
+		m    Model
+		want any
+	}{
+		{"an artist", base, ShuffleThis{Scope: ScopeArtist, ID: "ar-1"}},
+		{"an artist in a narrowed list", narrowed(t, base, "bilge"), ShuffleThis{Scope: ScopeArtist, ID: "ar-2"}},
+		{"an artist found by a search", found, ShuffleThis{Scope: ScopeArtist, ID: "ar-1"}},
+		{"a starred artist", starred, ShuffleThis{Scope: ScopeArtist, ID: "ar-1"}},
+		{"one of an artist's albums", down(t, albums, 1), ShuffleThis{Scope: ScopeAlbum, ID: "al-2"}},
+		{"one of every album", down(t, everyAlbums, 1), ShuffleThis{Scope: ScopeAlbum, ID: "al-3"}},
+		{"one of every album, narrowed", narrowed(t, everyAlbums, "low"), ShuffleThis{Scope: ScopeAlbum, ID: "al-2"}},
+		{"an album found by a search", down(t, found, 2), ShuffleThis{Scope: ScopeAlbum, ID: "al-9"}},
+		{"a starred album", down(t, starred, 1), ShuffleThis{Scope: ScopeAlbum, ID: "al-1"}},
+		{"a track on an album", down(t, send(t, albums, AlbumLoaded(library.artists[0].Albums[0])), 1),
+			ShuffleThis{Scope: ScopeAlbum, ID: "al-1"}},
+		{"a playlist", down(t, onPlaylists(t, base), 1), ShuffleThis{Scope: ScopePlaylist, ID: "pl-2"}},
+		{"a track in a playlist", down(t, inPlaylist, 2), ShuffleThis{Scope: ScopePlaylist, ID: "pl-1"}},
+		{"a track found by a search", down(t, found, 4),
+			ShuffleSongs{Songs: results().Songs, What: `2 tracks found for "water"`}},
+		{"a track found by a search, narrowed", narrowed(t, found, "slip"),
+			ShuffleSongs{Songs: results().Songs[:1], What: `1 track found for "water"`}},
+		{"a starred track", down(t, starred, 2),
+			ShuffleSongs{Songs: starredChanged().Results.Songs, What: "1 starred track"}},
+		{"the library's artists", onLibrary("Artists"), Shuffle{}},
+		{"the library's albums", onLibrary("Albums"), Shuffle{}},
+		{"the library's starred", onLibrary("Starred"), ShuffleThis{Scope: ScopeStarred}},
+		{"the library's queue", onLibrary("Queue"), ShuffleThis{Scope: ScopeQueue}},
+		{"the queue", onQueue(t, library), ShuffleThis{Scope: ScopeQueue}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, msg := press(t, tc.m, "S")
+			if !reflect.DeepEqual(msg, tc.want) {
+				t.Errorf("S emitted %#v, want %#v", msg, tc.want)
+			}
+			if m.Status() != "" {
+				t.Errorf("S said %q when it had something to shuffle", m.Status())
+			}
+		})
+	}
+}
+
+// TestShuffleWithNothingUnderItSaysWhatIsWrongAndWhatToDo covers the rows and
+// the screens S has nothing to ask for.
+func TestShuffleWithNothingUnderItSaysWhatIsWrongAndWhatToDo(t *testing.T) {
+	base := loaded(t)
+	library := base
+	library.screen = ScreenLibrary
+
+	for _, tc := range []struct {
+		name  string
+		m     Model
+		wants []string
+	}{
+		{"the library's playlists", onRow(t, library, "Playlists"), []string{"choose a playlist", "press S"}},
+		{"the library's queue, empty", onRow(t, library, "Queue"), []string{"queue is empty", "enter"}},
+		{"the queue, empty", onQueue(t, base), []string{"queue is empty", "enter"}},
+		{"nothing starred", onStarred(t, base), []string{"nothing is starred", "*"}},
+		{"a search that found nothing", send(t, base, SearchLoaded{Query: "zzz"}), []string{"found nothing", ":search"}},
+		{"every album, with none", send(t, base, ShowEveryAlbum{}, AlbumsLoaded(nil)), []string{"nothing to shuffle here", "press S on"}},
+		{"a filter matching nothing", narrowed(t, base, "zzz"), []string{"nothing matches zzz", "/"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, msg := press(t, tc.m, "S")
+			if msg != nil {
+				t.Errorf("S emitted %#v, want nothing", msg)
+			}
+			for _, want := range tc.wants {
+				if !strings.Contains(m.Status(), want) {
+					t.Errorf("S said %q, which does not hold %q", m.Status(), want)
+				}
+			}
+		})
 	}
 }
 

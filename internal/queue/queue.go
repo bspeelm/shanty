@@ -95,6 +95,22 @@ func (q Queue) Shuffle(rng *rand.Rand) Queue {
 	return Queue{tracks: tracks}
 }
 
+// ShuffleRest returns a queue with the tracks after the current one in a
+// random order. The current track, those before it and the position are as
+// they were. A queue that is done, or has fewer than two tracks after the
+// current one, is returned unchanged.
+func (q Queue) ShuffleRest(rng *rand.Rand) Queue {
+	from := q.at + 1
+	if q.Done() || len(q.tracks)-from < 2 {
+		return q
+	}
+	tracks := append([]Track(nil), q.tracks...)
+	rest := tracks[from:]
+	rng.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+	q.tracks = tracks
+	return q
+}
+
 func (q Queue) Next() Queue    { return q.jump(q.at + 1) }
 func (q Queue) Restart() Queue { return q.jump(0) }
 

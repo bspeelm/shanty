@@ -92,11 +92,18 @@ type (
 	}
 	// Shuffle asks for everything on the server to play in a random order.
 	Shuffle struct{}
-	// ShuffleThis asks for one collection to play in a random order. Scope is
-	// "artist", "album" or "playlist", and ID names the one meant.
+	// ShuffleThis asks for one collection to play in a random order. Scope
+	// says what kind it is and ID names the one meant, where the scope has
+	// more than one.
 	ShuffleThis struct {
-		Scope string
+		Scope Scope
 		ID    string
+	}
+	// ShuffleSongs asks for these tracks to play in a random order. What says
+	// what they are, in words for the message that follows.
+	ShuffleSongs struct {
+		Songs []subsonic.Song
+		What  string
 	}
 	// OpenPlaylist asks for one playlist's tracks.
 	OpenPlaylist struct{ ID string }
@@ -225,6 +232,26 @@ type (
 )
 
 func emit(msg tea.Msg) tea.Cmd { return func() tea.Msg { return msg } }
+
+// Scope is what a shuffle takes its tracks from.
+type Scope string
+
+const (
+	// ScopeArtist is every track on every album by one artist.
+	ScopeArtist Scope = "artist"
+	// ScopeAlbum is one album.
+	ScopeAlbum Scope = "album"
+	// ScopePlaylist is one playlist.
+	ScopePlaylist Scope = "playlist"
+	// ScopeStarred is every starred track, and every track of every starred
+	// album and artist.
+	ScopeStarred Scope = "starred"
+	// ScopeQueue is the tracks in the queue after the one playing.
+	ScopeQueue Scope = "queue"
+)
+
+// Scopes lists every scope.
+var Scopes = []Scope{ScopeArtist, ScopeAlbum, ScopePlaylist, ScopeStarred, ScopeQueue}
 
 // Kind is what a starrable thing is. It mirrors the client's own, so that the
 // interface names a kind without importing the package that talks to the
