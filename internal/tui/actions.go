@@ -53,6 +53,10 @@ func Actions() []Action {
 			Keys: []string{"esc", "backspace", "h", "left"}, do: modelCmd((Model).back)},
 		{Name: "filter", Summary: "narrow the list you are looking at", Keys: []string{"/"},
 			do: func(m Model, _ int, _ bool) (tea.Model, tea.Cmd) {
+				if m.reordering {
+					m.status = "the list cannot be narrowed while it is being reordered — enter saves, esc discards"
+					return m, nil
+				}
 				m.mode, m.filter = modeFilter, ""
 				return m.moveTo(0), nil
 			}},

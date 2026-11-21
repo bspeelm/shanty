@@ -186,6 +186,11 @@ type Model struct {
 	// to do if the answer is yes.
 	asking string
 	agreed tea.Msg
+	// wanted is the identifier of what was last asked to be opened and has not
+	// arrived. strayed is the identifiers asked for and then abandoned, whose
+	// answers are dropped.
+	wanted  string
+	strayed []string
 	// keep is what was selected when a reload was asked for, so the cursor can
 	// go back to it once the answer arrives.
 	keep string
