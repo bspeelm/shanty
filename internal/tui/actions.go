@@ -46,6 +46,14 @@ func Actions() []Action {
 			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) { return m.move(-m.page() * repeat), nil }},
 		{Name: "move-page-down", Summary: "move down by one screenful", Keys: []string{"pgdown"},
 			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) { return m.move(m.page() * repeat), nil }},
+		{Name: "move-half-up", Summary: "move up by half a screenful", Keys: []string{"ctrl+u"},
+			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) {
+				return m.move(-max(1, m.page()/2) * repeat), nil
+			}},
+		{Name: "move-half-down", Summary: "move down by half a screenful", Keys: []string{"ctrl+d"},
+			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) {
+				return m.move(max(1, m.page()/2) * repeat), nil
+			}},
 
 		{Name: "open", Summary: "open the selected artist or album, or play the selected track",
 			Keys: []string{"enter", "l", "right"}, do: modelCmd((Model).open)},

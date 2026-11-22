@@ -296,8 +296,9 @@ func (m Model) bound() map[string]Action {
 }
 
 // filterKey handles a keystroke while the filter is being typed. The list
-// narrows as characters arrive. esc abandons the filter and restores the list;
-// enter keeps it and returns to normal mode.
+// narrows as characters arrive. esc abandons the filter and restores the list.
+// enter keeps it and returns to normal mode, and opens the row when only one
+// is left.
 func (m Model) filterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyEsc:
@@ -305,6 +306,9 @@ func (m Model) filterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.moveTo(0).ontoARow(), nil
 	case tea.KeyEnter:
 		m.mode = modeNormal
+		if m.rows() == 1 {
+			return m.open()
+		}
 		return m, nil
 	case tea.KeyBackspace:
 		if m.filter != "" {
@@ -325,6 +329,14 @@ func (m Model) filterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.move(-1), nil
 	case "down":
 		return m.move(1), nil
+	case "pgup":
+		return m.move(-m.page()), nil
+	case "pgdown":
+		return m.move(m.page()), nil
+	case "home":
+		return m.moveTo(0).ontoARow(), nil
+	case "end":
+		return m.moveTo(m.rows() - 1), nil
 	}
 	return m, nil
 }

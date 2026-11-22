@@ -193,3 +193,66 @@ func TestTheLastSearchIsReachedFromTheLibraryAndByAJump(t *testing.T) {
 		t.Errorf("a new search did not replace the results: %q", m.query)
 	}
 }
+
+func TestMovingByPagesAndToTheEndsWorksWhileAFilterIsBeingTyped(t *testing.T) {
+	next, _ := New().Update(tea.WindowSizeMsg{Width: 64, Height: 10})
+	long := tenTracks()
+	m := send(t, next.(Model), AlbumLoaded(long))
+	m, _ = press(t, m, "/")
+	m = typed(t, m, "track")
+	if !m.Filtering() || m.rows() != len(long.Songs) {
+		t.Fatalf("the filter matches %d rows", m.rows())
+	}
+
+	m, _ = press(t, m, "end")
+	if m.Cursor() != m.rows()-1 {
+		t.Errorf("end went to row %d", m.Cursor())
+	}
+	m, _ = press(t, m, "home")
+	if m.Cursor() != 0 {
+		t.Errorf("home went to row %d", m.Cursor())
+	}
+	m, _ = press(t, m, "pgdown")
+	down := m.Cursor()
+	if down != m.page() {
+		t.Errorf("pgdown went to row %d, want a page of %d", down, m.page())
+	}
+	m, _ = press(t, m, "pgup")
+	if m.Cursor() != 0 || !m.Filtering() || m.Filter() != "track" {
+		t.Errorf("pgup went to row %d, typing %v, filter %q", m.Cursor(), m.Filtering(), m.Filter())
+	}
+}
+
+func TestEnterOnAFilterThatLeavesOneRowOpensIt(t *testing.T) {
+	m, _ := press(t, loaded(t), "/")
+	m = typed(t, m, "bilge")
+	m, msg := press(t, m, "enter")
+	if open, ok := msg.(OpenArtist); !ok || open.ID != "ar-2" {
+		t.Fatalf("enter with one row left emitted %#v, want that artist opened", msg)
+	}
+	if m.Filtering() || m.Filter() != "bilge" {
+		t.Errorf("the filter was not kept: typing %v, %q", m.Filtering(), m.Filter())
+	}
+
+	m, _ = press(t, send(t, loaded(t), keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum())), "/")
+	m = typed(t, m, "a")
+	m, msg = press(t, m, "enter")
+	if msg != nil || m.Filtering() || m.Filter() != "a" || m.rows() < 2 {
+		t.Errorf("enter with %d rows left emitted %#v", m.rows(), msg)
+	}
+}
+
+func TestHalfAScreenIsMovedByItsOwnKeys(t *testing.T) {
+	next, _ := New().Update(tea.WindowSizeMsg{Width: 64, Height: 12})
+	m := send(t, next.(Model), AlbumLoaded(tenTracks()))
+	half := m.page() / 2
+
+	down, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if got := down.(Model).Cursor(); got != half || half < 1 {
+		t.Fatalf("ctrl+d went to row %d, want half a page of %d", got, m.page())
+	}
+	up, _ := down.(Model).Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	if got := up.(Model).Cursor(); got != 0 {
+		t.Errorf("ctrl+u went to row %d", got)
+	}
+}
