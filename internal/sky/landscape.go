@@ -74,7 +74,7 @@ var settings = map[string]setting{
 		tod: [2]float64{0, 0.05}, water: 0.5, body: 0.3, aurora: 1, ridges: [2]int{1, 2},
 		weather: [weathers]float64{weatherNone: 3, weatherSnow: 2},
 		pulse:   true,
-		colours: []RGB{{2, 6, 8}, {6, 36, 40}, {18, 104, 88}, {58, 196, 128}, {204, 255, 224}},
+		colours: []RGB{{2, 6, 7}, {13, 35, 38}, {47, 98, 110}, {117, 173, 230}, {239, 239, 251}},
 	},
 }
 

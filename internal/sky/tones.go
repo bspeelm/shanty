@@ -83,42 +83,66 @@ func (c lch) most() float64 {
 	return lo
 }
 
+// family is the hues the palettes of one kind of music may have, in degrees.
+type family struct {
+	// No step of a palette has a hue below from or above to, its key hue is
+	// held between keyFrom and keyTo, and an accent has no hue below
+	// accentFrom.
+	from, to       float64
+	keyFrom, keyTo float64
+	accentFrom     float64
+	// dark is the hue the dark end of a ramp leans towards.
+	dark float64
+	// The key hues of the two members of a palette are from mateLeast to
+	// mateMost apart.
+	mateLeast, mateMost float64
+	// gamut is the most chroma a colour may have as a share of what can be
+	// shown at its lightness and hue.
+	gamut float64
+	// crest sets where along a ramp its chroma peaks: half the way raised
+	// to the power of one over crest.
+	crest float64
+}
+
+// The families. None reaches the greens, olives and yellow-greens between
+// gold.to and cool.from, or the pinks and magentas between cool.to and
+// ember.from.
+var (
+	// cool runs from teal through blue to violet, its darks leaning to
+	// blue-violet. Its accents keep clear of the green-blues.
+	cool = family{from: 183, to: 308, keyFrom: 186, keyTo: 300, accentFrom: 200, dark: 265, mateLeast: 55, mateMost: 90, gamut: 0.7, crest: 0.85}
+	// ember runs from ember red through orange to amber, its darks leaning
+	// to red and its lights to a hot yellow.
+	ember = family{from: 25, to: 92, keyFrom: 36, keyTo: 66, accentFrom: 25, dark: 20, mateLeast: 15, mateMost: 30, gamut: 0.95, crest: 1.6}
+	// gold runs from a warm brown through amber to gold. Its key hues are
+	// too close for two members to differ by hue, so its second member is
+	// told apart by its chroma.
+	gold = family{from: 40, to: 94, keyFrom: 60, keyTo: 74, accentFrom: 40, dark: 40, mateLeast: 7, mateMost: 14, gamut: 0.9, crest: 1.2}
+)
+
 // The measures of a made palette. Hues are in degrees.
 const (
-	// A made palette's hues run from teal through blue to violet: no step
-	// has a hue below bodyFrom or above bodyTo.
-	bodyFrom, bodyTo = 183.0, 308.0
-	// The key hue of a made palette is held between keyFrom and keyTo, and
-	// an accent has no hue below accentFrom, which keeps it from the
-	// green-blues.
-	keyFrom, keyTo = 186.0, 300.0
-	accentFrom     = 200.0
-	// The key hues of the two members of a palette are from mateLeast to
-	// mateMost degrees apart, and a cell is drawn in one of setLevels
-	// palettes from the first member to the second.
-	mateLeast, mateMost = 55.0, 90.0
-	setLevels           = 5
-	// Towards the pinks, from plumFrom up, a colour is held to less chroma,
-	// down to plumMost at bodyTo.
+	// A cell is drawn in one of setLevels palettes from the first member of
+	// a palette to the second.
+	setLevels = 5
+	// Towards the pinks, from plumFrom up, a cool colour is held to less
+	// chroma, down to plumMost at the end of the family.
 	plumFrom, plumMost = 290.0, 0.085
-	// chromaMost is the most chroma any colour of a made palette has, and
-	// gamutShare the most as a share of what can be shown at the colour's
-	// lightness and hue.
+	// chromaMost is the most chroma any colour of a made palette has.
 	chromaMost = 0.15
-	gamutShare = 0.7
 	// greyPeak is the peak chroma of a palette of greys, and greyKey its
 	// hue: a slight cool tint.
 	greyPeak, greyKey = 0.012, 250.0
 )
 
-// ceiling is the most chroma a colour of a made palette may have at the
-// given lightness and hue.
-func ceiling(l, h float64) float64 {
+// ceiling is the most chroma a colour of a palette of the family may have
+// at the given lightness and hue.
+func (f family) ceiling(l, h float64) float64 {
 	top := chromaMost
 	if h > plumFrom {
-		top = plumMost + (chromaMost-plumMost)*clamp01((bodyTo-h)/(bodyTo-plumFrom))
+		top = plumMost + (chromaMost-plumMost)*clamp01((cool.to-h)/(cool.to-plumFrom))
 	}
-	return math.Min(top, gamutShare*(lch{l, 0, h}).most())
+	return math.Min(top, f.gamut*(lch{l, 0, h}).most())
 }
 
 // turnTo returns the angle to add to the hue a to reach the hue b the short
@@ -135,8 +159,9 @@ func turnTo(a, b float64) float64 {
 // low at the dark end, reaches peak in the middle and falls towards a
 // near-white top.
 //
-// A palette that is not made holds its colours in fixed.
+// The zero tones are not a made palette.
 type tones struct {
+	fam      family
 	key, arc float64
 	peak     float64
 	// contrast is the power the lightness rises by: below 1 the middle of
@@ -154,7 +179,6 @@ type tones struct {
 	// in degrees, and matePeak its peak chroma. A mate of 0 is a palette of
 	// one member.
 	mate, matePeak float64
-	fixed          []RGB
 	// stops are the colours of a landscape, dark to bright, and land how far
 	// the ramp is made of them.
 	stops []RGB
@@ -162,22 +186,22 @@ type tones struct {
 }
 
 // made reports whether the palette is made from numbers.
-func (t tones) made() bool { return t.fixed == nil }
+func (t tones) made() bool { return t.light > 0 }
 
 // The lightness of the darkest step of a made ramp as a share of the
-// lightness its rise reaches, the chroma of its ends as a share of its peak,
-// and the hue its dark end leans towards.
+// lightness its rise reaches, and the chroma of its ends as a share of its
+// peak.
 const (
 	rampDark = 0.2
 	rampEnds = 0.3
-	coolHue  = 265.0
 )
 
 // leaning returns arc with the sign that takes the dark end of a ramp
-// through key towards the cool hue, by the shorter way.
-func leaning(key, arc float64) float64 {
+// through key towards the hue its family's darks lean to, by the shorter
+// way.
+func (f family) leaning(key, arc float64) float64 {
 	arc = math.Abs(arc)
-	if turnTo(key, coolHue) > 0 {
+	if turnTo(key, f.dark) > 0 {
 		return -arc
 	}
 	return arc
@@ -188,14 +212,14 @@ func leaning(key, arc float64) float64 {
 func (t tones) step(at float64, top bool) lch {
 	c := lch{l: t.light*(rampDark+(1-rampDark)*math.Pow(at, t.contrast)) + (t.top-t.light)*math.Pow(at, 4),
 		h: t.key + t.arc*(at-0.5)}
-	bell := rampEnds + (1-rampEnds)*math.Sin(math.Pi*math.Pow(at, 0.85))
+	bell := rampEnds + (1-rampEnds)*math.Sin(math.Pi*math.Pow(at, t.fam.crest))
 	c.c = t.peak * bell * (1 - 0.8*math.Pow(at, 6))
 	// An accent that would leave the hues an accent may have is left out.
-	if h := t.key + t.arc/2 + math.Copysign(t.accentTurn, t.arc); top && t.accentSteps > 0 && h >= accentFrom && h <= bodyTo {
+	if h := t.key + t.arc/2 + math.Copysign(t.accentTurn, t.arc); top && t.accentSteps > 0 && h >= t.fam.accentFrom && h <= t.fam.to {
 		c.h, c.c = h, t.accent
 	}
-	c.h = math.Min(math.Max(c.h, bodyFrom), bodyTo)
-	c.c = math.Min(c.c, ceiling(c.l, c.h))
+	c.h = math.Min(math.Max(c.h, t.fam.from), t.fam.to)
+	c.c = math.Min(c.c, t.fam.ceiling(c.l, c.h))
 	return c
 }
 
@@ -203,12 +227,9 @@ func (t tones) step(at float64, top bool) lch {
 // as the tones are a landscape's, each step is the landscape's own colour
 // with landTint of the palette's colour mixed in.
 func (t tones) ramp() []RGB {
-	p := t.fixed
-	if p == nil {
-		p = make([]RGB, paletteSize)
-		for i := range p {
-			p[i], _ = t.step(float64(i)/float64(paletteSize-1), i >= paletteSize-t.accentSteps).shown()
-		}
+	p := make([]RGB, paletteSize)
+	for i := range p {
+		p[i], _ = t.step(float64(i)/float64(paletteSize-1), i >= paletteSize-t.accentSteps).shown()
 	}
 	if t.land <= 0 || len(t.stops) < 2 {
 		return p
@@ -234,12 +255,29 @@ func stopped(colours, tint []RGB) []RGB {
 }
 
 // mixTones returns the made tones w of the way from a to b, both of them
-// made. The key hue goes the short way round, which for two made palettes
-// stays between teal and violet, and every other number goes straight.
+// made. Within one family the key hue goes the short way round, which stays
+// inside the family, and every other number goes straight. Between two
+// families the hues do not move: the first half of the way the colours are
+// a's, fading to grey, and the second half they are b's, rising from it.
+// Lightness, contrast and a landscape's share go straight either way.
 func mixTones(a, b tones, w float64) tones {
 	w = clamp01(w)
 	mix := func(x, y float64) float64 { return x + (y-x)*w }
+	if a.fam != b.fam {
+		out, left := a, 1-2*w
+		if w >= 0.5 {
+			out, left = b, 2*w-1
+		}
+		out.peak, out.matePeak, out.accent = out.peak*left, out.matePeak*left, out.accent*left
+		out.contrast, out.light, out.top = mix(a.contrast, b.contrast), mix(a.light, b.light), mix(a.top, b.top)
+		out.land = mix(a.land, b.land)
+		if len(out.stops) == 0 {
+			out.stops = append(a.stops, b.stops...)
+		}
+		return out
+	}
 	out := tones{
+		fam:      a.fam,
 		key:      a.key + turnTo(a.key, b.key)*w,
 		arc:      mix(a.arc, b.arc),
 		peak:     mix(a.peak, b.peak),
@@ -277,31 +315,32 @@ func mixTones(a, b tones, w float64) tones {
 }
 
 // turned returns made tones with their key hue turned by the given degrees,
-// held between teal and violet, and no longer a landscape's.
+// held inside their family, and no longer a landscape's.
 func (t tones) turned(by float64) tones {
-	t.key = math.Min(math.Max(t.key+by, keyFrom), keyTo)
-	t.arc = leaning(t.key, t.arc)
-	t.mate = mated(t.key, t.mate)
+	t.key = math.Min(math.Max(t.key+by, t.fam.keyFrom), t.fam.keyTo)
+	t.arc = t.fam.leaning(t.key, t.arc)
+	t.mate = t.fam.mated(t.key, t.mate)
 	t.land = 0
 	return t
 }
 
 // mated returns how far a second member's key hue is from key, given how
 // far it was meant to be: the same distance, on the other side where that
-// keeps it between keyFrom and keyTo, and otherwise as far as it can go.
-func mated(key, mate float64) float64 {
+// keeps it between the family's key hues, and otherwise as far as it can
+// go.
+func (f family) mated(key, mate float64) float64 {
 	if mate == 0 {
 		return 0
 	}
 	for _, m := range []float64{mate, -mate} {
-		if key+m >= keyFrom && key+m <= keyTo {
+		if key+m >= f.keyFrom && key+m <= f.keyTo {
 			return m
 		}
 	}
-	if key-keyFrom > keyTo-key {
-		return keyFrom - key
+	if key-f.keyFrom > f.keyTo-key {
+		return f.keyFrom - key
 	}
-	return keyTo - key
+	return f.keyTo - key
 }
 
 // member returns the palette's first member, or its second, as a palette of
@@ -311,7 +350,7 @@ func (t tones) member(second bool) tones {
 	one.mate, one.matePeak = 0, 0
 	if second && t.mate != 0 {
 		one.key, one.peak, one.accentSteps = t.key+t.mate, t.matePeak, 0
-		one.arc = leaning(one.key, t.arc)
+		one.arc = t.fam.leaning(one.key, t.arc)
 	}
 	return one
 }

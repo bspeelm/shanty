@@ -44,10 +44,15 @@ const (
 	ruleColoured = 0.03
 	// The hues of a palette's coloured steps, the accent apart, lie within
 	// ruleSpan of one another, and with the accent within ruleReach. None is
-	// below ruleFrom, which keeps out green, olive and yellow-green, or
-	// above ruleTo, which keeps out pink and magenta.
+	// more than ruleEdge outside its family, which allows for a colour being
+	// stored in whole steps of red, green and blue.
 	ruleSpan, ruleReach = 62.0, 95.0
-	ruleFrom, ruleTo    = 180.0, 312.0
+	ruleEdge            = 4.0
+	// No coloured step of any family is green, olive or yellow-green, from
+	// ruleGreenFrom to ruleGreenTo, or pink or magenta, from rulePinkFrom
+	// round through 0 to rulePinkTo.
+	ruleGreenFrom, ruleGreenTo = 97.0, 179.0
+	rulePinkFrom, rulePinkTo   = 313.0, 20.0
 	// No step has more chroma than ruleChroma, and none from rulePlum
 	// degrees up has more than rulePlumChroma.
 	ruleChroma     = 0.155
@@ -94,8 +99,11 @@ func broken(t tones) []string {
 		if got.c < ruleColoured {
 			continue
 		}
-		if got.h < ruleFrom || got.h > ruleTo {
-			say("step %d has the hue %.0f at a chroma of %.3f", i, got.h, got.c)
+		if got.h < t.fam.from-ruleEdge || got.h > t.fam.to+ruleEdge {
+			say("step %d has the hue %.0f at a chroma of %.3f, outside its family", i, got.h, got.c)
+		}
+		if (got.h > ruleGreenFrom && got.h < ruleGreenTo) || got.h > rulePinkFrom || got.h < rulePinkTo {
+			say("step %d has the hue %.0f at a chroma of %.3f, a green or a pink", i, got.h, got.c)
 		}
 		hues = append(hues, got.h)
 		if i >= paletteSize-ruleAccent {
@@ -105,7 +113,7 @@ func broken(t tones) []string {
 		// A colour is stored in whole steps of red, green and blue, which
 		// moves the hue of a faint one by a few degrees.
 		lo, hi := t.key-math.Abs(t.arc)/2-6, t.key+math.Abs(t.arc)/2+6
-		if got.h < math.Min(lo, bodyFrom) || got.h > math.Max(hi, bodyTo) {
+		if got.h < math.Min(lo, t.fam.from) || got.h > math.Max(hi, t.fam.to) {
 			say("step %d, not among the top %d, has the hue %.0f outside the arc from %.0f to %.0f", i, ruleAccent, got.h, lo, hi)
 		}
 	}
@@ -130,14 +138,11 @@ func TestEveryMadePaletteKeepsTheRulesAndSoDoesEveryTurnAndEveryMorph(t *testing
 	if testing.Short() {
 		seeds = 60
 	}
-	characters := []Character{{Calm: 1}, {Drive: 1}, {Calm: 0.5, Drive: 0.5}, {Drive: 0.7, Flow: 0.3}, {Calm: 0.6, Grit: 0.4}}
+	characters := []Character{{Calm: 1}, {Drive: 1}, {Grit: 1}, {Flow: 1}, {Calm: 0.5, Drive: 0.5}, {Drive: 0.7, Flow: 0.3}, {Calm: 0.6, Grit: 0.4}}
 	checked, greys, driven := 0, 0, 0
 	for _, c := range characters {
 		for seed := range seeds {
 			a := madeFor(c, seed)
-			if !a.made() {
-				continue
-			}
 			if c.Drive == 1 {
 				driven++
 				if a.peak <= greyPeak || a.matePeak <= greyPeak {
@@ -158,16 +163,17 @@ func TestEveryMadePaletteKeepsTheRulesAndSoDoesEveryTurnAndEveryMorph(t *testing
 					t.Errorf("%+v seed %d, %s: the table has %d colours, want %d", c, seed, what, got, setLevels*paletteSize)
 				}
 			}
-			// The members of a palette as drawn or turned are far enough
-			// apart to read as two colours, never opposed, and both keyed
-			// between teal and violet. Greys have no hue to be apart by.
+			// The members of a palette as drawn or turned are as far apart
+			// as their family sets, never opposed, and both keyed inside it.
+			// Greys have no hue to be apart by.
 			apart := func(what string, t2 tones) {
 				second := t2.key + t2.mate
 				coloured := t2.peak > greyPeak && t2.matePeak > greyPeak
-				if d := math.Abs(t2.mate); coloured && (d < mateLeast-0.01 || d > mateMost+0.01) {
-					t.Errorf("%+v seed %d, %s: the members are %.0f degrees apart, want %v to %v", c, seed, what, d, mateLeast, mateMost)
+				f := t2.fam
+				if d := math.Abs(t2.mate); coloured && (d < f.mateLeast-0.01 || d > f.mateMost+0.01) {
+					t.Errorf("%+v seed %d, %s: the members are %.0f degrees apart, want %v to %v", c, seed, what, d, f.mateLeast, f.mateMost)
 				}
-				if coloured && (second < keyFrom-0.01 || second > keyTo+0.01) {
+				if coloured && (second < f.keyFrom-0.01 || second > f.keyTo+0.01) {
 					t.Errorf("%+v seed %d, %s: the second member is keyed at %.0f", c, seed, what, second)
 				}
 				if t2.mate == 0 {
@@ -185,9 +191,6 @@ func TestEveryMadePaletteKeepsTheRulesAndSoDoesEveryTurnAndEveryMorph(t *testing
 				fail("half way to a turn", mixTones(a, turned, 0.5))
 			}
 			b := madeFor(characters[rng.IntN(len(characters))], seed+1000)
-			if !b.made() {
-				continue
-			}
 			for _, w := range []float64{0.2, 0.5, 0.8} {
 				fail(fmt.Sprintf("%.1f of the way to another palette", w), mixTones(a, b, w))
 			}
@@ -196,8 +199,8 @@ func TestEveryMadePaletteKeepsTheRulesAndSoDoesEveryTurnAndEveryMorph(t *testing
 	if checked < 5000 && !testing.Short() {
 		t.Errorf("only %d palettes were checked", checked)
 	}
-	if share := float64(greys) / float64(max(driven, 1)); math.Abs(share-2*greyShare) > 0.1 {
-		t.Errorf("%.2f of the driving palettes had greys for one member, want about %.2f", share, 2*greyShare)
+	if share := float64(greys) / float64(max(driven, 1)); math.Abs(share-greyShare) > 0.08 {
+		t.Errorf("%.2f of the driving palettes had greys for one member, want about %.2f", share, greyShare)
 	}
 }
 
@@ -220,35 +223,63 @@ func TestAMemberOfGreysHasAlmostNoColour(t *testing.T) {
 	}
 }
 
-// Grit and Flow palettes are not made from numbers and are held to none of
-// the rules above. Grit's are reds, oranges and hot whites and Flow's are
-// golds, ambers and soft greens, each a gradient round the colour wheel.
-func TestGritAndFlowPalettesAreGradientsRoundTheWheel(t *testing.T) {
-	for _, c := range []Character{{Grit: 1}, {Flow: 1}} {
-		st := styleFor(c)
-		for seed := range uint64(20) {
-			got := madeFor(c, seed)
-			if got.made() {
-				t.Fatalf("%+v seed %d drew a made palette", c, seed)
+// Heavy music keeps its reds, oranges and ambers and ends in a hot
+// yellow-white; flowing music runs from a warm brown to gold.
+func TestHeavyMusicEndsInAHotYellowWhiteAndFlowingMusicRunsFromBrownToGold(t *testing.T) {
+	for seed := range uint64(60) {
+		grit := madeFor(Character{Grit: 1}, seed)
+		if grit.fam != ember {
+			t.Fatalf("seed %d: heavy music drew %+v, not an ember palette", seed, grit.fam)
+		}
+		p := grit.table()
+		for at := 0; at < len(p); at += paletteSize {
+			top := lchOf(p[at+paletteSize-1])
+			if top.l < 0.8 || (top.c >= ruleColoured && (top.h < 60 || top.h > 100)) {
+				t.Errorf("seed %d: the top of a heavy ramp is %+v, want a light yellow or a white", seed, top)
 			}
-			rng := rand.New(rand.NewPCG(seed, 9))
-			pick(rng, []float64{c.Calm, c.Drive, c.Grit, c.Flow})
-			hue, wander := 0.05+0.2*rng.Float64(), 0.25
-			if c.Grit == 1 {
-				rng = rand.New(rand.NewPCG(seed, 9))
-				pick(rng, []float64{c.Calm, c.Drive, c.Grit, c.Flow})
-				hue, wander = 0.92+0.15*rng.Float64(), 0.15
+			mid := lchOf(p[at+paletteSize/2])
+			if grit.peak > greyPeak && at == 0 && (mid.h < 25 || mid.h > 80 || mid.c < 0.08) {
+				t.Errorf("seed %d: the middle of a heavy ramp is %+v, want a strong red, orange or amber", seed, mid)
 			}
-			if want := st.wheel(hue, wander); !slices.Equal(got.ramp(), want) {
-				t.Errorf("%+v seed %d: the palette is %v, want the wheel's %v", c, seed, got.ramp(), want)
+		}
+		flow := madeFor(Character{Flow: 1}, seed)
+		if flow.fam != gold {
+			t.Fatalf("seed %d: flowing music drew %+v, not a gold palette", seed, flow.fam)
+		}
+		for i, col := range flow.ramp() {
+			// A dark, weak yellow reads as olive.
+			if c := lchOf(col); c.l < 0.5 && c.c >= ruleColoured && c.h > 80 {
+				t.Errorf("seed %d: dark step %d of a flowing ramp is %+v, a dark yellow", seed, i, c)
 			}
 		}
 	}
 }
 
+func TestAMorphBetweenTwoFamiliesGoesByWayOfGreyAndMovesNoHue(t *testing.T) {
+	a, b := madeFor(Character{Drive: 1}, 3), madeFor(Character{Grit: 1}, 3)
+	for w := 0.0; w <= 1.0001; w += 0.05 {
+		got := mixTones(a, b, w)
+		if got.key != a.key && got.key != b.key {
+			t.Fatalf("at %.2f the key hue is %.1f, neither %.1f nor %.1f", w, got.key, a.key, b.key)
+		}
+		side := a
+		if got.fam == b.fam {
+			side = b
+		}
+		if want := side.peak * math.Abs(1-2*w); math.Abs(got.peak-want) > 1e-9 {
+			t.Fatalf("at %.2f the peak chroma is %.4f, want %.4f", w, got.peak, want)
+		}
+	}
+	for i, col := range mixTones(a, b, 0.5).ramp() {
+		if c := lchOf(col).c; c > 0.01 {
+			t.Errorf("half way, step %d has a chroma of %.3f, want a grey", i, c)
+		}
+	}
+}
+
 func TestAMorphBetweenTwoMadePalettesTakesTheKeyHueTheShortWay(t *testing.T) {
-	a := tones{key: 190, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9}
-	b := tones{key: 300, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9}
+	a := tones{fam: cool, key: 190, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9}
+	b := tones{fam: cool, key: 300, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9}
 	last := a.key
 	for w := 0.0; w <= 1; w += 0.05 {
 		k := mixTones(a, b, w).key
@@ -256,6 +287,25 @@ func TestAMorphBetweenTwoMadePalettesTakesTheKeyHueTheShortWay(t *testing.T) {
 			t.Fatalf("at %.2f the key hue is %.1f after %.1f, want it to rise from 190 to 300", w, k, last)
 		}
 		last = k
+	}
+}
+
+// The aurora is drawn in teal, blue and violet: lighter step by step, and
+// with no coloured step outside the cool family.
+func TestTheAuroraIsDrawnInTealBlueAndViolet(t *testing.T) {
+	last := -1.0
+	for i, col := range settings["aurora"].paletteOf(nil) {
+		c := lchOf(col)
+		if c.l <= last {
+			t.Errorf("step %d of the aurora is no lighter than the step before", i)
+		}
+		last = c.l
+		if c.c >= ruleColoured && (c.h < cool.from-ruleEdge || c.h > cool.to+ruleEdge) {
+			t.Errorf("step %d of the aurora has the hue %.0f at a chroma of %.3f", i, c.h, c.c)
+		}
+		if c.c > ruleChroma {
+			t.Errorf("step %d of the aurora has a chroma of %.3f", i, c.c)
+		}
 	}
 }
 
