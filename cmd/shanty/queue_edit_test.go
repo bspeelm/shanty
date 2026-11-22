@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/bspeelm/shanty/internal/tui"
 )
 
@@ -40,14 +42,55 @@ func TestTakingThePlayingTrackOutOfTheQueueStartsTheOneThatFollows(t *testing.T)
 	}
 }
 
-func TestTakingTheLastAndPlayingTrackOutLeavesNothingPlaying(t *testing.T) {
-	a, _, _ := wired(t)
-	a = sixQueued(t, a)
-	a = settle(t, a, tui.JumpTo(5))
+// TestWhenTheQueueEndsUnderATrackThePlayerIsStopped covers the two ways the
+// queue can run out while a track is sounding. The track did not finish, so
+// no play of it is reported.
+func TestWhenTheQueueEndsUnderATrackThePlayerIsStopped(t *testing.T) {
+	for name, ends := range map[string]tea.Msg{
+		"the last and playing track is taken out": tui.RemoveQueued(5),
+		"the last track is skipped":               tui.SkipNext{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a, rec, srv := wired(t)
+			a = settle(t, sixQueued(t, a), tui.JumpTo(5))
+			if !strings.Contains(a.ui.View(), "tr-6") {
+				t.Fatalf("the last track is not shown as playing:\n%s", a.ui.View())
+			}
+			said, asked := len(rec.said()), len(srv.Requests())
 
-	a = settle(t, a, tui.RemoveQueued(5))
-	if _, playing := a.queue.Current(); playing || a.queue.Len() != 5 {
-		t.Errorf("the queue holds %d and something is current", a.queue.Len())
+			a = settle(t, a, ends)
+
+			if _, playing := a.queue.Current(); playing {
+				t.Fatal("a track is still current")
+			}
+			if told := calls(rec, said); len(told) != 1 || told[0] != "stop" {
+				t.Errorf("the player was told %v, want it stopped and nothing else", told)
+			}
+			if !strings.Contains(a.ui.View(), "nothing playing") {
+				t.Errorf("the screen does not say nothing is playing:\n%s", a.ui.View())
+			}
+			if n := requests(srv, asked, "scrobble"); n != 0 {
+				t.Errorf("%d plays were reported for a track that did not finish", n)
+			}
+		})
+	}
+}
+
+func TestASessionEndsWhenItsQueueIsSkippedPastTheEnd(t *testing.T) {
+	a, rec, _ := wired(t)
+	a = settle(t, sixQueued(t, a), tui.JumpTo(5))
+	a.headless = true
+
+	_, msgs := step(t, a, tui.SkipNext{})
+
+	var quit bool
+	for _, m := range msgs {
+		if _, ok := m.(tea.QuitMsg); ok {
+			quit = true
+		}
+	}
+	if told := rec.said(); !quit || told[len(told)-1] != "stop" {
+		t.Errorf("the session was told %v and quit is %v, want the player stopped and the session ended", msgs, quit)
 	}
 }
 

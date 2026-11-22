@@ -74,8 +74,9 @@ func (r *recorder) Prefetch(_ context.Context, url string) error {
 	}
 	return r.note("prefetch %s", url)
 }
-func (r *recorder) Close() error { return r.note("close") }
-func (r *recorder) Err() error   { return nil }
+func (r *recorder) Stop(context.Context) error { return r.note("stop") }
+func (r *recorder) Close() error               { return r.note("close") }
+func (r *recorder) Err() error                 { return nil }
 
 func sprintf(format string, args ...any) string { return fmt.Sprintf(format, args...) }
 
