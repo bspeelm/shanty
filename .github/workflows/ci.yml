@@ -30,7 +30,7 @@ jobs:
       # The visualiser's tests are not run here. They draw thousands of frames
       # and belong to `make check` on the machine the work is done on. `make
       # vet` still compiles them.
-      - run: make check TESTED="$(go list ./... | grep -v /internal/sky)"
+      - run: make check TESTED="$(go list ./... | grep -v /internal/sky | tr '\n' ' ')"
 
       # vendor/ is what a Copr build root uses in place of a network, so it has
       # to match go.mod exactly. The toolchain refuses to build when they
