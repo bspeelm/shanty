@@ -119,7 +119,7 @@ func TestWhatAJumpAsksForCannotUndoAKeyPressedBeforeItIsAnswered(t *testing.T) {
 	a, jumped = step(t, a, keyRunes("p"))
 	a, left := step(t, a, tea.KeyMsg{Type: tea.KeyEsc})
 	a = deliver(t, a, jumped, left)
-	if a.ui.Screen() != tui.ScreenLibrary {
+	if a.ui.Screen() != tui.ScreenArtists {
 		t.Errorf("esc straight after gp was undone; the screen is %s", a.ui.Screen())
 	}
 
@@ -128,7 +128,7 @@ func TestWhatAJumpAsksForCannotUndoAKeyPressedBeforeItIsAnswered(t *testing.T) {
 	a, jumped = step(t, a, keyRunes("b"))
 	a, left = step(t, a, tea.KeyMsg{Type: tea.KeyEsc})
 	a = deliver(t, a, jumped, left)
-	if a.ui.Screen() != tui.ScreenLibrary {
+	if a.ui.Screen() != tui.ScreenArtists {
 		t.Errorf("esc straight after gb was undone; the screen is %s", a.ui.Screen())
 	}
 }

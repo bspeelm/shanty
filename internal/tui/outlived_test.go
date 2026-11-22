@@ -278,7 +278,9 @@ func TestAReloadOfSomethingNoLongerHeldIsDropped(t *testing.T) {
 }
 
 func TestAPlaylistRefreshedAfterItsScreenWasLeftIsKeptWithoutGoingBackToIt(t *testing.T) {
-	m, _ := press(t, evening3(t), "end")
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening", SongCount: 3}}
+	m := send(t, onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists))), PlaylistLoaded(eveningOf(3)))
+	m, _ = press(t, m, "end")
 	m, _ = press(t, m, "h")
 	if m.Screen() != ScreenPlaylists {
 		t.Fatalf("back from the playlist went to %s", m.Screen())
@@ -570,12 +572,16 @@ func TestLeavingAGroupedListWithAFilterThatMatchesNothingLeavesTheCursorOffAHead
 		t.Fatalf("the filter still matches %d rows", m.rows())
 	}
 
-	m = send(t, m, AlbumLoaded(library()[0].Albums[0]))
-	m, _ = press(t, m, "h")
-	if m.Screen() != ScreenStarred || !m.starredRows[m.Cursor()].selectable() {
-		t.Errorf("back on %s the cursor is on row %d, a heading", m.Screen(), m.Cursor())
+	m = send(t, m, Opened{Ask: ask, Loaded: AlbumLoaded(library()[0].Albums[0])})
+	if err := cursorsWithinTheirLists(m); err != nil {
+		t.Errorf("with the album open: %v", err)
 	}
-	_ = ask
+	// Back shows the list narrowed as it was left, and the next back widens it.
+	m, _ = press(t, m, "h")
+	m, _ = press(t, m, "h")
+	if m.Screen() != ScreenStarred || m.Filter() != "" || !m.starredRows[m.Cursor()].selectable() {
+		t.Errorf("back on %s with the filter %q the cursor is on row %d", m.Screen(), m.Filter(), m.Cursor())
+	}
 }
 
 func TestAScreenThatHasItsListIsNotDrawnAsLoadingBecauseAnotherIsStillArriving(t *testing.T) {

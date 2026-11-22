@@ -1319,9 +1319,9 @@ func TestTheWikiOpensACommandAndComesBack(t *testing.T) {
 		t.Errorf("it did not go back to the list:\n%s", frame)
 	}
 
-	// And again leaves, for the library the wiki was opened from above.
+	// And again leaves, for the artist list the wiki was opened from above.
 	m, _ = press(t, m, "esc")
-	if m.Screen() != ScreenLibrary {
+	if m.Screen() != ScreenArtists {
 		t.Errorf("esc from the list went to %s", m.Screen())
 	}
 }

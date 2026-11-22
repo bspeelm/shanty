@@ -283,11 +283,20 @@ func TestGoingBackToAListThatWasNarrowedLandsOnTheRowThatWasOpened(t *testing.T)
 	m = send(t, m, ArtistLoaded(library()[1]))
 
 	m, _ = press(t, m, "h")
+	if m.Screen() != ScreenArtists || m.Filter() != "bilge" {
+		t.Fatalf("back went to %s with the filter %q, want the narrowed list as it was left", m.Screen(), m.Filter())
+	}
+	if got := m.selectedID(); got != "ar-2" {
+		t.Errorf("the cursor is on %s, want the artist that was opened", got)
+	}
+
+	// The next back drops the filter and stays on the row.
+	m, _ = press(t, m, "esc")
 	if m.Screen() != ScreenArtists || m.Filter() != "" {
-		t.Fatalf("back went to %s with the filter %q", m.Screen(), m.Filter())
+		t.Fatalf("esc went to %s with the filter %q", m.Screen(), m.Filter())
 	}
 	if got := m.artists[m.Cursor()].ID; got != "ar-2" {
-		t.Errorf("the cursor is on %s, want the artist that was opened", got)
+		t.Errorf("with the filter gone the cursor is on %s", got)
 	}
 }
 
@@ -363,9 +372,10 @@ func TestAnAlbumAndAPlaylistThatArriveAfterTheirScreenWasLeftAreDropped(t *testi
 	m = onPlaylists(t, send(t, m, PlaylistsLoaded(lists)))
 	m, ask = opened(t, m)
 	m, _ = press(t, m, "h")
+	was := m.Screen()
 	m = send(t, m, Opened{Ask: ask, Loaded: PlaylistLoaded(lists[0])})
-	if m.Screen() != ScreenLibrary {
-		t.Errorf("a playlist asked for and then left moved the screen to %s", m.Screen())
+	if m.Screen() != was || was == ScreenPlaylists {
+		t.Errorf("a playlist asked for and then left moved the screen from %s to %s", was, m.Screen())
 	}
 }
 
