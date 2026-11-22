@@ -40,8 +40,12 @@ type State struct {
 	f     frame
 	value []float64
 	tone  []float64
-	post  post
-	guard flashGuard
+	// held is the value and the tone of every pixel as they were last
+	// drawn, and holding says they are those of the scene on screen.
+	held    [2][]float64
+	holding bool
+	post    post
+	guard   flashGuard
 	// shift moves every cell along the palette, gliding towards the treble
 	// less the bass.
 	shift  float64
@@ -203,6 +207,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 		copy(s.value, s.cur.value)
 		copy(s.tone, s.cur.tone)
 		s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
+		s.hold(dt, sig.Steady)
 		s.guard.apply(s.value, s.tone, dt, s.cur.halves())
 		return
 	}
@@ -215,10 +220,11 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	}
 	s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
 	// A cut is one change of light and not a flash, so the guard takes the
-	// picture as it finds it while a cut is under way.
+	// picture as it finds it while a cut is under way, and no pixel is held.
 	if s.cutting {
-		s.guard.ready = false
+		s.guard.ready, s.holding = false, false
 	}
+	s.hold(dt, sig.Steady)
 	s.guard.apply(s.value, s.tone, dt, s.cur.halves() || s.next.halves())
 	if s.fade >= 1 {
 		s.cutting = false
@@ -242,8 +248,32 @@ func (s *State) resize(w, h int) {
 	f.cx, f.cy = float64(f.fw-1)/2, float64(f.fh-1)/2
 	f.radius = math.Min(float64(f.fw)/2, float64(f.fh)*f.aspect/2)
 	s.value, s.tone = make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)
+	s.held, s.holding = [2][]float64{make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)}, false
 	s.post.resize(f)
 	s.guard.resize(f.fw, f.fh)
+}
+
+// hold slows how fast a pixel's value and tone may move for steady music. A
+// pixel follows what the scene draws over holdRise seconds where it rises and
+// over holdFall seconds where it falls, each as a share of the steadiness,
+// and at once for music that is not steady.
+func (s *State) hold(dt, steady float64) {
+	up, down := 1.0, 1.0
+	if s.holding && steady > 0 {
+		up, down = 1-math.Exp(-dt/(holdRise*steady)), 1-math.Exp(-dt/(holdFall*steady))
+	}
+	for j, now := range [2][]float64{s.value, s.tone} {
+		was := s.held[j]
+		for i, v := range now {
+			k := down
+			if v > was[i] {
+				k = up
+			}
+			was[i] += (v - was[i]) * k
+			now[i] = was[i]
+		}
+	}
+	s.holding = true
 }
 
 // change moves on from the current scene. Most often the scene grows into
