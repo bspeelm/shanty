@@ -451,7 +451,8 @@ func TestAMessageAboutSomethingStillArrivingStaysWhileKeysArePressed(t *testing.
 }
 
 func TestAReloadTheServerRefusedLeavesNoReloadWaiting(t *testing.T) {
-	m := send(t, onQueue(t, loaded(t)), Reload{}, Failed{Message: "there is nothing here to fetch again"})
+	m := send(t, onQueue(t, loaded(t)), Reload{})
+	m = send(t, m, Failed{Message: "there is nothing here to fetch again", Ask: m.Reloading()})
 	if m.loading() || m.keep != "" {
 		t.Fatalf("a refused reload is still waiting: loading %v, keeping %q", m.loading(), m.keep)
 	}

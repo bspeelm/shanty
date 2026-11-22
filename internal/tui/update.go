@@ -91,15 +91,21 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.volume = int(msg)
 		return m, nil
 	case Failed:
-		// The failure of an open that is no longer waited for is kept to be
-		// read, and changes nothing on screen.
-		if msg.Ask != 0 && msg.Ask != m.waiting {
+		// A failure with a number ends the wait for the open, the reload or
+		// the saved order it answers. One that answers nothing waited for is
+		// kept to be read and changes nothing on screen.
+		switch {
+		case msg.Ask == 0:
+		case msg.Ask == m.waiting:
+			m.waiting = 0
+		case msg.Ask == m.keepAsk:
+			m.keep, m.keepAsk = "", 0
+		case msg.Ask == m.saving:
+			m.saving, m.savingID = 0, ""
+		default:
 			return m.remember(msg.Message), nil
 		}
-		if msg.Ask != 0 {
-			m.waiting = 0
-		}
-		m.keep, m.starting, m.stalled, m.saving = "", false, true, false
+		m.starting, m.stalled = false, true
 		return m.refuse(msg.Message).remember(msg.Message), nil
 	case Notice:
 		return m.say(string(msg)).remember(string(msg)), nil
@@ -111,14 +117,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.found, m.query, m.filter = flatten(msg.Results), msg.Query, ""
 		return m.selecting(ScreenSearch, firstSelectable(m.found)), nil
 	case Reload:
-		// What was selected is remembered, so a reload leaves the cursor
-		// where it was rather than at the top of a list that mostly did not
-		// change.
-		m.keep = m.selectedID()
-		if m.keep == "" {
-			m.keep = " " // nothing selected, but a reload is still under way
-		}
-		return m.say(""), nil
+		return m.reloading(), nil
 	case PlaylistsLoaded:
 		m.playlists = msg
 		if msg == nil {
@@ -157,6 +156,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return p, true
 		})
+		if loaded.ID == m.savingID {
+			m.saving, m.savingID = 0, ""
+		}
 		if loaded.ID != m.playlist.ID {
 			return m, nil
 		}
@@ -179,7 +181,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.artBlank = blankLike(msg.Lines)
 		}
 		if msg.AlbumID == m.album.ID && msg.AlbumID != "" {
-			m.art = msg.Lines
+			m.art, m.artOf = msg.Lines, msg.AlbumID
 		}
 		return m, nil
 	case EditingPlaylist:
@@ -325,11 +327,15 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 	if _, ok := intent.(listPlaylists); ok {
 		return m.goTo("p")
 	}
+	if _, ok := intent.(Reload); ok {
+		m = m.reloading()
+		return m, emit(Reload{Ask: m.keepAsk})
+	}
 	if p, ok := intent.(Playlist); ok && p.Verb == "reorder" {
 		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
 			return m.refuse("reorder needs a playlist on screen — gp, enter, then :playlist reorder"), nil
 		}
-		if m.saving {
+		if m.savingID == m.playlist.ID {
 			return m.refuse("the order just saved has not been answered yet — reorder again once it has"), nil
 		}
 		return m.startReorder(), nil
@@ -429,8 +435,9 @@ func (m Model) saveReorder() (tea.Model, tea.Cmd) {
 	if same(order, was) {
 		return m.say("nothing was moved"), nil
 	}
-	m.saving = true
-	return m, emit(ReorderPlaylist{ID: id, Name: name, Songs: order, Was: was})
+	m.asks++
+	m.saving, m.savingID = m.asks, id
+	return m, emit(ReorderPlaylist{ID: id, Name: name, Songs: order, Was: was, Ask: m.saving})
 }
 
 // idsOf is the identifiers of those tracks, in order.
@@ -673,18 +680,20 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 // playlist in its own order.
 func (m Model) queueSelected(next bool) (tea.Model, tea.Cmd) {
 	switch u := m.under(); {
-	case m.screen == ScreenQueue:
+	case m.editing.ID != "" && u.kind != kindSong:
+		return m.say("there is no track here to add or take out — open an album and press a or r on a track"), nil
+	case m.screen == ScreenQueue && u.kind == kindSong:
 		return m.say("that is already in the queue"), nil
 	case u.kind == kindSong && next:
 		return m, emit(PlayNext{Album: u.list, Index: u.index})
 	case u.kind == kindSong:
 		return m, emit(Enqueue{Album: u.list, Index: u.index})
 	case u.kind == kindArtist:
-		return m, emit(QueueThis{Scope: ScopeArtist, ID: u.id, Next: next})
+		return m.say("gathering every track of " + Sanitise(u.name) + " …"), emit(QueueThis{Scope: ScopeArtist, ID: u.id, Next: next})
 	case u.kind == kindAlbum:
-		return m, emit(QueueThis{Scope: ScopeAlbum, ID: u.id, Next: next})
+		return m.say("gathering every track of " + Sanitise(u.name) + " …"), emit(QueueThis{Scope: ScopeAlbum, ID: u.id, Next: next})
 	case u.kind == kindPlaylist:
-		return m, emit(QueueThis{Scope: ScopePlaylist, ID: u.id, Next: next})
+		return m.say("gathering every track of " + Sanitise(u.name) + " …"), emit(QueueThis{Scope: ScopePlaylist, ID: u.id, Next: next})
 	}
 	return m.say("nothing here to add to the queue — press a or A on a track, an album, an artist or a playlist"), nil
 }
@@ -705,7 +714,7 @@ func (m Model) starSelected() (tea.Model, tea.Cmd) {
 func (m Model) editSelected(add bool) (tea.Model, tea.Cmd) {
 	u := m.under()
 	if u.kind != kindSong {
-		return m.say("there is no track here to add or take out — open an album and press a or r on a track"), nil
+		return m.queueSelected(false)
 	}
 	if add == m.inPlaylist[u.id] {
 		// Already as asked. Saying so is better than a request that changes
@@ -721,8 +730,9 @@ func (m Model) editSelected(add bool) (tea.Model, tea.Cmd) {
 
 // removeSelected takes the selected track out of the playlist being edited,
 // the queue, or the playlist on screen. A playlist on screen is asked about
-// first.
-func (m Model) removeSelected() (tea.Model, tea.Cmd) {
+// first. On the queue a count takes out that many tracks from the cursor
+// down.
+func (m Model) removeSelected(count int) (tea.Model, tea.Cmd) {
 	u := m.under()
 	switch {
 	case m.editing.ID != "":
@@ -730,7 +740,7 @@ func (m Model) removeSelected() (tea.Model, tea.Cmd) {
 	case m.reordering:
 		return m.say("a track cannot be taken out while the playlist is being reordered — enter saves, esc discards"), nil
 	case u.scope == ScopeQueue:
-		return m, emit(RemoveQueued(u.index))
+		return m, emit(RemoveQueued{At: u.index, ID: u.id, Count: count})
 	case u.scope == ScopePlaylist:
 		m.mode, m.asking = modeConfirm, "take "+u.name+" out of "+m.playlist.Name+"?"
 		m.agreed = EditPlaylist{ID: m.playlist.ID, SongID: u.id, Add: false, At: u.index}
@@ -755,7 +765,7 @@ func (m Model) moveSelected(by int) (tea.Model, tea.Cmd) {
 	if to < 0 || to >= len(m.queued) {
 		return m, nil
 	}
-	return m.selecting(ScreenQueue, to), emit(MoveQueued{From: at, To: to})
+	return m.selecting(ScreenQueue, to), emit(MoveQueued{From: at, To: to, ID: m.queued[at].ID})
 }
 
 // holding is the identifiers of the tracks in a playlist.
@@ -795,7 +805,22 @@ const trailKept = 32
 
 // here is the screen showing, as a place to come back to.
 func (m Model) here() place {
-	return place{m.screen, m.cursor[m.screen], m.filter, m.artist, m.album, m.art, m.playlist, m.up}
+	p := place{m.screen, m.cursor[m.screen], m.filter, m.artist, m.album, nil, m.playlist, m.up}
+	if m.artOf == m.album.ID {
+		p.art = m.art
+	}
+	return p
+}
+
+// reloading begins a reload of the screen showing. What is selected is
+// remembered, so the cursor can go back to it when the answer arrives.
+func (m Model) reloading() Model {
+	m.asks++
+	m.keep, m.keepAsk = m.selectedID(), m.asks
+	if m.keep == "" {
+		m.keep = " " // nothing selected, but a reload is still under way
+	}
+	return m.say("")
 }
 
 // returned is the model showing a place that was left. What that place held
@@ -806,7 +831,14 @@ func (m Model) returned(p place) Model {
 	case p.screen == ScreenAlbums && p.artist.ID != m.artist.ID:
 		m.artist = p.artist
 	case p.screen == ScreenTracks && p.album.ID != m.album.ID:
-		m.album, m.art = p.album, p.art
+		m.album, m.art, m.artOf = p.album, p.art, p.album.ID
+		if p.art == nil {
+			// The cover was not held. Its rows are, if it has one.
+			m.artOf = ""
+			if p.album.CoverArt != "" {
+				m.art = m.artBlank
+			}
+		}
 	case p.screen == ScreenPlaylist && p.playlist.ID != m.playlist.ID:
 		m.playlist = p.playlist
 	}
@@ -845,7 +877,7 @@ func (m Model) unfiltered() Model {
 // asked for from it is no longer shown when it arrives, a reload of it is
 // forgotten, and its filter is put away.
 func (m Model) left() Model {
-	m.waiting, m.keep, m.stalled, m.saving = 0, "", false, false
+	m.waiting, m.keep, m.keepAsk, m.stalled = 0, "", 0, false
 	if m.mode == modeFilter {
 		m.mode = modeNormal
 	}
@@ -883,7 +915,11 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 	} else if n := len(m.trail); n > 0 {
 		p, m.trail = m.trail[n-1], m.trail[:n-1:n-1]
 	}
-	return m.left().returned(p), nil
+	m = m.left().returned(p)
+	if m.screen == ScreenTracks && m.album.CoverArt != "" && m.artOf != m.album.ID {
+		return m, emit(FetchCover{Album: m.album})
+	}
+	return m, nil
 }
 
 // show moves to a screen. One artist's albums, a track list and a playlist
@@ -967,7 +1003,7 @@ func (m Model) refetched(loaded tea.Msg) Model {
 		next, _ := m.update(loaded)
 		m = next.(Model)
 		if m.screen == ScreenLibrary && m.keep != "" {
-			m.keep = ""
+			m.keep, m.keepAsk = "", 0
 			return m.say("reloaded: " + plural(len(loaded), "artist"))
 		}
 		return m.reloaded(ScreenArtists, plural(len(loaded), "artist"))
@@ -1009,7 +1045,7 @@ func (m Model) refetched(loaded tea.Msg) Model {
 // held. An arrangement being made of it is dropped if its tracks changed.
 // Where its screen is showing, a reload waiting for it is finished.
 func (m Model) refreshed(loaded subsonic.Playlist) Model {
-	m.playlist, m.saving = loaded, false
+	m.playlist = loaded
 	if m.reordering && !same(idsOf(loaded.Songs), m.drawnFrom) {
 		m.reordering, m.order, m.drawnFrom = false, nil, nil
 		if m.screen == ScreenPlaylist {
@@ -1132,7 +1168,7 @@ func (m Model) reloaded(screen Screen, what string) Model {
 		return m
 	}
 	keep := m.keep
-	m.keep = ""
+	m.keep, m.keepAsk = "", 0
 	m = m.say("reloaded: " + what)
 
 	for row, i := range m.matches() {

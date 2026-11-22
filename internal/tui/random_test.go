@@ -141,7 +141,7 @@ func (a *actor) opened(ask int, loaded tea.Msg) {
 }
 
 // reload holds the answer to a reload of the screen showing.
-func (a *actor) reload(m Model) {
+func (a *actor) reload(m Model, ask int) {
 	var loaded tea.Msg
 	switch m.Screen() {
 	case ScreenLibrary, ScreenArtists:
@@ -155,7 +155,7 @@ func (a *actor) reload(m Model) {
 	case ScreenStarred:
 		loaded = a.starred()
 	default:
-		a.waiting = append(a.waiting, Failed{Message: "there is nothing here to fetch again"})
+		a.waiting = append(a.waiting, Failed{Message: "there is nothing here to fetch again", Ask: ask})
 		return
 	}
 	a.waiting = append(a.waiting, Reloaded{Loaded: loaded})
@@ -179,8 +179,7 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 	case FetchEveryAlbum:
 		a.waiting = append(a.waiting, AlbumsLoaded(everyAlbum()[:a.r.IntN(4)]))
 	case Reload:
-		a.reload(m)
-		return intent
+		a.reload(m, intent.Ask)
 	case Search:
 		a.waiting = append(a.waiting, a.found(string(intent)))
 	case EditPlaylist:
@@ -189,7 +188,7 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 		a.waiting = append(a.waiting, PlaylistChanged(a.playlist(intent.ID)))
 	case ReorderPlaylist:
 		if a.r.IntN(3) == 0 {
-			a.waiting = append(a.waiting, Failed{Message: "it changed on the server; nothing was moved"})
+			a.waiting = append(a.waiting, Failed{Message: "it changed on the server; nothing was moved", Ask: intent.Ask})
 		} else {
 			a.waiting = append(a.waiting, PlaylistChanged(a.playlist(intent.ID)))
 		}
@@ -219,10 +218,13 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 		return a.queued()
 	case RemoveQueued:
 		a.did = "a track taken out of the queue"
-		if int(intent) == a.q.At() {
+		if intent.At == a.q.At() {
 			a.did = "the playing track taken out of the queue"
 		}
-		a.edited(a.q.Remove(int(intent)), int(intent), -1, -1)
+		if idOf(a.q.Tracks(), intent.At) != intent.ID && a.broke == "" {
+			a.broke = fmt.Sprintf("row %d was named as %q and holds %q", intent.At, intent.ID, idOf(a.q.Tracks(), intent.At))
+		}
+		a.edited(a.q.Remove(intent.At), intent.At, -1, -1)
 		return a.queued()
 	case MoveQueued:
 		a.did = "a track moved in the queue"

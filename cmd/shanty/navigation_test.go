@@ -301,3 +301,51 @@ func TestSeekingWithNothingPlayingDoesNotCancelAnArtistBeingOpened(t *testing.T)
 		t.Errorf("the artist was dropped; the screen is %s", a.ui.Screen())
 	}
 }
+
+func TestAFailedReloadEndsTheWaitAndAFailureAboutSomethingElseDoesNot(t *testing.T) {
+	a, _, srv := wired(t)
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	a = settle(t, a, a.fetchArtists()())
+
+	// :reload on the queue, which has nothing to fetch again.
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("q"))
+	for _, key := range ":reload" {
+		a = settle(t, a, keyRunes(string(key)))
+	}
+	a = settle(t, a, enter)
+	if !strings.Contains(a.ui.Status(), "nothing here to fetch") || a.ui.Reloading() != 0 {
+		t.Errorf("a reload with nothing to fetch said %q and reload %d is still waited for", a.ui.Status(), a.ui.Reloading())
+	}
+
+	// :reload on the artists, with a seek that fails before it is answered.
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	for _, key := range ":reload" {
+		a = settle(t, a, keyRunes(string(key)))
+	}
+	before := len(srv.Requests())
+	a, answer := step(t, a, enter)
+	a, fetched := step(t, a, answer[0])
+	a = settle(t, a, tui.SeekToPercent(50))
+	if a.ui.Reloading() == 0 {
+		t.Fatal("a seek that failed ended the wait for the reload")
+	}
+	a = deliver(t, a, fetched)
+	if !strings.Contains(a.ui.Status(), "reloaded: 2 artists") || requests(srv, before, "getArtists") != 1 {
+		t.Errorf("the reload said %q after %d requests", a.ui.Status(), requests(srv, before, "getArtists"))
+	}
+}
+
+func TestASavedOrderTheServerRefusesIsAnsweredToTheSaveThatAskedForIt(t *testing.T) {
+	a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2", "tr-3"}})
+
+	a, msgs := step(t, a, tui.ReorderPlaylist{ID: "pl-1", Name: "Evening",
+		Songs: []string{"tr-3", "tr-2", "tr-1"}, Was: []string{"tr-1", "tr-2"}, Ask: 7})
+
+	if len(msgs) != 1 {
+		t.Fatalf("the save was answered with %v", msgs)
+	}
+	if failed, ok := msgs[0].(tui.Failed); !ok || failed.Ask != 7 || !strings.Contains(failed.Message, "changed on the server") {
+		t.Errorf("the save was answered with %#v, want a failure carrying its number", msgs[0])
+	}
+	_ = a
+}

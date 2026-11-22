@@ -105,8 +105,9 @@ func Actions() []Action {
 				}
 				return m.say("e adds to the playlist on screen — open one from gp, or type :playlist edit <name>"), nil
 			})},
-		{Name: "playlist-remove", Summary: "take the selected track out of the queue, the playlist you are looking at, or the one you are adding to",
-			Keys: []string{"r"}, do: modelCmd((Model).removeSelected)},
+		{Name: "playlist-remove", Count: "on the queue, take out that many tracks from the cursor down",
+			Summary: "take the selected track out of the queue, the playlist you are looking at, or the one you are adding to",
+			Keys:    []string{"r"}, do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) { return m.removeSelected(repeat) }},
 		{
 			Name:    "keys",
 			Summary: "show every key and every command, and what each one does",

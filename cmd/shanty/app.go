@@ -340,10 +340,15 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scanning:
 		return a.scanSaid(msg)
 	case tui.Reload:
-		// The interface remembers what was selected; this fetches what the
-		// screen is showing.
+		// A reload the interface asked for is fetched. One begun here is told
+		// to the interface first, which remembers what was selected.
+		if msg.Ask != 0 {
+			return a, a.reload()
+		}
 		next, _ := a.forward(msg)
-		return next, a.reload()
+		return next, next.(app).reload()
+	case tui.FetchCover:
+		return a, a.fetchArt(msg.Album)
 	case savedQueue:
 		return a.offerSaved(subsonic.PlayQueue(msg))
 	case tui.ToggleStar:
@@ -378,13 +383,23 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.requeued(a.queue.AppendAll(found...), a.queue.Done(),
 			fmt.Sprintf("added %s, %s, to the end of the queue", msg.what, tracks(int64(len(found)))))
 	case tui.RemoveQueued:
-		at := int(msg)
-		if at < 0 || at >= a.queue.Len() {
-			return a, emit(tui.Failed{Message: "there is no track there to take out of the queue"})
+		held := a.queue.Tracks()
+		if msg.At < 0 || msg.At >= len(held) || held[msg.At].ID != msg.ID {
+			return a, emit(tui.Failed{Message: "the queue changed since it was shown, so nothing was taken out"})
 		}
-		said := "took " + a.queue.Tracks()[at].Title + " out of the queue"
-		return a.requeued(a.queue.Remove(at), at == a.queue.At(), said)
+		n := max(1, min(msg.Count, len(held)-msg.At))
+		next, said := a.queue, "took "+held[msg.At].Title+" out of the queue"
+		for range n {
+			next = next.Remove(msg.At)
+		}
+		if n > 1 {
+			said = "took " + tracks(int64(n)) + " out of the queue"
+		}
+		return a.requeued(next, a.queue.At() >= msg.At && a.queue.At() < msg.At+n, said)
 	case tui.MoveQueued:
+		if held := a.queue.Tracks(); msg.From < 0 || msg.From >= len(held) || held[msg.From].ID != msg.ID {
+			return a, emit(tui.Failed{Message: "the queue changed since it was shown, so nothing was moved"})
+		}
 		return a.requeued(a.queue.Move(msg.From, msg.To), false, "")
 
 	case tui.TogglePause:
@@ -711,11 +726,15 @@ func opened(ask int, fetch tea.Cmd) tea.Cmd {
 	}
 }
 
-// reloaded runs a fetch for a reload and marks its answer as one.
-func reloaded(fetch tea.Cmd) tea.Cmd {
+// reloaded runs a fetch for a reload and marks its answer as one. A failure
+// carries the number the reload was asked with.
+func reloaded(ask int, fetch tea.Cmd) tea.Cmd {
 	return func() tea.Msg {
 		switch msg := fetch().(type) {
-		case nil, tui.Failed:
+		case nil:
+			return nil
+		case tui.Failed:
+			msg.Ask = ask
 			return msg
 		default:
 			return tui.Reloaded{Loaded: msg}
@@ -992,8 +1011,12 @@ func (a app) search(query string) tea.Cmd {
 
 // queueChanged sends the interface the queue to draw.
 func (a app) queueChanged() tea.Cmd {
-	return emit(tui.QueueChanged{Tracks: a.queue.Tracks(), At: a.queue.At(),
-		From: a.playingList})
+	from := a.playingList
+	if a.queue.Empty() {
+		// A queue with nothing in it came from nowhere.
+		from = ""
+	}
+	return emit(tui.QueueChanged{Tracks: a.queue.Tracks(), At: a.queue.At(), From: from})
 }
 
 // trackFrom turns a song on an album into a queue entry.
@@ -1010,27 +1033,28 @@ func trackFrom(album subsonic.Album, s subsonic.Song) queue.Track {
 // everything to see a new album is slow, and the screens above are refetched
 // when they are next opened anyway.
 func (a app) reload() tea.Cmd {
+	ask := a.ui.Reloading()
 	switch a.ui.Screen() {
 	case tui.ScreenLibrary:
 		// The library counts what the screens below it hold, so reloading it
 		// asks for those again. Albums only if they have been fetched once:
 		// the screen is reachable without ever having opened them.
 		if len(a.ui.Albums()) > 0 {
-			return tea.Batch(reloaded(a.fetchArtists()), reloaded(a.fetchAlbums()))
+			return tea.Batch(reloaded(ask, a.fetchArtists()), reloaded(ask, a.fetchAlbums()))
 		}
-		return reloaded(a.fetchArtists())
+		return reloaded(ask, a.fetchArtists())
 	case tui.ScreenArtists:
-		return reloaded(a.fetchArtists())
+		return reloaded(ask, a.fetchArtists())
 	case tui.ScreenAlbums:
-		return reloaded(a.fetchArtist(a.ui.Artist().ID))
+		return reloaded(ask, a.fetchArtist(a.ui.Artist().ID))
 	case tui.ScreenEveryAlbum:
-		return reloaded(a.fetchAlbums())
+		return reloaded(ask, a.fetchAlbums())
 	case tui.ScreenTracks:
-		return reloaded(a.fetchAlbum(a.ui.Album().ID))
+		return reloaded(ask, a.fetchAlbum(a.ui.Album().ID))
 	case tui.ScreenStarred:
-		return reloaded(a.fetchStarred())
+		return reloaded(ask, a.fetchStarred())
 	}
-	return emit(tui.Failed{Message: "there is nothing here to fetch again"})
+	return emit(tui.Failed{Message: "there is nothing here to fetch again", Ask: ask})
 }
 
 // fetchSaved asks the server what queue it is holding.
@@ -1253,19 +1277,19 @@ func (a app) reorderPlaylist(msg tui.ReorderPlaylist) tea.Cmd {
 	return func() tea.Msg {
 		now, err := client.Playlist(a.ctx, msg.ID)
 		if err != nil {
-			return tui.Failed{Message: err.Error()}
+			return tui.Failed{Message: err.Error(), Ask: msg.Ask}
 		}
 		if !sameOrder(idsOf(now.Songs), msg.Was) {
 			return tui.Failed{Message: fmt.Sprintf(
-				"%s changed on the server; nothing was moved\nesc, then enter opens it as it is now",
-				msg.Name)}
+				"%s changed on the server; nothing was moved\ngp, then enter on it, shows it as it is now",
+				msg.Name), Ask: msg.Ask}
 		}
 		if err := client.ReplacePlaylist(a.ctx, msg.ID, msg.Songs); err != nil {
-			return tui.Failed{Message: err.Error()}
+			return tui.Failed{Message: err.Error(), Ask: msg.Ask}
 		}
 		full, err := client.Playlist(a.ctx, msg.ID)
 		if err != nil {
-			return tui.Failed{Message: err.Error()}
+			return tui.Failed{Message: err.Error(), Ask: msg.Ask}
 		}
 		return tui.PlaylistChanged(full)
 	}

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -761,5 +762,117 @@ func TestTheQueueIsRefusedInTheSameWordsWhereverItIsNoticed(t *testing.T) {
 		if m, _ = press(t, m, "S"); m.status != why {
 			t.Errorf("%d tracks at %d: the interface says %q and the function %q", tc.tracks, tc.at, m.status, why)
 		}
+	}
+}
+
+func TestOnlyItsOwnAnswerEndsTheWaitForAReload(t *testing.T) {
+	m, _ := press(t, loaded(t), "j")
+	m, msg := typeCommand(t, m, "reload")
+	asked, ok := msg.(Reload)
+	if !ok || asked.Ask == 0 || asked.Ask != m.Reloading() {
+		t.Fatalf(":reload emitted %#v with reload %d waited for", msg, m.Reloading())
+	}
+
+	m = send(t, m, Failed{Message: "nothing is playing to seek in"})
+	m, _ = press(t, m, "5")
+	if !m.loading() || !strings.Contains(m.Status(), "asking the server again") {
+		t.Fatalf("a failure about something else ended the reload: loading %v, %q", m.loading(), m.Status())
+	}
+	m = send(t, m, Reloaded{Loaded: ArtistsLoaded(library())})
+	if m.loading() || !strings.Contains(m.Status(), "reloaded: 3 artists") || m.Cursor() != 1 {
+		t.Errorf("the reload's answer left loading %v, %q, row %d", m.loading(), m.Status(), m.Cursor())
+	}
+
+	m, msg = typeCommand(t, m, "reload")
+	m = send(t, m, Failed{Message: "the server did not answer", Ask: msg.(Reload).Ask})
+	if m.loading() || !m.statusFailed {
+		t.Errorf("the reload's own failure left loading %v, %q", m.loading(), m.Status())
+	}
+}
+
+func TestOnlyItsOwnAnswerLetsAnOrderJustSavedBeReorderedAgain(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening", SongCount: 3}}
+	open := send(t, onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists))), PlaylistLoaded(eveningOf(3)))
+	m := reordering(t, open)
+	m, _ = press(t, m, "J")
+	m, saved := press(t, m, "enter")
+	order := saved.(ReorderPlaylist)
+	refused := func(m Model) bool {
+		m, _ = typeCommand(t, m, "playlist reorder")
+		return !m.Reordering() && m.statusFailed
+	}
+
+	if !refused(send(t, m, Failed{Message: "nothing is playing to seek in"})) {
+		t.Error("a failure about something else let the order be reordered before it was answered")
+	}
+	left, _ := press(t, m, "h")
+	left = send(t, left, PlaylistLoaded(eveningOf(3)))
+	if left.Screen() != ScreenPlaylist || !refused(left) {
+		t.Error("leaving the playlist and opening it again let the order be reordered before it was answered")
+	}
+	if refused(send(t, m, Failed{Message: "it changed on the server", Ask: order.Ask})) {
+		t.Error("the save's own failure did not end the wait")
+	}
+	if refused(send(t, left, PlaylistChanged(eveningOf(3)))) {
+		t.Error("the save's answer did not end the wait")
+	}
+}
+
+func TestGoingBackToAnAlbumWhoseCoverIsNotHeldAsksForIt(t *testing.T) {
+	x := subsonic.Album{ID: "al-x", Name: "X", CoverArt: "cv-x", Songs: tenTracks().Songs}
+	y := subsonic.Album{ID: "al-y", Name: "Y", CoverArt: "cv-y", Songs: tenTracks().Songs}
+	picture := []string{"a picture", "of a cover"}
+	next, _ := New().Update(tea.WindowSizeMsg{Width: 64, Height: 40})
+
+	// The cover of X arrives after Y was opened, and is dropped.
+	m := send(t, onArtists(t, send(t, next.(Model), ArtistsLoaded(library()))), AlbumLoaded(x))
+	m = send(t, onArtists(t, m), AlbumLoaded(y), CoverArt{AlbumID: "al-x", Lines: picture})
+	for range 2 {
+		var msg tea.Msg
+		m, msg = press(t, m, "esc")
+		if m.Screen() == ScreenTracks {
+			if want := (FetchCover{Album: x}); !reflect.DeepEqual(msg, want) || m.Album().ID != "al-x" {
+				t.Fatalf("back to %q emitted %#v, want its cover asked for", m.Album().Name, msg)
+			}
+		}
+	}
+	if m.Screen() != ScreenTracks {
+		t.Fatalf("two backs reached %s", m.Screen())
+	}
+	m = send(t, m, CoverArt{AlbumID: "al-x", Lines: picture})
+	if !strings.Contains(m.View(), "a picture") {
+		t.Errorf("the cover that was asked for is not drawn:\n%s", m.View())
+	}
+
+	// A cover that is held comes back with its album and is not asked for.
+	m = send(t, onArtists(t, m), AlbumLoaded(y))
+	m, _ = press(t, m, "esc")
+	m, msg := press(t, m, "esc")
+	if msg != nil || m.Album().ID != "al-x" || !strings.Contains(m.View(), "a picture") {
+		t.Errorf("back to an album whose cover is held emitted %#v:\n%s", msg, m.View())
+	}
+}
+
+func TestWhileAddingToAPlaylistNeitherQueueKeyActsOnARowThatIsNotATrack(t *testing.T) {
+	m := send(t, loaded(t), EditingPlaylist(eveningOf(1)))
+	for _, key := range []string{"a", "A", "r"} {
+		said, msg := press(t, m, key)
+		if msg != nil || !strings.Contains(said.Status(), "open an album") {
+			t.Errorf("%s on an artist while adding to a playlist emitted %#v and said %q", key, msg, said.Status())
+		}
+	}
+}
+
+func TestAddingAWholeArtistSaysSoWhileTheirTracksAreGathered(t *testing.T) {
+	m, msg := press(t, loaded(t), "a")
+	if _, ok := msg.(QueueThis); !ok || !strings.Contains(m.Status(), "gathering every track of Aoi") {
+		t.Errorf("a on an artist emitted %#v and said %q", msg, m.Status())
+	}
+}
+
+func TestTheQueueKeyOnAnEmptyQueueDoesNotSayATrackIsAlreadyInIt(t *testing.T) {
+	m, msg := press(t, onQueue(t, loaded(t)), "a")
+	if msg != nil || strings.Contains(m.Status(), "already") || m.Status() == "" {
+		t.Errorf("a on an empty queue emitted %#v and said %q", msg, m.Status())
 	}
 }

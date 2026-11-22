@@ -96,8 +96,11 @@ type Model struct {
 	trail []place
 	up    []place
 	album subsonic.Album
-	// art is the cover for album, already rendered, one string per row.
-	art []string
+	// art is the cover for album, already rendered, one string per row, or a
+	// blank block of its shape. artOf is the album whose cover it is, and is
+	// empty while the block is blank.
+	art   []string
+	artOf string
 	// showSky says the visualiser is filling the screen and sky is its state.
 	// Each time it opens it is seeded from skySeed and skyOpens, so that it
 	// starts somewhere new.
@@ -137,8 +140,10 @@ type Model struct {
 	reordering bool
 	order      []subsonic.Song
 	drawnFrom  []string
-	// saving says an arrangement has been sent and not yet answered.
-	saving bool
+	// saving is the number of an arrangement sent and not yet answered, and
+	// savingID the playlist it is of.
+	saving   int
+	savingID string
 
 	// found is what the last search returned, flattened into rows with a
 	// heading before each group. query is what was asked for.
@@ -200,8 +205,9 @@ type Model struct {
 	// opens is what to say while the open waited for arrives.
 	opens string
 	// keep is what was selected when a reload was asked for, so the cursor can
-	// go back to it once the answer arrives.
-	keep string
+	// go back to it once the answer arrives, and keepAsk numbers that reload.
+	keep    string
+	keepAsk int
 	// topic is the command or the keys :wiki is explaining. Empty means it is
 	// showing the list. topicText is what is said about keys, which have no
 	// page of their own, and listed is the list as it was left for the page.
@@ -263,6 +269,9 @@ func (m Model) Status() string {
 	}
 	return m.arriving()
 }
+
+// Reloading is the number of the reload being waited for.
+func (m Model) Reloading() int { return m.keepAsk }
 
 // Editing is the playlist the library lists are adding to, if any.
 func (m Model) Editing() subsonic.Playlist { return m.editing }
