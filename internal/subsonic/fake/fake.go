@@ -95,7 +95,7 @@ type Server struct {
 	opt  Options
 	mu   sync.Mutex
 	reqs []Request
-	// refused is the identifiers a request naming them fails for.
+	// refused is the identifiers and endpoints a request fails for.
 	refused map[string]bool
 	// starred is what star and unstar have done, so that getStarred2 reports
 	// what a test actually did rather than a fixture.
@@ -157,7 +157,8 @@ func (s *Server) Starred(id string) bool {
 	return s.starred[id]
 }
 
-// Refuse makes every later request naming this identifier fail.
+// Refuse makes every later request naming this identifier, or to this
+// endpoint, fail.
 func (s *Server) Refuse(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -216,7 +217,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	refused := s.refused[q.Get("id")]
+	refused := s.refused[q.Get("id")] || s.refused[endpoint]
 	s.mu.Unlock()
 	if refused {
 		s.fail(w, 0, "the server could not read that")

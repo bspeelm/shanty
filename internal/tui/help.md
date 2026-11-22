@@ -186,7 +186,7 @@ Asks your server to look at its music folder for new files.
 
 Reloading finds nothing the server has not looked at, so music you have just
 copied onto it needs this first. The last row counts the tracks as it goes, and
-the library is reloaded by itself when the scan finishes.
+the screen you are on is reloaded by itself when the scan finishes.
 
 A scan takes minutes on a large library. The music keeps playing and you can
 carry on browsing.
@@ -200,7 +200,8 @@ Asks the server again for whatever screen you are on.
 
 A list is fetched once and kept, so an album added to the server after shanty
 started is not there. This asks again for the library, the artists, one
-artist's albums, every album, one album's tracks, or the starred list.
+artist's albums, every album, one album's tracks, the starred list, the
+playlists, or one playlist.
 
 The cursor stays on what you had selected if it is still there, and the last
 row says what came back.

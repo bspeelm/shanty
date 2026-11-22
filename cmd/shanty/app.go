@@ -343,10 +343,10 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A reload the interface asked for is fetched. One begun here is told
 		// to the interface first, which remembers what was selected.
 		if msg.Ask != 0 {
-			return a, a.reload()
+			return a, a.reload(msg)
 		}
 		next, _ := a.forward(msg)
-		return next, next.(app).reload()
+		return next, a.reload(next.(app).ui.ReloadAsked())
 	case tui.FetchCover:
 		return a, a.fetchArt(msg.Album)
 	case savedQueue:
@@ -730,19 +730,22 @@ func opened(ask int, fetch tea.Cmd) tea.Cmd {
 	}
 }
 
-// reloaded runs a fetch for a reload and marks its answer as one. A failure
-// carries the number the reload was asked with.
-func reloaded(ask int, fetch tea.Cmd) tea.Cmd {
+// reloaded runs the fetches for a reload, in order, and marks their answers
+// as the answer to it. The first failure is returned with the reload's
+// number, and nothing after it is fetched.
+func reloaded(ask int, fetches ...tea.Cmd) tea.Cmd {
 	return func() tea.Msg {
-		switch msg := fetch().(type) {
-		case nil:
-			return nil
-		case tui.Failed:
-			msg.Ask = ask
-			return msg
-		default:
-			return tui.Reloaded{Loaded: msg}
+		answer := tui.Reloaded{Ask: ask}
+		for _, fetch := range fetches {
+			switch msg := fetch().(type) {
+			case tui.Failed:
+				msg.Ask = ask
+				return msg
+			default:
+				answer.More, answer.Loaded = answer.Loaded, msg
+			}
 		}
+		return answer
 	}
 }
 
@@ -1031,34 +1034,42 @@ func trackFrom(album subsonic.Album, s subsonic.Song) queue.Track {
 	}
 }
 
-// reload asks the server again for what the screen is showing.
-//
-// Only that screen, rather than the whole library: on a large one, fetching
-// everything to see a new album is slow, and the screens above are refetched
-// when they are next opened anyway.
-func (a app) reload() tea.Cmd {
-	ask := a.ui.Reloading()
-	switch a.ui.Screen() {
-	case tui.ScreenLibrary:
-		// The library counts what the screens below it hold, so reloading it
-		// asks for those again. Albums only if they have been fetched once:
-		// the screen is reachable without ever having opened them.
-		if len(a.ui.Albums()) > 0 {
-			return tea.Batch(reloaded(ask, a.fetchArtists()), reloaded(ask, a.fetchAlbums()))
-		}
-		return reloaded(ask, a.fetchArtists())
-	case tui.ScreenArtists:
-		return reloaded(ask, a.fetchArtists())
-	case tui.ScreenAlbums:
-		return reloaded(ask, a.fetchArtist(a.ui.Artist().ID))
-	case tui.ScreenEveryAlbum:
-		return reloaded(ask, a.fetchAlbums())
-	case tui.ScreenTracks:
-		return reloaded(ask, a.fetchAlbum(a.ui.Album().ID))
-	case tui.ScreenStarred:
-		return reloaded(ask, a.fetchStarred())
+// reloads says whether a screen is one a reload can fetch again.
+func reloads(s tui.Screen) bool {
+	switch s {
+	case tui.ScreenQueue, tui.ScreenSearch, tui.ScreenMessages, tui.ScreenWiki:
+		return false
 	}
-	return emit(tui.Failed{Message: "there is nothing here to fetch again", Ask: ask})
+	return true
+}
+
+// reload asks the server again for the screen a reload names, and answers
+// with the reload's number.
+func (a app) reload(msg tui.Reload) tea.Cmd {
+	switch msg.Screen {
+	case tui.ScreenLibrary:
+		// The library counts what the screens below it hold. Albums are
+		// asked for only if they have been fetched once.
+		if len(a.ui.Albums()) > 0 {
+			return reloaded(msg.Ask, a.fetchAlbums(), a.fetchArtists())
+		}
+		return reloaded(msg.Ask, a.fetchArtists())
+	case tui.ScreenArtists:
+		return reloaded(msg.Ask, a.fetchArtists())
+	case tui.ScreenAlbums:
+		return reloaded(msg.Ask, a.fetchArtist(msg.ID))
+	case tui.ScreenEveryAlbum:
+		return reloaded(msg.Ask, a.fetchAlbums())
+	case tui.ScreenTracks:
+		return reloaded(msg.Ask, a.fetchAlbum(msg.ID))
+	case tui.ScreenStarred:
+		return reloaded(msg.Ask, a.fetchStarred())
+	case tui.ScreenPlaylists:
+		return reloaded(msg.Ask, a.fetchPlaylists())
+	case tui.ScreenPlaylist:
+		return reloaded(msg.Ask, a.fetchPlaylist(msg.ID))
+	}
+	return emit(tui.Failed{Message: "there is nothing here to fetch again", Ask: msg.Ask})
 }
 
 // fetchSaved asks the server what queue it is holding.
@@ -1186,11 +1197,15 @@ func (a app) scanSaid(msg scanning) (tea.Model, tea.Cmd) {
 		next, _ := a.forward(tui.Notice(fmt.Sprintf("scanning: %s so far", tracks(msg.status.Count))))
 		return next, a.watchScan()
 	}
+	finished := tui.Notice(fmt.Sprintf("the scan finished: %s", tracks(msg.status.Count)))
+	if !reloads(a.ui.Screen()) {
+		return a.forward(finished)
+	}
 	// The interface is told a reload is under way, then that the scan
 	// finished, and the fetch is made here, once.
 	told, _ := a.forward(tui.Reload{})
-	next, _ := told.(app).forward(tui.Notice(fmt.Sprintf("the scan finished: %s", tracks(msg.status.Count))))
-	return next, next.(app).reload()
+	next, _ := told.(app).forward(finished)
+	return next, a.reload(next.(app).ui.ReloadAsked())
 }
 
 // tracks counts what a scan has looked at, in words.
@@ -1295,7 +1310,7 @@ func (a app) reorderPlaylist(msg tui.ReorderPlaylist) tea.Cmd {
 		if err != nil {
 			return tui.Failed{Message: err.Error(), Ask: msg.Ask}
 		}
-		return tui.PlaylistChanged(full)
+		return tui.Saved{Ask: msg.Ask, Playlist: full}
 	}
 }
 
