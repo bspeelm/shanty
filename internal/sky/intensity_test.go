@@ -462,7 +462,7 @@ func (m *watcher) colourLine(name string, keep func(seen) bool) string {
 	moving := m.spreadOf(func(f seen) float64 { return f.hue }, func(f seen) bool { return steady(f) && f.moving }).mean
 	still := m.spreadOf(func(f seen) float64 { return f.hue }, func(f seen) bool { return steady(f) && !f.moving }).mean
 	mean := func(pick func(seen) float64) float64 { return get(pick).mean }
-	return fmt.Sprintf("colour %-15s frames %6d between scenes %5d | tint %s | hue %s | steps %s | colour flick %.3f | chroma %.4f hues %.3f | hue while the palette moves %.4f and while it does not %.4f | vivid %.3f pink %.3f opposed %.3f clash %.3f gap %.0f | rough light %.4f hue %.4f | runs %.0f",
+	return fmt.Sprintf("colour %-15s frames %6d between scenes %5d | tint %s | hue %s | steps %s | colour flick %.3f | chroma %.4f hues %.3f | hue while the palette moves %.4f and while it does not %.4f | vivid %.3f pink %.3f opposed %.3f clash %.3f gap %.0f | rough light %.4f hue %.4f | runs %.0f | families %.3f",
 		name, n, between,
 		get(func(f seen) float64 { return f.tint }), get(func(f seen) float64 { return f.hue }),
 		get(func(f seen) float64 { return f.steps }), flick,
@@ -471,7 +471,7 @@ func (m *watcher) colourLine(name string, keep func(seen) bool) string {
 		mean(func(f seen) float64 { return f.opposed }), mean(func(f seen) float64 { return f.clash }),
 		mean(func(f seen) float64 { return f.gap }),
 		mean(func(f seen) float64 { return f.roughLight }), mean(func(f seen) float64 { return f.roughHue }),
-		mean(func(f seen) float64 { return f.runs }))
+		mean(func(f seen) float64 { return f.runs }), mean(func(f seen) float64 { return f.families }))
 }
 
 // tintLine is the flashing of colour on both grids at both thresholds.

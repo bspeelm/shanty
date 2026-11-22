@@ -88,8 +88,16 @@ const (
 	// A made palette's hues run from teal through blue to violet: no step
 	// has a hue below bodyFrom or above bodyTo.
 	bodyFrom, bodyTo = 183.0, 308.0
-	// The key hue of a made palette is held between keyFrom and keyTo.
+	// The key hue of a made palette is held between keyFrom and keyTo, and
+	// an accent has no hue below accentFrom, which keeps it from the
+	// green-blues.
 	keyFrom, keyTo = 186.0, 300.0
+	accentFrom     = 200.0
+	// The key hues of the two members of a palette are from mateLeast to
+	// mateMost degrees apart, and a cell is drawn in one of setLevels
+	// palettes from the first member to the second.
+	mateLeast, mateMost = 55.0, 90.0
+	setLevels           = 5
 	// Towards the pinks, from plumFrom up, a colour is held to less chroma,
 	// down to plumMost at bodyTo.
 	plumFrom, plumMost = 290.0, 0.085
@@ -141,7 +149,12 @@ type tones struct {
 	// end of the arc, at a chroma of accent.
 	accentSteps        int
 	accentTurn, accent float64
-	fixed              []RGB
+	// A made palette may have a second member, drawn beside the first in
+	// other places on the screen. mate is how far its key hue is from key,
+	// in degrees, and matePeak its peak chroma. A mate of 0 is a palette of
+	// one member.
+	mate, matePeak float64
+	fixed          []RGB
 	// stops are the colours of a landscape, dark to bright, and land how far
 	// the ramp is made of them.
 	stops []RGB
@@ -177,9 +190,8 @@ func (t tones) step(at float64, top bool) lch {
 		h: t.key + t.arc*(at-0.5)}
 	bell := rampEnds + (1-rampEnds)*math.Sin(math.Pi*math.Pow(at, 0.85))
 	c.c = t.peak * bell * (1 - 0.8*math.Pow(at, 6))
-	// An accent that would leave the hues a made palette may have is left
-	// out.
-	if h := t.key + t.arc/2 + math.Copysign(t.accentTurn, t.arc); top && t.accentSteps > 0 && h >= bodyFrom && h <= bodyTo {
+	// An accent that would leave the hues an accent may have is left out.
+	if h := t.key + t.arc/2 + math.Copysign(t.accentTurn, t.arc); top && t.accentSteps > 0 && h >= accentFrom && h <= bodyTo {
 		c.h, c.c = h, t.accent
 	}
 	c.h = math.Min(math.Max(c.h, bodyFrom), bodyTo)
@@ -232,6 +244,8 @@ func mixTones(a, b tones, w float64) tones {
 		arc:      mix(a.arc, b.arc),
 		peak:     mix(a.peak, b.peak),
 		contrast: mix(a.contrast, b.contrast),
+		mate:     mix(a.mate, b.mate),
+		matePeak: mix(a.matePeak, b.matePeak),
 		light:    mix(a.light, b.light),
 		top:      mix(a.top, b.top),
 		land:     mix(a.land, b.land),
@@ -267,6 +281,53 @@ func mixTones(a, b tones, w float64) tones {
 func (t tones) turned(by float64) tones {
 	t.key = math.Min(math.Max(t.key+by, keyFrom), keyTo)
 	t.arc = leaning(t.key, t.arc)
+	t.mate = mated(t.key, t.mate)
 	t.land = 0
 	return t
+}
+
+// mated returns how far a second member's key hue is from key, given how
+// far it was meant to be: the same distance, on the other side where that
+// keeps it between keyFrom and keyTo, and otherwise as far as it can go.
+func mated(key, mate float64) float64 {
+	if mate == 0 {
+		return 0
+	}
+	for _, m := range []float64{mate, -mate} {
+		if key+m >= keyFrom && key+m <= keyTo {
+			return m
+		}
+	}
+	if key-keyFrom > keyTo-key {
+		return keyFrom - key
+	}
+	return keyTo - key
+}
+
+// member returns the palette's first member, or its second, as a palette of
+// one member.
+func (t tones) member(second bool) tones {
+	one := t
+	one.mate, one.matePeak = 0, 0
+	if second && t.mate != 0 {
+		one.key, one.peak, one.accentSteps = t.key+t.mate, t.matePeak, 0
+		one.arc = leaning(one.key, t.arc)
+	}
+	return one
+}
+
+// table returns the colours cells are drawn in. A made palette of two
+// members gives setLevels ramps one after another, from the first member's
+// to the second's by way of the palettes between them. Any other palette
+// gives its one ramp.
+func (t tones) table() []RGB {
+	if !t.made() || t.mate == 0 {
+		return t.ramp()
+	}
+	out := make([]RGB, 0, setLevels*paletteSize)
+	first, second := t.member(false), t.member(true)
+	for l := range setLevels {
+		out = append(out, mixTones(first, second, float64(l)/(setLevels-1)).ramp()...)
+	}
+	return out
 }

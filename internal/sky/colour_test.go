@@ -215,6 +215,10 @@ type hued struct {
 	// present, and clash whether strong pink and strong green both are.
 	gap            float64
 	opposed, clash float64
+	// families is 1 when the frame shows two families of colour: two hues
+	// at least 60 degrees apart that are each present, or greys and a hue
+	// that each are.
+	families float64
 	// roughLight and roughHue are the mean difference between a cell and
 	// the cells to its right and below it: in light, and in palette colour
 	// with lightness left out between cells that are both drawn.
@@ -227,6 +231,7 @@ func huesOf(now, was []tinted, light []float64, w int) hued {
 	var out hued
 	var both, ink, sumA, sumB, norm float64
 	var area, strong [hueBins]float64
+	var grey, coloured float64
 	for i, t := range now {
 		ink += t.ink
 		sumA, sumB = sumA+t.ink*t.pa, sumB+t.ink*t.pb
@@ -243,6 +248,10 @@ func huesOf(now, was []tinted, light []float64, w int) hued {
 			bin := int(s.h/360*hueBins) % hueBins
 			if s.c >= colouredFrom {
 				area[bin] += share
+				coloured += share
+			} else if s.l > 0.3 {
+				// A dark step has little chroma whatever its palette.
+				grey += share
 			}
 			if s.c >= strongFrom {
 				strong[bin] += share
@@ -291,6 +300,9 @@ func huesOf(now, was []tinted, light []float64, w int) hued {
 		}
 		if pinks >= presentFrom && greens >= presentFrom {
 			out.clash = 1
+		}
+		if out.gap >= 60 || (grey/ink >= presentFrom && coloured/ink >= presentFrom) {
+			out.families = 1
 		}
 	}
 	pairs, hues := 0.0, 0.0

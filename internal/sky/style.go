@@ -202,15 +202,25 @@ func (s *style) tones(rng *rand.Rand, c Character) tones {
 	part := func(v float64) float64 { return math.Mod(v*97, 1) }
 	switch pick(rng, axes[:]) {
 	case 0:
-		t.key, t.arc = calmFrom+(calmTo-calmFrom)*rng.Float64(), calmArc
+		v := rng.Float64()
+		t.key, t.arc = calmFrom+(calmTo-calmFrom)*v, calmArc
+		t.mate, t.matePeak = mated(t.key, mateLeast+(mateMost-mateLeast)*part(v*31)), t.peak
 	case 1:
 		v, u := rng.Float64(), rng.Float64()
 		t.key, t.arc = driveFrom+(driveTo-driveFrom)*v, driveArc+(driveArcMost-driveArc)*u
-		switch {
-		case part(v) < greyShare:
-			t.key, t.peak = greyKey, greyPeak
+		// One palette in greyShare has greys for its first member, and
+		// another for its second.
+		t.mate, t.matePeak = mateLeast+(mateMost-mateLeast)*part(v*31), t.peak
+		switch grey := part(v); {
+		case grey < greyShare:
+			t.mate, t.key, t.peak = t.key-greyKey, greyKey, greyPeak
+		case grey < 2*greyShare:
+			t.matePeak = greyPeak
 		case part(u) < 0.5:
 			t.accentSteps, t.accentTurn, t.accent = 1+int(2*part(u*7)), 20+10*part(u*13), 0.6*t.peak
+		}
+		if t.peak > greyPeak {
+			t.mate = mated(t.key, t.mate)
 		}
 	case 2:
 		return tones{fixed: s.wheel(0.92+0.15*rng.Float64(), 0.15)}

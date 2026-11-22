@@ -99,6 +99,24 @@ type look struct {
 	glyphs, next glyphs
 	fade, shift  float64
 	colour       bool
+	// The colours are levels ramps one after another, and place gives, for
+	// a cell by where it is from 0 to 1 across and down the picture, how far
+	// from the first ramp to the last it is drawn. No levels means one ramp.
+	levels int
+	place  func(x, y float64) float64
+	// toned is how far a pixel's tone moves it along its ramp, from 0 to 1.
+	// As far as it does not, the pixel is placed as one of middling tone.
+	toned float64
+}
+
+// ramped returns the index of a palette step in the ramp a cell at (x, y) is
+// drawn in.
+func (k look) ramped(step int, x, y float64) int {
+	if step == None || k.levels < 2 || k.place == nil {
+		return step
+	}
+	level := min(int(clamp01(k.place(x, y))*float64(k.levels)), k.levels-1)
+	return level*paletteSize + step
 }
 
 // glyphsAt returns how cell (c, r) is drawn. During a fade each cell changes
@@ -121,7 +139,8 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 	sample := func(sx, sy float64) (float64, float64) {
 		px := min(int(sx*float64(fw)), fw-1)
 		py := min(int(sy*float64(fh)), fh-1)
-		return value[py*fw+px], clamp01(tone[py*fw+px] + k.shift)
+		t := clamp01(tone[py*fw+px] + k.shift)
+		return value[py*fw+px], 0.5 + (t-0.5)*k.toned
 	}
 	lines := make([][]Run, h)
 	for r := range h {
@@ -129,6 +148,7 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 		for c := range w {
 			x0, y0 := float64(c)/float64(w), float64(r)/float64(h)
 			cw, ch := 1/float64(w), 1/float64(h)
+			mx, my := x0+cw/2, y0+ch/2
 			g := k.glyphsAt(c, r)
 			switch g {
 			case glyphBraille:
@@ -148,11 +168,11 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 				if bits != 0 {
 					ch = rune(0x2800 + bits)
 				}
-				line.add(ch, fg(colour, peak, ptone), None)
+				line.add(ch, k.ramped(fg(colour, peak, ptone), mx, my), None)
 			case glyphHalf:
 				tv, tt := sample(x0+cw/2, y0+ch/4)
 				bv, bt := sample(x0+cw/2, y0+ch*3/4)
-				top, bot := colourAt(tv, tt), colourAt(bv, bt)
+				top, bot := k.ramped(colourAt(tv, tt), mx, my), k.ramped(colourAt(bv, bt), mx, my)
 				if top == None && bot == None {
 					line.add(' ', None, None)
 				} else {
@@ -167,7 +187,7 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 				v2, _ := sample(x0+cw/2, y0+ch*3/4)
 				v := (v1 + v2) / 2
 				i := min(int(v*float64(len(ramp))), len(ramp)-1)
-				line.add(ramp[i], fg(colour, v, t1), None)
+				line.add(ramp[i], k.ramped(fg(colour, v, t1), mx, my), None)
 			}
 		}
 		lines[r] = line.runs
