@@ -95,8 +95,18 @@ func TestWhatBackRemembersIsBounded(t *testing.T) {
 	for range 3 * trailKept {
 		m = m.show(ScreenAlbums).show(ScreenTracks)
 	}
-	if len(m.trail) != trailKept {
-		t.Errorf("%d places are remembered, want %d", len(m.trail), trailKept)
+	if len(m.up) != trailKept {
+		t.Errorf("the screen showing was opened through %d places, want %d", len(m.up), trailKept)
+	}
+	for range 3 {
+		for _, s := range Screens {
+			if !deep(s) {
+				m = m.show(s)
+			}
+		}
+	}
+	if len(m.trail) > len(Screens) {
+		t.Errorf("%d lists are remembered and there are %d screens", len(m.trail), len(Screens))
 	}
 }
 
@@ -301,5 +311,104 @@ func TestTheWikiAndTheMessagesOpenWithoutTheFilterLeftOnThem(t *testing.T) {
 	m = send(t, onArtists(t, m), ShowMessages{})
 	if m.Filter() != "" || m.rows() != 2 {
 		t.Errorf("the messages opened narrowed by %q to %d rows", m.Filter(), m.rows())
+	}
+}
+
+// frameHead is the first row of the frame, without its styling.
+func frameHead(m Model) string {
+	return strings.SplitN(stripSGR(m.View()), "\n", 2)[0]
+}
+
+func TestThePathIsWhatEachScreenWasOpenedFromWhateverWasJumpedToSince(t *testing.T) {
+	aoi, pumps := library()[0], library()[1]
+	m := onArtists(t, deepIn(t))
+	m, _ = press(t, m, "j")
+	m = send(t, m, ArtistLoaded(pumps))
+	if got := frameHead(m); got != "shanty · artists › The Bilge Pumps" {
+		t.Fatalf("the other artist is headed %q", got)
+	}
+
+	for _, want := range []struct {
+		screen Screen
+		head   string
+	}{
+		{ScreenArtists, "shanty · artists"},
+		{ScreenTracks, "shanty · artists › Aoi › Harbour"},
+		{ScreenAlbums, "shanty · artists › Aoi"},
+		{ScreenArtists, "shanty · artists"},
+		{ScreenLibrary, "shanty · library"},
+	} {
+		m, _ = press(t, m, "esc")
+		if m.Screen() != want.screen || frameHead(m) != want.head {
+			t.Fatalf("back went to %s headed %q, want %s headed %q", m.Screen(), frameHead(m), want.screen, want.head)
+		}
+		if want.screen == ScreenAlbums && m.Artist().ID != aoi.ID {
+			t.Fatalf("the albums are those of %q", m.Artist().Name)
+		}
+	}
+}
+
+func TestAPlaylistIsHeadedByTheListItWasOpenedFromAndBackReturnsThere(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}}
+	m := onPlaylists(t, send(t, deepIn(t), PlaylistsLoaded(lists)))
+	m, ask := opened(t, m)
+	m = send(t, m, Opened{Ask: ask, Loaded: PlaylistLoaded(eveningOf(3))})
+	if got := frameHead(m); got != "shanty · playlists › Evening · 3 tracks" {
+		t.Errorf("the playlist is headed %q", got)
+	}
+	if m, _ = press(t, m, "esc"); m.Screen() != ScreenPlaylists {
+		t.Errorf("back from the playlist went to %s", m.Screen())
+	}
+}
+
+func TestAPlaylistGoneBackToIsAsTheServerNowHasItOrIsPassedOver(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
+	morning := subsonic.Playlist{ID: "pl-2", Name: "Morning", Songs: eveningOf(1).Songs}
+	away := func() Model {
+		m := send(t, onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists))), PlaylistLoaded(eveningOf(3)))
+		m = onPlaylists(t, m)
+		m, _ = press(t, m, "j")
+		return send(t, m, PlaylistLoaded(morning))
+	}
+
+	dusk := eveningOf(2)
+	dusk.Name = "Dusk"
+	m := send(t, away(), PlaylistChanged(dusk))
+	m, _ = press(t, m, "esc")
+	m, _ = press(t, m, "esc")
+	if m.Screen() != ScreenPlaylist || frameHead(m) != "shanty · playlists › Dusk · 2 tracks" {
+		t.Errorf("back shows %s headed %q, want the playlist as it is now", m.Screen(), frameHead(m))
+	}
+
+	m = send(t, away(), PlaylistsLoaded(lists[1:]))
+	m, _ = press(t, m, "esc")
+	m, _ = press(t, m, "esc")
+	if m.Screen() == ScreenPlaylist {
+		t.Errorf("back shows %q, which the server no longer has", frameHead(m))
+	}
+}
+
+func TestAnArtistOrAlbumGoneBackToIsAsItWasLastFetched(t *testing.T) {
+	aoi, pumps := library()[0], library()[1]
+	m := onArtists(t, deepIn(t))
+	m, _ = press(t, m, "j")
+	m = send(t, m, ArtistLoaded(pumps), AlbumLoaded(subsonic.Album{ID: "al-3", Name: "Bail"}))
+
+	fewer, shorter := aoi, aoi.Albums[0]
+	fewer.Albums, shorter.Songs = aoi.Albums[:1], aoi.Albums[0].Songs[:1]
+	m = send(t, m, Reloaded{Loaded: ArtistLoaded(fewer)}, Reloaded{Loaded: AlbumLoaded(shorter)})
+	if m.Screen() != ScreenTracks || m.Album().ID != "al-3" {
+		t.Fatalf("the reloads moved the screen to %s holding %q", m.Screen(), m.Album().ID)
+	}
+
+	for range 3 {
+		m, _ = press(t, m, "esc")
+	}
+	if m.Album().ID != "al-1" || m.rows() != 1 {
+		t.Fatalf("back shows %q with %d tracks, want Harbour as it was reloaded", m.Album().Name, m.rows())
+	}
+	m, _ = press(t, m, "esc")
+	if m.Artist().ID != "ar-1" || m.rows() != 1 {
+		t.Errorf("back shows %q with %d albums, want Aoi as reloaded", m.Artist().Name, m.rows())
 	}
 }

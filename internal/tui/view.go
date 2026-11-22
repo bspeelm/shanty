@@ -319,16 +319,12 @@ func deep(s Screen) bool {
 }
 
 // path is the heading of the screen showing, with the filter kept on it.
-// Before the heading of a screen that was opened from a row come the screens
-// it was opened through, back to the list they started from. Where the path
-// is wider than w its oldest screens give way to an ellipsis.
+// Before it come the screens it was opened through. Where the path is wider
+// than w its oldest screens give way to an ellipsis.
 func (m Model) path(w int) string {
 	var parts []string
-	for i := len(m.trail) - 1; i >= 0 && deep(m.screen); i-- {
-		parts = append([]string{m.trail[i].crumb()}, parts...)
-		if !deep(m.trail[i].screen) {
-			break
-		}
+	for _, p := range m.up {
+		parts = append(parts, p.crumb())
 	}
 	parts = append(parts, m.heading())
 	if m.filter != "" && m.mode == modeNormal {
@@ -354,7 +350,7 @@ func (m Model) heading() string {
 		}
 		return fmt.Sprintf("every album · %s", plural(len(m.albums), "album"))
 	case ScreenTracks:
-		if n := len(m.trail); n > 0 && m.trail[n-1].screen == ScreenAlbums {
+		if n := len(m.up); n > 0 && m.up[n-1].screen == ScreenAlbums {
 			return Sanitise(m.album.Name)
 		}
 		return Sanitise(m.album.Artist) + " · " + Sanitise(m.album.Name)

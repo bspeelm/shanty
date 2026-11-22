@@ -91,8 +91,10 @@ type Model struct {
 	// albums is every album on the server, for the screen that lists them all.
 	// It is separate from artist.Albums, which is one artist's.
 	albums []subsonic.Album
-	// trail is the screens that were left to reach this one, oldest first.
+	// trail is the lists that were left to reach this one, oldest first, and
+	// up is the places the screen showing was opened through, nearest last.
 	trail []place
+	up    []place
 	album subsonic.Album
 	// art is the cover for album, already rendered, one string per row.
 	art []string

@@ -449,7 +449,7 @@ func (r *run) press(keys ...string) {
 		// Back with nothing else for it to leave returns to the place that
 		// was left last, holding what it held.
 		was, goesBack := r.m, plain && (key == "esc" || key == "h") && !r.m.reordering &&
-			r.m.filter == "" && r.m.topic == "" && len(r.m.trail) > 0
+			r.m.filter == "" && r.m.topic == "" && len(r.m.trail)+len(r.m.up) > 0
 		switch key {
 		case " ":
 			r.send(tea.KeyMsg{Type: tea.KeySpace})
@@ -464,7 +464,7 @@ func (r *run) press(keys ...string) {
 		}
 		if goesBack {
 			r.kinds["a back to a place that was left"]++
-			p := was.trail[len(was.trail)-1]
+			p := append(append([]place{}, was.trail...), was.up...)[len(was.trail)+len(was.up)-1]
 			switch {
 			case r.m.screen != p.screen:
 				r.failf(keyOf(key), "back went to %s, want %s", r.m.screen, p.screen)

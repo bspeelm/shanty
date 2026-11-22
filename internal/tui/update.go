@@ -125,6 +125,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The list is empty rather than nil once the server has answered.
 			m.playlists = []subsonic.Playlist{}
 		}
+		// A playlist the server no longer lists is not gone back to.
+		m = m.remembering(func(p place) (place, bool) {
+			for _, list := range m.playlists {
+				if list.ID == p.playlist.ID {
+					return p, true
+				}
+			}
+			return p, p.screen != ScreenPlaylist
+		})
 		return m.say("").settled(ScreenPlaylists), nil
 	case PlaylistLoaded:
 		m = m.show(ScreenPlaylist)
@@ -142,6 +151,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.playlists[i].Name, m.playlists[i].SongCount = loaded.Name, len(loaded.Songs)
 			}
 		}
+		m = m.remembering(func(p place) (place, bool) {
+			if p.playlist.ID == loaded.ID {
+				p.playlist = loaded
+			}
+			return p, true
+		})
 		if loaded.ID != m.playlist.ID {
 			return m, nil
 		}
@@ -767,20 +782,23 @@ type place struct {
 	album    subsonic.Album
 	art      []string
 	playlist subsonic.Playlist
+	// up is the places this one was opened through, the nearest last.
+	up []place
 }
 
-// trailKept is how many screens back are remembered.
+// trailKept is how many screens back are remembered, and how many a screen
+// can have been opened through.
 const trailKept = 32
 
 // here is the screen showing, as a place to come back to.
 func (m Model) here() place {
-	return place{m.screen, m.cursor[m.screen], m.filter, m.artist, m.album, m.art, m.playlist}
+	return place{m.screen, m.cursor[m.screen], m.filter, m.artist, m.album, m.art, m.playlist, m.up}
 }
 
 // returned is the model showing a place that was left. What that place held
 // is put back unless the same thing is still held.
 func (m Model) returned(p place) Model {
-	m.screen, m.filter = p.screen, p.filter
+	m.screen, m.filter, m.up = p.screen, p.filter, p.up
 	switch {
 	case p.screen == ScreenAlbums && p.artist.ID != m.artist.ID:
 		m.artist = p.artist
@@ -790,6 +808,25 @@ func (m Model) returned(p place) Model {
 		m.playlist = p.playlist
 	}
 	return m.say("").selecting(p.screen, p.cursor).settled(p.screen)
+}
+
+// each is those places and the places each was opened through, with f applied
+// to every one. A place f does not keep is left out.
+func each(places []place, f func(place) (place, bool)) []place {
+	var out []place
+	for _, p := range places {
+		p.up = each(p.up, f)
+		if p, keep := f(p); keep {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// remembering applies f to every place there is a way back to.
+func (m Model) remembering(f func(place) (place, bool)) Model {
+	m.trail, m.up = each(m.trail, f), each(m.up, f)
+	return m
 }
 
 // unfiltered drops the filter and leaves the cursor on the row it was on.
@@ -812,9 +849,10 @@ func (m Model) left() Model {
 	return m.unfiltered()
 }
 
-// back returns to the screen that was showing before this one. A filter kept
-// on the screen showing is dropped first. On the library, with nowhere to go
-// back to, it does nothing.
+// back returns to where the screen showing was opened from, and from a list
+// to the screen that was showing before it. A filter kept on the screen
+// showing is dropped first. On the library, with nowhere to go back to, it
+// does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
 	if m.showSky {
 		m.showSky = false
@@ -836,51 +874,47 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		m.topic = ""
 		return m.say("").selecting(ScreenWiki, 0).ontoARow(), nil
 	}
-	n := len(m.trail)
-	if n == 0 {
-		m = m.left()
-		m.screen = ScreenLibrary
-		return m.say(""), nil
+	p := place{screen: ScreenLibrary, cursor: m.cursor[ScreenLibrary]}
+	if n := len(m.up); n > 0 {
+		p = m.up[n-1]
+	} else if n := len(m.trail); n > 0 {
+		p, m.trail = m.trail[n-1], m.trail[:n-1:n-1]
 	}
-	p := m.trail[n-1]
-	m = m.left()
-	m.trail = m.trail[: n-1 : n-1]
-	return m.returned(p), nil
+	return m.left().returned(p), nil
 }
 
-// show moves to a screen and remembers the one being left, so that back
-// returns to it. A screen that is among those remembered is shown as it was
-// left and is remembered once, unless it is one artist's albums, a track list
-// or a playlist, which are opened afresh. Moving to the library forgets them
-// all.
+// show moves to a screen. One artist's albums, a track list and a playlist
+// are opened from the screen showing, which back returns to. Any other screen
+// is a list reached from anywhere: the screen being left is remembered for
+// back, the list is shown with the filter kept on it, and it is remembered
+// once however often it is reached. Moving to the library forgets them all.
 func (m Model) show(s Screen) Model {
 	if s == m.screen {
 		return m.unfiltered().say("")
 	}
 	from := m.here()
 	m = m.left()
-	at := -1
-	for i, p := range m.trail {
-		if p.screen == s && !deep(s) {
-			at = i
-			break
-		}
-	}
-	switch {
-	case s == ScreenLibrary:
-		m.trail = nil
-	case at >= 0:
-		p := m.trail[at]
-		m.trail = append(append(m.trail[:at:at], m.trail[at+1:]...), from)
-		return m.returned(p)
-	default:
-		m.trail = append(m.trail[:len(m.trail):len(m.trail)], from)
-		if len(m.trail) > trailKept {
-			m.trail = m.trail[1:]
-		}
-	}
 	m.screen = s
-	return m.say("")
+	if deep(s) {
+		m.up = append(from.up[:len(from.up):len(from.up)], from)
+		m.up = m.up[max(0, len(m.up)-trailKept):]
+		return m.say("")
+	}
+	var trail []place
+	m.up, m.filter = nil, ""
+	for _, p := range m.trail {
+		if p.screen == s {
+			m.filter = p.filter
+			continue
+		}
+		trail = append(trail, p)
+	}
+	trail = append(trail, from)
+	m.trail = trail[max(0, len(trail)-trailKept):]
+	if s == ScreenLibrary {
+		m.trail = nil
+	}
+	return m.say("").settled(s)
 }
 
 // opening gives the open being asked for the next number, waits for that
@@ -941,12 +975,24 @@ func (m Model) refetched(loaded tea.Msg) Model {
 		next, _ := m.update(loaded)
 		return next.(Model).reloaded(ScreenStarred, plural(len(loaded.IDs), "starred thing")).settled(ScreenStarred)
 	case ArtistLoaded:
+		m = m.remembering(func(p place) (place, bool) {
+			if p.artist.ID == loaded.ID {
+				p.artist = subsonic.Artist(loaded)
+			}
+			return p, true
+		})
 		if loaded.ID != m.artist.ID {
 			return m
 		}
 		m.artist = subsonic.Artist(loaded)
 		return m.reloaded(ScreenAlbums, plural(len(loaded.Albums), "album")).settled(ScreenAlbums)
 	case AlbumLoaded:
+		m = m.remembering(func(p place) (place, bool) {
+			if p.album.ID == loaded.ID {
+				p.album = subsonic.Album(loaded)
+			}
+			return p, true
+		})
 		if loaded.ID != m.album.ID {
 			return m
 		}
