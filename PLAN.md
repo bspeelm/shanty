@@ -35,7 +35,7 @@ code. Numbers may start generous and tighten; they may not silently grow.
 | test lines : code lines | ≥ 1 : 3 | `wc -l` over `_test.go` vs the rest; a floor, not a target |
 | code lines | 16,000 | `cmd` and `internal`, non-test, comments and blanks excluded (ADR-033) |
 | comment lines : code lines | 25% | the one **hard** ceiling: over budget removes a comment |
-| live prose | 4,500 lines | every `.md` outside `docs/history/` and `docs/review/` |
+| live prose | 4,575 lines | every `.md` outside `docs/history/` and `docs/review/` |
 | lockfile-equivalent | go.sum, and `vendor/` derived from it | no second *independent* pinning mechanism; CI regenerates `vendor/` and fails on a difference |
 
 Two of these behave differently from the rest.
@@ -47,7 +47,9 @@ more prose about the code instead of writing less code.
 **Live prose** is an absolute line count rather than a share of code, because
 this project writes its plan before its code. A ratio would report a project
 that planned first as worse than one that did not. The number does not track
-the code cap and has not since ADR-021.
+the code cap and has not since ADR-021. It was 4,500 until ADR-034. The
+shipped milestones were retired to `docs/history/` first, and the 75 lines
+are what the records of the navigation and the calmer visualiser still needed.
 
 **The lockfile row** was `go.sum only` until the rpm needed building from
 source. A Copr build root has no network, so the dependencies are vendored.
@@ -159,8 +161,8 @@ of those. A session left by `:headless` is not one, and ADR-018 says why: it is
 created only by a keystroke in a running interface, and it ends by itself when
 its queue runs out.
 
-Some of these may become worth doing. Cover art and lyrics are already in §12,
-and MPRIS is an open decision. They enter through this document rather than
+Some of these may become worth doing. Cover art shipped in v0.3, lyrics are in
+the backlog, and MPRIS is an open decision. They enter through this document rather than
 through a pull request that quietly grows the scope.
 
 ## §4 Architecture
@@ -374,45 +376,9 @@ build nobody can reproduce.
 
 ## §12 Milestones
 
-**v0.1 — the vertical slice.** Configuration and credentials to spec (§6).
-Doctor. Browse artists, then albums, then tracks. Play an album through a
-persistent mpv with pause, seek, skip and volume. Uninstall. The fake server,
-the isolation suite, golden files for the three screens, CI green including the
-integration job, and a first tag carrying checksums and a signature — because
-adding provenance to a project that already has releases is how it ends up
-never being added at all.
-
-Done when a stranger with a Navidrome URL is listening in under two minutes,
-and `make check` proves every sentence in §5 through §9 that names a test.
-
-**v0.2 — a daily driver.** Queue semantics, so play-next inserts rather than
-replacing. Search. Playlists, read and edited. Starring. Play reporting with an
-offline backlog, flushed on reconnect. Resume across devices with
-`savePlayQueue` and `getPlayQueue`. Configurable keys.
-
-Three things shipped in it that this list did not plan for. `:headless` closes
-the interface and leaves the music playing, commanded from any shell, which
-ADR-018 records as a session rather than the daemon §3 refuses. `:wiki`
-explains the commands without leaving shanty. And the packages moved here from
-v0.4: dnf, apt and Homebrew each install shanty and mpv together, and CI builds
-and installs every one of them.
-
-**v0.3 — the comforts.** Cover art, using the kitty graphics protocol and the
-iTerm2 inline image protocol behind one interface, with a text fallback always.
-Sixel is in the backlog rather than shipped: it needs a palette quantiser and a
-band encoder, which the code budget does not hold.
-
-Synchronised lyrics, palette themes and MPRIS were in this milestone and are
-now in the backlog. Each is wanted by nobody who has said so, and a milestone
-is for what is being built rather than for everything that would be pleasant.
-ADR-021 records the code budget this leaves.
-
-**v0.4 — distribution. Closed with nothing built.** v0.2 shipped the packages,
-and ADR-024 refuses the four things this milestone was left holding: signing and
-notarising the macOS build, a manual page, an Arch package, and a job that
-installs from the Homebrew tap. Each refusal names what would bring the work
-back. The routes that exist are the distribution: dnf, apt, Homebrew, and the
-install script.
+v0.1 to v0.3 shipped and v0.4 closed with nothing built. What each one held is
+in `docs/history/milestones-v0.1-to-v0.4.md`, and ADR-024 records what v0.4
+refused.
 
 Deferred indefinitely, per §3: local files, downloads, and multiple
 simultaneous servers. Profiles that switch between servers are fine; two

@@ -1742,3 +1742,61 @@ turn the guard off: ADR-001.
 a light kick takes its cuts, mood and weight from parts found in its texture: `docs/review/v0.4.0.md`.
 
 ---
+
+---
+
+## ADR-034 — Back returns to where you came from, and a key means the same on every list
+
+**Status:** accepted. Amends ADR-016 and ADR-019. ADR-017 and ADR-020 stand.
+
+### Back
+
+Each screen had one fixed parent, so `?` or a jump pressed inside an album
+and then `esc` landed on the library. Back now returns to the screen it was
+pressed from, through a history of at most 32 places, each with its row, its
+filter and what it showed. A screen opened from a row goes back up the rows
+it was opened through, and the heading shows that path. A kept filter is
+dropped before the screen is left. The library is still the top, and no
+number of presses quits.
+
+Refused: fetching again on the way back, which is slower and can fail; and
+showing the whole history as the path, which reads as a hierarchy that is not
+there.
+
+### Keys
+
+- `a` and `A` add what the row is: a track, or every track of an album, an
+  artist or a playlist. `*` stars on every row that can be starred.
+- `r`, `K` and `J` act on the queue as well as on a playlist, under the action
+  names they had. A count before `r` takes out that many rows. The queue is
+  local, so none of these asks.
+- `r` on a playlist's track asks first, as ADR-016 requires of a change to the
+  server. Inside `:playlist edit` it does not, as ADR-019 has it.
+- `S` shuffles what the cursor is on. On the library's Artists and Albums rows
+  it only says how, because one capital there would replace the queue.
+- `g/` returns to the last search, and `ctrl+d` and `ctrl+u` are built.
+  ADR-016's `s` and `dd` were never built; `*` and `r` stand.
+- `ctrl+c` quits from the filter and the command line. At a question it
+  answers no.
+- `enter` in a filter keeps the filter, as ADR-016 says. Opening the only
+  match was built and removed: on a track list it replaced the queue.
+
+### One table
+
+`?` lists every key: actions with the keys bound now, the jumps, the keys
+inside each mode, and counts. The jumps and mode keys are tables the
+dispatcher reads, held against the screen and `wiki/Keys.md` both ways. The
+last row is written from the same tables for the screen showing.
+
+### Answers
+
+An answer from the server carries the number of the request it answers. Only
+the answer to the open being waited for moves the screen; a reload or a
+changed playlist never does. Inferring this from identifiers was built first
+and could not tell a first request from a second.
+
+### The prose budget
+
+The milestones of v0.1 to v0.4 moved from `PLAN.md` §12 to `docs/history/`.
+That freed 34 lines and this record and the next needed more, so the budget
+for live prose is 4,575 lines, from 4,500.
