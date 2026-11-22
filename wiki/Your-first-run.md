@@ -23,14 +23,14 @@ protocol sends instead, which works against this server and nowhere else.
 next: shanty
 ```
 
-After that you are looking at the list of artists on your server. Use the arrow
-keys to move, press `enter` to open an artist and then an album, and `enter`
-again on a track to start playing it.
+After that you are looking at the library. Press `enter` on Artists, use the
+arrow keys to move, press `enter` to open an artist and then an album, and
+`enter` again on a track to start playing it.
 
 ## What is on the screen
 
 ```
-shanty · Aoi · Slipway
+shanty · artists › Aoi › Slipway
 ────────────────────────────────────────────────────────────────
   1. Harbour Light                                          3:41
 > 2. Slipway                                                3:00
@@ -38,7 +38,7 @@ shanty · Aoi · Slipway
 ────────────────────────────────────────────────────────────────
 ▶ Slipway · Aoi                            1:23 / 3:00   vol 80%
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━───────────────────────────────────
-↑↓ move · gg top · G end · enter open · esc back · / filter · :…
+↑↓ move · enter play · a queue · A next · S shuffle · … · ? keys
 ```
 
 The top line names the screen you are on. Below it is the list, one row per

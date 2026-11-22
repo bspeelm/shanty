@@ -25,7 +25,7 @@ Lists your playlists, or does one thing to one of them.
 
 `gp` opens the list of playlists and `enter` opens one. From there `e` starts
 adding to that playlist without naming it, and `r` takes the track under the
-cursor out of it.
+cursor out of it, after asking.
 
 `create` makes an empty playlist. `edit` shows your library with `(A)` beside
 the tracks already in the playlist; `a` adds the selected track and `r` takes
@@ -91,8 +91,8 @@ where the kicks stop, and draws loud music without a steady kick faster,
 brighter and shaking.
 
 It limits how fast large parts of the picture change brightness, to at most
-about two flashes a second. The limit is measured for a dark terminal
-background in full colour.
+about two flashes a second. The limit holds on a dark terminal background in
+full colour.
 
 Some scenes are landscapes: a lake under the moon, a sea at dawn, a storm, an
 aurora. Their light and weather follow the music: cloud gathers as it builds,
