@@ -4,7 +4,7 @@ import "math"
 
 // The field is split into guardCols by guardRows regions, and the guard
 // limits how fast the light of each changes.
-const guardCols, guardRows = 3, 2
+const guardCols, guardRows = 6, 4
 
 // guardRegions is how many regions the guard watches.
 const guardRegions = guardCols * guardRows
