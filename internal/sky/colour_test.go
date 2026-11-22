@@ -207,9 +207,10 @@ type hued struct {
 	// one hue to 1 for hues that cancel out.
 	chroma, hues float64
 	// vivid is the share of the drawn screen at a chroma of vividFrom or
-	// more, and pink the share that is pink or magenta at strongFrom or
-	// more.
-	vivid, pink float64
+	// more, pink the share that is pink or magenta at strongFrom or more,
+	// and green the share that is green, olive or yellow-green at
+	// colouredFrom or more.
+	vivid, pink, green float64
 	// gap is the widest angle between two hues that are each present,
 	// opposed whether two strong hues at least 150 degrees apart are both
 	// present, and clash whether strong pink and strong green both are.
@@ -340,6 +341,9 @@ func huesOf(now, was []tinted, light []float64, w int) hued {
 			if s.c >= strongFrom && isPink(s.h) {
 				out.pink += share
 			}
+			if s.c >= colouredFrom && s.h > ruleGreenFrom && s.h < ruleGreenTo {
+				out.green += share
+			}
 			bin := int(s.h/360*hueBins) % hueBins
 			if s.c >= colouredFrom {
 				area[bin] += share
@@ -372,7 +376,7 @@ func huesOf(now, was []tinted, light []float64, w int) hued {
 		out.hues = 1 - math.Hypot(sumA, sumB)/norm
 	}
 	if ink > 0 {
-		out.chroma, out.vivid, out.pink = out.chroma/ink, out.vivid/ink, out.pink/ink
+		out.chroma, out.vivid, out.pink, out.green = out.chroma/ink, out.vivid/ink, out.pink/ink, out.green/ink
 		step := 360.0 / hueBins
 		var pinks, greens float64
 		for a := range hueBins {
