@@ -32,6 +32,7 @@ type player interface {
 	SetVolume(ctx context.Context, percent int) error
 	SetReplayGain(ctx context.Context, on bool) error
 	Prefetch(ctx context.Context, url string) error
+	Stop(ctx context.Context) error
 	Observe(ctx context.Context, property string) error
 	Hearing(ctx context.Context) (mpv.Hearing, error)
 	Events() <-chan mpv.Event
@@ -584,11 +585,21 @@ func queueFrom(album subsonic.Album) queue.Queue {
 }
 
 // playCurrent loads the current track and appends the next, so mpv opens it
-// early.
+// early. With no track current it stops the player, and a session, which has
+// nothing left to play, ends.
 func (a app) playCurrent() tea.Cmd {
 	track, ok := a.queue.Current()
 	if !ok {
-		return emit(tui.NowPlaying{})
+		p, headless := a.player, a.headless
+		return func() tea.Msg {
+			if err := p.Stop(a.ctx); err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			if headless {
+				return tea.QuitMsg{}
+			}
+			return tui.NowPlaying{}
+		}
 	}
 	upcoming, hasNext := a.queue.Upcoming()
 	client, p := a.client, a.player
