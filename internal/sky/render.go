@@ -99,22 +99,22 @@ type look struct {
 	glyphs, next glyphs
 	fade, shift  float64
 	colour       bool
-	// The colours are levels ramps one after another, and place gives, for
-	// a cell by where it is from 0 to 1 across and down the picture, how far
-	// from the first ramp to the last it is drawn. No levels means one ramp.
+	// The colours are levels ramps one after another, and place holds, for
+	// each pixel, how far from the first ramp to the last a cell that takes
+	// its colour from the pixel is drawn. No levels means one ramp.
 	levels int
-	place  func(x, y float64) float64
+	place  []float64
 	// toned is how far a pixel's tone moves it along its ramp, from 0 to 1.
 	toned float64
 }
 
-// ramped returns the index of a palette step in the ramp a cell at (x, y) is
-// drawn in.
-func (k look) ramped(step int, x, y float64) int {
-	if step == None || k.levels < 2 || k.place == nil {
+// ramped returns the index of a palette step in the ramp a cell is drawn in,
+// which is the ramp of the pixel at the given place in the field.
+func (k look) ramped(step, at int) int {
+	if step == None || k.levels < 2 || at >= len(k.place) {
 		return step
 	}
-	level := min(int(clamp01(k.place(x, y))*float64(k.levels)), k.levels-1)
+	level := min(int(clamp01(k.place[at])*float64(k.levels)), k.levels-1)
 	return level*paletteSize + step
 }
 
@@ -135,15 +135,17 @@ func (k look) glyphsAt(c, r int) glyphs {
 // colour is off every run is None and half blocks are drawn as shades.
 func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 	colour := k.colour
+	at := 0
 	sample := func(sx, sy float64) (float64, float64) {
 		px := min(int(sx*float64(fw)), fw-1)
 		py := min(int(sy*float64(fh)), fh-1)
+		at = py*fw + px
 		// As far as a pixel's tone does not place it, it is placed as a
 		// pixel of its value usually is: by a middling tone where it is
 		// bright, and by less the darker it is.
-		v := value[py*fw+px]
+		v := value[at]
 		usual := 0.4 * clamp01(2*v)
-		return v, usual + (clamp01(tone[py*fw+px]+k.shift)-usual)*k.toned
+		return v, usual + (clamp01(tone[at]+k.shift)-usual)*k.toned
 	}
 	lines := make([][]Run, h)
 	for r := range h {
@@ -151,11 +153,10 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 		for c := range w {
 			x0, y0 := float64(c)/float64(w), float64(r)/float64(h)
 			cw, ch := 1/float64(w), 1/float64(h)
-			mx, my := x0+cw/2, y0+ch/2
 			g := k.glyphsAt(c, r)
 			switch g {
 			case glyphBraille:
-				bits, peak, ptone := 0, 0.0, 0.0
+				bits, peak, ptone, pat := 0, 0.0, 0.0, 0
 				for dy := range 4 {
 					for dx := range 2 {
 						v, t := sample(x0+(float64(dx)+0.5)*cw/2, y0+(float64(dy)+0.5)*ch/4)
@@ -163,7 +164,7 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 							bits |= brailleBit[dy][dx]
 						}
 						if v > peak {
-							peak, ptone = v, t
+							peak, ptone, pat = v, t, at
 						}
 					}
 				}
@@ -171,11 +172,12 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 				if bits != 0 {
 					ch = rune(0x2800 + bits)
 				}
-				line.add(ch, k.ramped(fg(colour, peak, ptone), mx, my), None)
+				line.add(ch, k.ramped(fg(colour, peak, ptone), pat), None)
 			case glyphHalf:
 				tv, tt := sample(x0+cw/2, y0+ch/4)
+				top := k.ramped(colourAt(tv, tt), at)
 				bv, bt := sample(x0+cw/2, y0+ch*3/4)
-				top, bot := k.ramped(colourAt(tv, tt), mx, my), k.ramped(colourAt(bv, bt), mx, my)
+				bot := k.ramped(colourAt(bv, bt), at)
 				if top == None && bot == None {
 					line.add(' ', None, None)
 				} else {
@@ -190,7 +192,7 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 				v2, _ := sample(x0+cw/2, y0+ch*3/4)
 				v := (v1 + v2) / 2
 				i := min(int(v*float64(len(ramp))), len(ramp)-1)
-				line.add(ramp[i], k.ramped(fg(colour, v, t1), mx, my), None)
+				line.add(ramp[i], k.ramped(fg(colour, v, t1), at), None)
 			}
 		}
 		lines[r] = line.runs

@@ -138,8 +138,10 @@ type seen struct {
 	hued
 	between, moving bool
 	tints           int
-	// runs is how many runs of one colour the frame is drawn in.
-	runs float64
+	// runs is how many runs of one colour the frame is drawn in, and
+	// reversals the share of cells whose colour, with lightness left out,
+	// moved back on this frame against the way it moved on the last.
+	runs, reversals float64
 }
 
 // A turn of the light in one of the guard's regions is counted under each
@@ -186,9 +188,11 @@ type watcher struct {
 	// tintTurn and at twice that.
 	colours []tinted
 	tinted  [4]*tintMeter
-	warps   map[*warp][2]float64
-	layers  map[*layer]float64
-	shake   [2]float64
+	// moved is how each cell's colour last moved, with lightness left out.
+	moved  [][2]float64
+	warps  map[*warp][2]float64
+	layers map[*layer]float64
+	shake  [2]float64
 }
 
 func newWatcher(w, h int) *watcher {
@@ -215,6 +219,29 @@ func (m *watcher) look(s *State, dt float64) {
 	cells := cellsOf(picture, m.w, m.h)
 	colours := tintsOf(picture, m.w, m.h)
 	f.hued = huesOf(colours, m.colours, cells, m.w)
+	if m.colours != nil {
+		if m.moved == nil {
+			m.moved = make([][2]float64, len(colours))
+		}
+		back := 0.0
+		for i, t := range colours {
+			was := m.colours[i]
+			d := [2]float64{t.pa - was.pa, t.pb - was.pb}
+			if t.ink == 0 || was.ink == 0 {
+				d = [2]float64{}
+			}
+			// A cell turns back when it moves at least tintTurn against a
+			// move of at least as much.
+			last := m.moved[i]
+			if math.Hypot(d[0], d[1]) >= tintTurn {
+				if math.Hypot(last[0], last[1]) >= tintTurn && d[0]*last[0]+d[1]*last[1] < 0 {
+					back++
+				}
+				m.moved[i] = d
+			}
+		}
+		f.reversals = back / float64(len(colours))
+	}
 	f.between, f.moving = s.next != nil, s.cur.toPalette != nil
 	m.colours = colours
 	for i, meter := range m.tinted {
@@ -462,7 +489,7 @@ func (m *watcher) colourLine(name string, keep func(seen) bool) string {
 	moving := m.spreadOf(func(f seen) float64 { return f.hue }, func(f seen) bool { return steady(f) && f.moving }).mean
 	still := m.spreadOf(func(f seen) float64 { return f.hue }, func(f seen) bool { return steady(f) && !f.moving }).mean
 	mean := func(pick func(seen) float64) float64 { return get(pick).mean }
-	return fmt.Sprintf("colour %-15s frames %6d between scenes %5d | tint %s | hue %s | steps %s | colour flick %.3f | chroma %.4f hues %.3f | hue while the palette moves %.4f and while it does not %.4f | vivid %.3f pink %.3f opposed %.3f clash %.3f gap %.0f | rough light %.4f hue %.4f | runs %.0f | families %.3f",
+	return fmt.Sprintf("colour %-15s frames %6d between scenes %5d | tint %s | hue %s | steps %s | colour flick %.3f | chroma %.4f hues %.3f | hue while the palette moves %.4f and while it does not %.4f | vivid %.3f pink %.3f opposed %.3f clash %.3f gap %.0f | rough light %.4f hue %.4f | runs %.0f | families %.3f | regions %.1f patch %.1f bounds %.4f angle %.2f edged %.2f | reversals %.5f",
 		name, n, between,
 		get(func(f seen) float64 { return f.tint }), get(func(f seen) float64 { return f.hue }),
 		get(func(f seen) float64 { return f.steps }), flick,
@@ -471,7 +498,10 @@ func (m *watcher) colourLine(name string, keep func(seen) bool) string {
 		mean(func(f seen) float64 { return f.opposed }), mean(func(f seen) float64 { return f.clash }),
 		mean(func(f seen) float64 { return f.gap }),
 		mean(func(f seen) float64 { return f.roughLight }), mean(func(f seen) float64 { return f.roughHue }),
-		mean(func(f seen) float64 { return f.runs }), mean(func(f seen) float64 { return f.families }))
+		mean(func(f seen) float64 { return f.runs }), mean(func(f seen) float64 { return f.families }),
+		mean(func(f seen) float64 { return f.regions }), mean(func(f seen) float64 { return f.patch }),
+		mean(func(f seen) float64 { return f.bounds }), mean(func(f seen) float64 { return f.angle }),
+		mean(func(f seen) float64 { return f.edged }), 30*mean(func(f seen) float64 { return f.reversals }))
 }
 
 // tintLine is the flashing of colour on both grids at both thresholds.
