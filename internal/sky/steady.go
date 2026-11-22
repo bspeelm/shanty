@@ -50,6 +50,11 @@ const (
 	steadyTurn = 0.6
 	turnSettle = 0.08
 	turnSlack  = 1.0
+	// holdRise and holdFall are how long, in seconds, a pixel takes to
+	// follow a rise and a fall in what is drawn for music that is steady in
+	// full.
+	holdRise = 0.03
+	holdFall = 0.15
 )
 
 // run is a run of events of one kind: whether it has begun, the time since
