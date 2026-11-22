@@ -155,9 +155,11 @@ type Model struct {
 	starredRows []result
 	starred     map[string]bool
 
-	// cursor holds the selected row for each screen, as an index into the
-	// filtered list rather than the whole one.
+	// cursor holds what is selected on each screen, as a place in the whole
+	// list whatever filter is on it. kept holds the filter left on each screen
+	// that is not showing.
 	cursor map[Screen]int
+	kept   map[Screen]string
 
 	mode mode
 	// filter narrows the current screen to rows containing it.
@@ -258,7 +260,7 @@ func (m Model) Confirming() bool { return m.mode == modeConfirm }
 func (m Model) Line() string     { return m.line }
 func (m Model) Pending() string  { return m.pending }
 func (m Model) Count() string    { return m.count }
-func (m Model) Cursor() int      { return m.cursor[m.screen] }
+func (m Model) Cursor() int      { return m.shown() }
 func (m Model) Paused() bool     { return m.paused }
 
 // Status is the message on the last row, or what is still arriving when

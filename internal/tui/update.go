@@ -476,7 +476,7 @@ func (m Model) under() under {
 	if m.rows() == 0 {
 		return under{}
 	}
-	at := m.matches()[m.cursor[m.screen]]
+	at := m.at()
 	switch m.screen {
 	case ScreenArtists:
 		return under{kind: kindArtist, id: m.artists[at].ID, name: m.artists[at].Name}
@@ -534,7 +534,7 @@ func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
 		if m.rows() == 0 {
 			break
 		}
-		switch libraryRows[m.matches()[m.cursor[m.screen]]].screen {
+		switch libraryRows[m.at()].screen {
 		case ScreenStarred:
 			return m, emit(ShuffleThis{Scope: ScopeStarred})
 		case ScreenQueue:
@@ -610,7 +610,7 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 	if m.rows() == 0 {
 		return m, nil
 	}
-	at := m.matches()[m.cursor[m.screen]]
+	at := m.at()
 	switch m.screen {
 	case ScreenLibrary:
 		// Each row is a screen a jump reaches, and the jump places the cursor as
@@ -870,24 +870,29 @@ func (m Model) remembering(f func(place) (place, bool)) Model {
 	return m
 }
 
-// unfiltered drops the filter and leaves the cursor on the row it was on.
+// unfiltered drops the filter. The selection is a place in the whole list, so
+// it stays on what it was on.
 func (m Model) unfiltered() Model {
-	if rows := m.matches(); len(rows) > 0 {
-		m = m.selecting(m.screen, rows[min(m.cursor[m.screen], len(rows)-1)])
-	}
 	m.filter = ""
 	return m.settled(m.screen)
 }
 
 // left is the model once the screen showing has stopped waiting: an open
 // asked for from it is no longer shown when it arrives, a reload of it is
-// forgotten, and its filter is put away.
+// forgotten, and its filter is kept for when it is shown again.
 func (m Model) left() Model {
 	m.waiting, m.keep, m.keepAsk, m.stalled = 0, "", 0, false
 	if m.mode == modeFilter {
 		m.mode = modeNormal
 	}
-	return m.unfiltered()
+	kept := map[Screen]string{m.screen: m.filter}
+	for s, filter := range m.kept {
+		if s != m.screen {
+			kept[s] = filter
+		}
+	}
+	m.kept, m.filter = kept, ""
+	return m
 }
 
 // back returns to where the screen showing was opened from, and from a list
@@ -946,13 +951,11 @@ func (m Model) show(s Screen) Model {
 		return m.pruned().say("")
 	}
 	var trail []place
-	m.up, m.filter = nil, ""
+	m.up, m.filter = nil, m.kept[s]
 	for _, p := range m.trail {
-		if p.screen == s {
-			m.filter = p.filter
-			continue
+		if p.screen != s {
+			trail = append(trail, p)
 		}
-		trail = append(trail, p)
 	}
 	trail = append(trail, from)
 	m.trail = trail[max(0, len(trail)-trailKept):]
@@ -1064,18 +1067,40 @@ func (m Model) refreshed(loaded subsonic.Playlist) Model {
 	return m.settled(ScreenPlaylist)
 }
 
-// settled keeps the cursor of a screen on a row of its list and off a heading.
+// shown is the row the cursor is drawn on: the place of the selected thing
+// among the rows the filter leaves, or of the next one down when the filter
+// hides it.
+func (m Model) shown() int {
+	rows := m.matches()
+	for row, i := range rows {
+		if i >= m.cursor[m.screen] {
+			return row
+		}
+	}
+	return max(0, len(rows)-1)
+}
+
+// at is the place in the whole list of the row the cursor is drawn on. There
+// must be a row.
+func (m Model) at() int { return m.matches()[m.shown()] }
+
+// settled keeps the selection of a screen on something its filter shows, and
+// off a heading. Where the filter shows nothing the selection stays within
+// the whole list.
 func (m Model) settled(s Screen) Model {
 	on := m
 	if s != m.screen {
-		on.screen, on.filter = s, ""
+		on.screen, on.filter = s, m.kept[s]
 	}
-	rows := on.rows()
-	at := max(0, min(rows-1, m.cursor[s]))
-	if on.isGrouped() && rows > 0 {
-		at = stepOver(on.matchedResults(), at, 1)
+	rows := on.matches()
+	if len(rows) == 0 {
+		return m.selecting(s, max(0, min(on.allRows()-1, m.cursor[s])))
 	}
-	return m.selecting(s, at)
+	row := on.shown()
+	if on.isGrouped() {
+		row = stepOver(on.matchedResults(), row, 1)
+	}
+	return m.selecting(s, rows[row])
 }
 
 // say puts a message on the last row that is not a failure.
@@ -1091,15 +1116,15 @@ func (m Model) refuse(why string) Model {
 }
 
 func (m Model) move(by int) Model {
-	next := m.moveTo(m.cursor[m.screen] + by)
+	next := m.moveTo(m.shown() + by)
 	// A heading is a row nothing can be done with, so the cursor carries on
 	// past it in the direction it was already going.
-	if m.isGrouped() && by != 0 {
+	if m.isGrouped() && by != 0 && m.rows() > 0 {
 		dir := 1
 		if by < 0 {
 			dir = -1
 		}
-		return next.selecting(m.screen, stepOver(m.matchedResults(), next.cursor[m.screen], dir))
+		return next.moveTo(stepOver(m.matchedResults(), next.shown(), dir))
 	}
 	return next
 }
@@ -1109,10 +1134,10 @@ func (m Model) move(by int) Model {
 // it, so the last row is always a result. Every other screen has no headings
 // at all and is left alone.
 func (m Model) ontoARow() Model {
-	if !m.isGrouped() {
+	if !m.isGrouped() || m.rows() == 0 {
 		return m
 	}
-	return m.selecting(m.screen, stepOver(m.matchedResults(), m.cursor[m.screen], 1))
+	return m.moveTo(stepOver(m.matchedResults(), m.shown(), 1))
 }
 
 // matchedResults is the rows the search screen is showing, which is what the
@@ -1126,16 +1151,17 @@ func (m Model) matchedResults() []result {
 	return out
 }
 
-// moveTo selects row to, clamped to the list.
+// moveTo selects the thing on row to of the rows shown, clamped to them.
 func (m Model) moveTo(to int) Model {
-	rows := m.rows()
-	if rows == 0 {
+	rows := m.matches()
+	if len(rows) == 0 {
 		return m
 	}
-	return m.selecting(m.screen, max(0, min(rows-1, to)))
+	return m.selecting(m.screen, rows[max(0, min(len(rows)-1, to))])
 }
 
-// selecting returns a model with the cursor of one screen moved.
+// selecting returns a model with the selection of one screen moved to a place
+// in its whole list.
 //
 // The map is replaced rather than written through, because Model is a value
 // and Update must not modify the one it was called on. Writing through it
@@ -1163,7 +1189,7 @@ func (m Model) selectedID() string {
 	if m.rows() == 0 {
 		return ""
 	}
-	return m.idAt(m.matches()[m.cursor[m.screen]])
+	return m.idAt(m.at())
 }
 
 // reloaded puts the cursor back on what was selected before a reload of the
@@ -1177,9 +1203,9 @@ func (m Model) reloaded(screen Screen, what string) Model {
 	m.keep, m.keepAsk = "", 0
 	m = m.say("reloaded: " + what)
 
-	for row, i := range m.matches() {
+	for _, i := range m.matches() {
 		if m.idAt(i) == keep {
-			return m.selecting(screen, row)
+			return m.selecting(screen, i)
 		}
 	}
 	return m.settled(screen)
