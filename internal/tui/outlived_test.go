@@ -25,7 +25,7 @@ func TestAPlaylistThatChangesOnTheServerWhileBeingReorderedEndsTheReorder(t *tes
 	m, _ = press(t, m, "j")
 	m, _ = press(t, m, "j")
 
-	m = send(t, m, PlaylistLoaded(eveningOf(2)))
+	m = send(t, m, PlaylistChanged(eveningOf(2)))
 	if m.Reordering() {
 		t.Fatal("the arrangement of a playlist that no longer holds those tracks is still being made")
 	}
@@ -39,13 +39,18 @@ func TestAPlaylistThatChangesOnTheServerWhileBeingReorderedEndsTheReorder(t *tes
 	_ = m.View()
 }
 
-func TestAPlaylistThatComesBackTheSameKeepsTheArrangementBeingMade(t *testing.T) {
+func TestAPlaylistRenamedWhileBeingReorderedKeepsTheArrangementBeingMade(t *testing.T) {
 	m := reordering(t, evening3(t))
 	m, _ = press(t, m, "J")
 
-	m = send(t, m, PlaylistLoaded(eveningOf(3)))
+	renamed := eveningOf(3)
+	renamed.Name = "Dusk"
+	m = send(t, m, PlaylistChanged(renamed))
 	if !m.Reordering() || m.order[1].ID != "tr-1" {
-		t.Errorf("an unchanged playlist ended the reorder or lost the move: %v, %v", m.Reordering(), idsOf(m.order))
+		t.Errorf("a rename ended the reorder or lost the move: %v, %v", m.Reordering(), idsOf(m.order))
+	}
+	if m.Playlist().Name != "Dusk" || strings.Contains(m.Status(), "changed") {
+		t.Errorf("the playlist is called %q and the last row says %q", m.Playlist().Name, m.Status())
 	}
 }
 
@@ -181,7 +186,7 @@ func TestReloadingTheLibraryWithFewerArtistsThanItHasRows(t *testing.T) {
 	m := send(t, sized(New()), ArtistsLoaded(library()))
 	m, _ = press(t, m, "end")
 
-	m = send(t, m, Reload{}, ArtistsLoaded(library()))
+	m = send(t, m, Reload{}, Reloaded{Loaded: ArtistsLoaded(library())})
 	if m.Screen() != ScreenLibrary || m.loading() {
 		t.Fatalf("the library is on %s, loading %v", m.Screen(), m.loading())
 	}
@@ -199,7 +204,7 @@ func TestLeavingAScreenDropsTheReloadItWasWaitingFor(t *testing.T) {
 	if m.loading() || m.keep != "" {
 		t.Fatalf("the library is still waiting for a reload: loading %v, keeping %q", m.loading(), m.keep)
 	}
-	m = send(t, onArtists(t, m), ArtistsLoaded(library()), AlbumsLoaded(everyAlbum()))
+	m = send(t, onArtists(t, m), Reloaded{Loaded: ArtistsLoaded(library())}, Reloaded{Loaded: AlbumsLoaded(everyAlbum())})
 	if strings.Contains(m.Status(), "reloaded") {
 		t.Errorf("a list that arrived on another screen was reported as the reload: %q", m.Status())
 	}

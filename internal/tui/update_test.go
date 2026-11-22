@@ -1203,7 +1203,7 @@ func TestReloadKeepsTheSelectionOnWhatWasSelected(t *testing.T) {
 	// The server answers with a new artist at the front, which would push the
 	// selection down a row if the cursor were left where it was.
 	grown := append([]subsonic.Artist{{ID: "ar-0", Name: "A New Arrival", AlbumCount: 1}}, library()...)
-	m = send(t, m, ArtistsLoaded(grown))
+	m = send(t, m, Reloaded{Loaded: ArtistsLoaded(grown)})
 
 	if m.loading() {
 		t.Error("the reload never finished")
@@ -1226,7 +1226,7 @@ func TestReloadWhenTheSelectedRowIsGone(t *testing.T) {
 	m, _ = press(t, m, "j")
 
 	m = send(t, m, Reload{})
-	m = send(t, m, ArtistsLoaded(library()[:1]))
+	m = send(t, m, Reloaded{Loaded: ArtistsLoaded(library()[:1])})
 
 	if m.Cursor() < 0 || m.Cursor() >= m.rows() {
 		t.Errorf("the cursor is on row %d of %d", m.Cursor(), m.rows())
@@ -1262,7 +1262,7 @@ func TestOpeningAfterAReloadThatShrankTheListDoesNotPanic(t *testing.T) {
 	m, _ = press(t, m, "end")
 
 	m = send(t, m, Reload{})
-	m = send(t, m, ArtistsLoaded(library()[:1]))
+	m = send(t, m, Reloaded{Loaded: ArtistsLoaded(library()[:1])})
 
 	// Every key that reads the selected row.
 	for _, key := range []string{"enter", "*", "a", "A"} {
