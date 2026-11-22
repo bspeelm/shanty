@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -70,6 +71,8 @@ type app struct {
 	// empty when there is nowhere to keep them, which is how the tests that
 	// have no state directory run.
 	backlog string
+	// order keeps the commands that start and stop the player in order.
+	order *order
 	// headless is set in a session. It has nobody to show a message to, so it
 	// ends when there is nothing left to play.
 	headless bool
@@ -189,7 +192,7 @@ func newApp(ctx context.Context, client *subsonic.Client, p player, cfg config.C
 		}
 	}
 	return app{ui: ui, client: client, player: p, volume: 100, ctx: ctx,
-		foresight: &foresight{plans: map[string]*sky.Plan{}}}
+		foresight: &foresight{plans: map[string]*sky.Plan{}}, order: &order{}}
 }
 
 func (a app) Init() tea.Cmd {
@@ -529,6 +532,7 @@ func (a app) playerSaid(e mpv.Event) (tea.Model, tea.Cmd) {
 			return a, next
 		}
 		finished, _ := a.queue.Current()
+		a.order.ended()
 		a.queue = a.queue.Next()
 		if a.headless && a.queue.Done() {
 			return a, tea.Batch(a.scrobble(finished.ID), tea.Quit)
@@ -603,35 +607,84 @@ func queueFrom(album subsonic.Album) queue.Queue {
 	return queue.New(tracks...)
 }
 
+// order keeps the commands that start and stop the player in the order they
+// were asked for. It is shared by every copy of the app.
+type order struct {
+	mu sync.Mutex
+	// latest is the number of the last command asked for, and sounding says
+	// the last one asked for started a track that has not ended since.
+	latest   int
+	sounding bool
+}
+
+// ask numbers a command to start a track, or to stop, and reports whether a
+// track was sounding when it was asked for.
+func (o *order) ask(starts bool) (n int, sounding bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.latest++
+	sounding, o.sounding = o.sounding, starts
+	return o.latest, sounding
+}
+
+// run does a command if no later one has been asked for, and holds any other
+// until it is done.
+func (o *order) run(n int, do func() tea.Msg) tea.Msg {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if n != o.latest {
+		return nil
+	}
+	return do()
+}
+
+// ended records that the track sounding finished by itself.
+func (o *order) ended() {
+	o.mu.Lock()
+	o.sounding = false
+	o.mu.Unlock()
+}
+
 // playCurrent loads the current track and appends the next, so mpv opens it
-// early. With no track current it stops the player, and a session, which has
-// nothing left to play, ends.
+// early. With no track current it stops the player if a track is sounding
+// and this process still owns the player, and a session, which has nothing
+// left to play, ends. A command overtaken by a later one is not sent.
 func (a app) playCurrent() tea.Cmd {
 	track, ok := a.queue.Current()
+	n, sounding := a.order.ask(ok)
+	p, headless := a.player, a.headless
 	if !ok {
-		p, headless := a.player, a.headless
+		if !sounding || a.detaching || a.released {
+			return emit(tui.NowPlaying{})
+		}
 		return func() tea.Msg {
-			if err := p.Stop(a.ctx); err != nil {
-				return tui.Failed{Message: err.Error()}
-			}
-			if headless {
-				return tea.QuitMsg{}
-			}
-			return tui.NowPlaying{}
+			return a.order.run(n, func() tea.Msg {
+				err := p.Stop(a.ctx)
+				switch {
+				case headless:
+					return tea.QuitMsg{}
+				case err != nil:
+					return tui.Failed{Message: "the player would not stop, so the last track is still playing: " +
+						err.Error() + "\nrestart shanty if it does not end"}
+				}
+				return tui.NowPlaying{}
+			})
 		}
 	}
 	upcoming, hasNext := a.queue.Upcoming()
-	client, p := a.client, a.player
+	client := a.client
 	return func() tea.Msg {
-		ctx := a.ctx
-		if err := p.Load(ctx, client.StreamURL(track.ID)); err != nil {
-			return tui.Failed{Message: err.Error()}
-		}
-		if hasNext {
-			// A failed append costs a gap between tracks and is not reported.
-			_ = p.Append(ctx, client.StreamURL(upcoming.ID))
-		}
-		return tui.NowPlaying{Title: track.Title, Artist: track.Artist, Duration: track.Duration}
+		return a.order.run(n, func() tea.Msg {
+			ctx := a.ctx
+			if err := p.Load(ctx, client.StreamURL(track.ID)); err != nil {
+				return tui.Failed{Message: err.Error()}
+			}
+			if hasNext {
+				// A failed append costs a gap between tracks and is not reported.
+				_ = p.Append(ctx, client.StreamURL(upcoming.ID))
+			}
+			return tui.NowPlaying{Title: track.Title, Artist: track.Artist, Duration: track.Duration}
+		})
 	}
 }
 

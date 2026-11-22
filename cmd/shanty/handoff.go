@@ -140,6 +140,10 @@ func takeOver(env Env) (handoff, bool, error) {
 // resume returns the app showing what a session was playing.
 func (a app) resume(h handoff) app {
 	a.queue = h.resume()
+	if _, playing := a.queue.Current(); playing {
+		// The player was taken over with this track sounding.
+		a.order.ask(true)
+	}
 	a.volume = h.Volume
 	playing, _ := h.nowPlaying()
 	for _, msg := range []tea.Msg{

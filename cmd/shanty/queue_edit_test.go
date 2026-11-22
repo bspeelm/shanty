@@ -1,11 +1,14 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/bspeelm/shanty/internal/mpv"
 
 	"github.com/bspeelm/shanty/internal/tui"
 )
@@ -73,6 +76,101 @@ func TestWhenTheQueueEndsUnderATrackThePlayerIsStopped(t *testing.T) {
 				t.Errorf("%d plays were reported for a track that did not finish", n)
 			}
 		})
+	}
+}
+
+// TestAStopAskedForBeforeATrackWasStartedDoesNotStopThatTrack runs the two
+// commands the wrong way round, as two goroutines can.
+func TestAStopAskedForBeforeATrackWasStartedDoesNotStopThatTrack(t *testing.T) {
+	a, rec, _ := wired(t)
+	a = settle(t, sixQueued(t, a), tui.JumpTo(5))
+	said := len(rec.said())
+
+	next, stop := a.Update(tui.SkipNext{})
+	next, start := next.(app).Update(tui.JumpTo(0))
+	for _, m := range append(runAll(start), runAll(stop)...) {
+		next, _ = next.(app).Update(m)
+	}
+
+	told := calls(rec, said)
+	if len(told) == 0 || told[0] != "load" {
+		t.Fatalf("the player was told %v, want the track loaded", told)
+	}
+	for _, call := range told {
+		if call == "stop" {
+			t.Errorf("the player was stopped after the track asked for later was started: %v", told)
+		}
+	}
+	if !strings.Contains(next.(app).ui.View(), "tr-1") {
+		t.Errorf("the screen does not show the track that was started:\n%s", next.(app).ui.View())
+	}
+}
+
+func TestThePlayerIsNotStoppedWhenNothingIsSoundingOrItIsNotOursToStop(t *testing.T) {
+	stops := func(rec *recorder, after int) int {
+		n := 0
+		for _, call := range calls(rec, after) {
+			if call == "stop" {
+				n++
+			}
+		}
+		return n
+	}
+
+	a, rec, _ := wired(t)
+	a = settle(t, a, tui.SkipNext{})
+	if n := stops(rec, 0); n != 0 {
+		t.Errorf("skipping on an empty queue stopped the player %d times", n)
+	}
+
+	a = settle(t, sixQueued(t, a), tui.JumpTo(5))
+	said := len(rec.said())
+	a = settle(t, settle(t, a, tui.SkipNext{}), tui.SkipNext{})
+	if n := stops(rec, said); n != 1 {
+		t.Errorf("skipping twice past the end stopped the player %d times, want once", n)
+	}
+
+	a, rec, _ = wired(t)
+	a = settle(t, sixQueued(t, a), tui.JumpTo(5))
+	said = len(rec.said())
+	a = settle(t, a, playerEvent(mpv.Event{Name: "end-file", Reason: "eof"}))
+	if n := stops(rec, said); n != 0 || !a.queue.Done() {
+		t.Errorf("a last track that ended by itself stopped the player %d times", n)
+	}
+
+	a, rec, _ = wired(t)
+	a = settle(t, sixQueued(t, a), tui.JumpTo(5))
+	a.detaching = true
+	said = len(rec.said())
+	a = settle(t, a, tui.SkipNext{})
+	if n := stops(rec, said); n != 0 {
+		t.Errorf("a process whose session owns the player stopped it %d times", n)
+	}
+}
+
+func TestAPlayerThatRefusesToStopIsSaidToBeStillPlayingAndASessionStillEnds(t *testing.T) {
+	a, rec, _ := wired(t)
+	a = settle(t, sixQueued(t, a), tui.JumpTo(5))
+	rec.fail = errors.New("the socket is closed")
+
+	shown := settle(t, a, tui.SkipNext{})
+	if !strings.Contains(shown.ui.Status(), "still playing") || !strings.Contains(shown.ui.View(), "tr-6") {
+		t.Errorf("with the stop refused the screen says %q and shows:\n%s", shown.ui.Status(), shown.ui.View())
+	}
+
+	a, rec, _ = wired(t)
+	a = settle(t, sixQueued(t, a), tui.JumpTo(5))
+	rec.fail = errors.New("the socket is closed")
+	a.headless = true
+	_, msgs := step(t, a, tui.SkipNext{})
+	var quit bool
+	for _, m := range msgs {
+		if _, ok := m.(tea.QuitMsg); ok {
+			quit = true
+		}
+	}
+	if !quit {
+		t.Errorf("a session whose player refused to stop did not end: %v", msgs)
 	}
 }
 

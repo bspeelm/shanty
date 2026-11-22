@@ -121,6 +121,10 @@ func runSession(ctx context.Context, env Env) error {
 	a.headless = true
 	a.backlog = env.Paths.Backlog()
 	a.queue = h.resume()
+	if _, playing := a.queue.Current(); playing {
+		// The player was taken over with this track sounding.
+		a.order.ask(true)
+	}
 	a.volume = h.Volume
 	playing, _ := h.nowPlaying()
 	ui, _ := a.ui.Update(playing)
