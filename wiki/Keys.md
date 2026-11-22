@@ -21,6 +21,7 @@ them is a list.
 | `gg` or `home` | Jump to the first row |
 | `G` or `end` | Jump to the last row |
 | `pgup` or `pgdown` | Move up or down by one screenful |
+| `ctrl+u` or `ctrl+d` | Move up or down by half a screenful |
 | a number before a movement | Repeat it, so `3j` moves down three |
 | `enter`, `l` or `→` | Open the selected artist or album, or play the selected track |
 | `esc`, `h`, `←` or `backspace` | Go back to the previous screen |
