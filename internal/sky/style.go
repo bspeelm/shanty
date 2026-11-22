@@ -178,6 +178,11 @@ const (
 	// chromaLeast is the peak chroma of a style with no saturation, and
 	// chromaSpan how much a style of full saturation adds.
 	chromaLeast, chromaSpan = 0.05, 0.08
+	// lightMost is the lightness the rise of a ramp reaches in a style with
+	// no saturation, and topMost the lightness of its brightest step.
+	// lightFall and topFall are how much lower each is at full saturation.
+	lightMost, lightFall = 1.0, 0.23
+	topMost, topFall     = 0.96, 0.11
 	// turnMost is how far a scene that grows out of another may turn the key
 	// hue of a made palette, in degrees either way.
 	turnMost = 54.0
@@ -190,7 +195,8 @@ const (
 // gradients round the colour wheel.
 func (s *style) tones(rng *rand.Rand, c Character) tones {
 	axes := c.sharpened().axes()
-	t := tones{peak: chromaLeast + chromaSpan*s.sat, contrast: s.contrast}
+	t := tones{peak: chromaLeast + chromaSpan*s.sat, contrast: s.contrast,
+		light: lightMost - lightFall*s.sat, top: topMost - topFall*s.sat}
 	// part returns a second number from 0 to 1 drawn out of one already
 	// drawn, so that a family takes as many draws as it always has.
 	part := func(v float64) float64 { return math.Mod(v*97, 1) }
