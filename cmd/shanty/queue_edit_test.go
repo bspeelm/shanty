@@ -114,3 +114,91 @@ func TestTakingOutATrackThatIsNotThereSaysSoAndChangesNothing(t *testing.T) {
 		t.Errorf("the queue is %v at %d and the player was told %v", ids(a), a.queue.At(), rec.said()[said:])
 	}
 }
+
+// TestEveryScopeIsAddedToTheQueueOrRefused holds every scope the interface can
+// name against what the app does when asked to add it to the queue. A scope
+// added to the set fails here until it has a row.
+func TestEveryScopeIsAddedToTheQueueOrRefused(t *testing.T) {
+	want := map[tui.Scope]struct {
+		id    string
+		added []string
+		says  string
+	}{
+		tui.ScopeArtist:   {"ar-1", []string{"tr-1", "tr-2", "tr-3"}, "Aoi, 3 tracks"},
+		tui.ScopeAlbum:    {"al-1", []string{"tr-1", "tr-2"}, "Harbour, 2 tracks"},
+		tui.ScopePlaylist: {"pl-1", []string{"tr-4", "tr-1"}, "Evening, 2 tracks"},
+		tui.ScopeStarred:  {"", nil, "does not know how to add starred"},
+		tui.ScopeQueue:    {"", nil, "does not know how to add queue"},
+	}
+	for _, scope := range tui.Scopes {
+		tc, listed := want[scope]
+		if !listed {
+			t.Fatalf("%s is a scope with no row here saying what the app does with it", scope)
+		}
+		for _, next := range []bool{false, true} {
+			a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-4", "tr-1"}})
+			a = sixQueued(t, a)
+			was := ids(a)
+
+			a = settle(t, a, tui.QueueThis{Scope: scope, ID: tc.id, Next: next})
+
+			got := ids(a)
+			expect := append(append([]string{}, was...), tc.added...)
+			if next {
+				expect = append(append(append([]string{}, was[:2]...), tc.added...), was[2:]...)
+			}
+			if !reflect.DeepEqual(got, expect) || a.queue.At() != 1 {
+				t.Errorf("%s, next %v: the queue is %v at %d, want %v at 1", scope, next, got, a.queue.At(), expect)
+			}
+			if !strings.Contains(a.ui.Status(), tc.says) {
+				t.Errorf("%s, next %v: it said %q, want %q", scope, next, a.ui.Status(), tc.says)
+			}
+		}
+	}
+}
+
+func TestAddingAnAlbumToAQueueWithNothingPlayingStartsIt(t *testing.T) {
+	a, rec, _ := wired(t)
+
+	a = settle(t, a, tui.QueueThis{Scope: tui.ScopeAlbum, ID: "al-1"})
+
+	if now, playing := a.queue.Current(); !playing || now.ID != "tr-1" || a.queue.Len() != 2 {
+		t.Fatalf("the queue is %v and %q is current", ids(a), now.ID)
+	}
+	if told := rec.said(); len(told) == 0 || !strings.HasPrefix(told[0], "load ") {
+		t.Errorf("the player was told %v, want the first track loaded", told)
+	}
+}
+
+func TestAddingWhatCannotBeReadOrHoldsNothingSaysSoAndKeepsTheQueue(t *testing.T) {
+	a, srv := withPlaylists(t, map[string][]string{"Empty": {}})
+	a = sixQueued(t, a)
+
+	a = settle(t, a, tui.QueueThis{Scope: tui.ScopePlaylist, ID: "pl-1"})
+	if !strings.Contains(a.ui.Status(), "holds no tracks") || a.queue.Len() != 6 {
+		t.Errorf("an empty playlist said %q and left %d queued", a.ui.Status(), a.queue.Len())
+	}
+
+	srv.Refuse("ar-1")
+	a = settle(t, a, tui.QueueThis{Scope: tui.ScopeArtist, ID: "ar-1", Next: true})
+	if a.ui.Status() == "" || strings.Contains(a.ui.Status(), "playing") || a.queue.Len() != 6 {
+		t.Errorf("an artist that could not be read said %q and left %d queued", a.ui.Status(), a.queue.Len())
+	}
+}
+
+func TestAddingAnAlbumDoesNotStartThePlayingTrackAgain(t *testing.T) {
+	a, rec, _ := wired(t)
+	a = sixQueued(t, a)
+	said := len(rec.said())
+
+	a = settle(t, a, tui.QueueThis{Scope: tui.ScopeAlbum, ID: "al-1", Next: true})
+	told := calls(rec, said)
+	if len(told) == 0 || told[len(told)-1] != "prefetch" {
+		t.Errorf("the player was told %v, want only what now comes next", told)
+	}
+	for _, call := range told {
+		if call == "load" {
+			t.Errorf("the player was told to load: %v", rec.said()[said:])
+		}
+	}
+}

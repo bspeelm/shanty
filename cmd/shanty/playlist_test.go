@@ -356,10 +356,15 @@ func TestRemovingFromThePlaylistOnScreen(t *testing.T) {
 	if a.ui.Screen() != tui.ScreenPlaylist {
 		t.Fatalf("the playlist did not open; on %s", a.ui.Screen())
 	}
+	// r asks first, and y is the answer that does it.
 	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if cmd != nil || !next.(tui.Model).Confirming() {
+		t.Fatal("r on a playlist did not ask first")
+	}
+	next, cmd = next.(tui.Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	a.ui = next.(tui.Model)
 	if cmd == nil {
-		t.Fatal("r did nothing on a playlist")
+		t.Fatal("r and then y did nothing on a playlist")
 	}
 	a, _ = runTo(t, a, cmd())
 
@@ -377,7 +382,8 @@ func TestRemovingTakesTheTrackPointedAtNotAnotherCopy(t *testing.T) {
 	a = openPlaylist(t, a)
 
 	// The cursor is on the first row, which is the first copy of tr-1.
-	next, cmd := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	next, _ := a.ui.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	next, cmd := next.(tui.Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	a.ui = next.(tui.Model)
 	a, _ = runTo(t, a, cmd())
 
@@ -493,7 +499,7 @@ func TestRemovingRefusesWhenThePlaylistMovedUnderneath(t *testing.T) {
 
 	// The cursor is still on row one, which the screen says is tr-1 and the
 	// server now says is tr-2.
-	a = pressAndSettle(t, a, "r")
+	a = pressAndSettle(t, pressAndSettle(t, a, "r"), "y")
 
 	if !strings.Contains(a.ui.Status(), "changed since it was shown") {
 		t.Errorf("it said %q", a.ui.Status())

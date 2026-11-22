@@ -27,12 +27,12 @@ them is a list.
 | `esc`, `h`, `←` or `backspace` | Go back to the previous screen |
 | `/` | Filter the list you are looking at |
 | `?` | Show the list of commands and what each one does |
-| `a` | Add the selected track to the end of the queue |
-| `A` | Play the selected track after the one playing |
+| `a` | Add the selected track, album, artist or playlist to the end of the queue |
+| `A` | Play the selected track, album, artist or playlist after the one playing |
 | `e` | Add to the playlist you are looking at, or leave the one you are adding to |
 | `S` | Shuffle the artist, album, playlist or list of tracks under the cursor, or the rest of the queue |
-| `K` | While reordering a playlist, move the selected track up one place |
-| `J` | While reordering a playlist, move the selected track down one place |
+| `K` | Move the selected track up one place, in the queue or while reordering a playlist |
+| `J` | Move the selected track down one place, in the queue or while reordering a playlist |
 | `*` | Star the selected artist, album or track, or unstar it |
 
 Pressing back on the artist list goes up to the library, and pressing it on the
@@ -235,9 +235,9 @@ knowing which one you mean. `:playlist edit` is for a playlist you are not
 looking at.
 
 **`r` works there too.** A playlist on screen is a list of what is in it, so
-`r` takes the track under the cursor out without entering edit mode first. If
-the playlist changed since the screen was drawn, the removal is refused rather
-than taking whatever is in that position now.
+`r` takes the track under the cursor out without entering edit mode first. It
+asks before it does, and `y` answers yes. If the playlist changed since the
+screen was drawn, the removal is refused.
 
 While you are editing, `a` and `r` are about the playlist. Everywhere else `a`
 adds to the queue and `A` plays next, as they always do. The last row names the
@@ -326,12 +326,13 @@ the same way search results are.
 ## The queue
 
 `gq` shows what is playing and what follows it, with the playing track marked.
-`enter` on a row plays it, and `esc` returns to the artist list.
+`enter` on a row plays it, `r` takes it out, and `K` and `J` move it up and
+down. Taking out the track that is playing starts the one after it.
 
-`a` and `A` add the track you have selected in an album. `a` puts it at the
-end; `A` plays it after the track playing now, without interrupting it. Adding
-to an empty queue starts it playing, because there is nothing else sensible to
-do with a track you asked to hear next when nothing is on.
+`a` and `A` add what you have selected: a track, or every track of an album, an
+artist or a playlist in its own order. `a` puts it at the end; `A` plays it
+after the track playing now, without interrupting it. Adding to an empty queue
+starts it playing.
 
 The queue is what a session plays after `:headless`, and what the interface
 picks back up when you return to it.

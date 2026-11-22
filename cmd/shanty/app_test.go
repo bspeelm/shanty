@@ -347,6 +347,7 @@ func TestEveryIntentIsWiredUp(t *testing.T) {
 		"ShuffleThis":     tui.ShuffleThis{Scope: tui.ScopeAlbum, ID: "al-1"},
 		"ShuffleSongs":    tui.ShuffleSongs{Songs: album.Songs, What: "1 starred track"},
 		"Playlist":        tui.Playlist{Verb: "create", Name: "Evening"},
+		"QueueThis":       tui.QueueThis{Scope: tui.ScopeAlbum, ID: "al-1"},
 		"RemoveQueued":    tui.RemoveQueued(0),
 		"MoveQueued":      tui.MoveQueued{From: 0, To: 1},
 		"FetchPlaylists":  tui.FetchPlaylists{},

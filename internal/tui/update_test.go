@@ -725,17 +725,17 @@ func TestQueueingKeysAskForTheSelectedTrack(t *testing.T) {
 	}
 }
 
-// TestQueueingSomewhereWithNoTrackSaysSo covers the screens where a row is not
-// a track, so the keys have nothing to act on.
+// TestQueueingSomewhereWithNoTrackSaysSo covers the screens where a row is
+// nothing that can be queued, so the keys have nothing to act on.
 func TestQueueingSomewhereWithNoTrackSaysSo(t *testing.T) {
 	for _, key := range []string{"a", "A"} {
-		m := loaded(t) // the artist list
+		m := send(t, loaded(t), ShowWiki{})
 
 		m, got := press(t, m, key)
 		if got != nil {
-			t.Errorf("%s on the artist list emitted %T", key, got)
+			t.Errorf("%s on the wiki emitted %T", key, got)
 		}
-		if !strings.Contains(m.Status(), "open an album") {
+		if !strings.Contains(m.Status(), "press a or A on a track") {
 			t.Errorf("%s said %q", key, m.Status())
 		}
 	}

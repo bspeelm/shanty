@@ -149,6 +149,13 @@ type (
 		// so the list of playlists can mark the one the music comes from.
 		playlist string
 	}
+	// gathered is the tracks of an artist, an album or a playlist to add to
+	// the queue, after the track playing when next is set.
+	gathered struct {
+		tracks []subsonic.Song
+		what   string
+		next   bool
+	}
 	// savedQueue is what the server was holding when this started.
 	savedQueue subsonic.PlayQueue
 	// stallCheck asks whether playback has moved on from the position it
@@ -356,6 +363,19 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.JumpTo:
 		a.queue = a.queue.Jump(int(msg))
 		return a, tea.Batch(a.playCurrent(), a.queueChanged())
+	case tui.QueueThis:
+		return a, a.gather(msg)
+	case gathered:
+		if len(msg.tracks) == 0 {
+			return a.forward(tui.Failed{Message: msg.what + " holds no tracks to add to the queue"})
+		}
+		found := queueFrom(subsonic.Album{Name: msg.what, Songs: msg.tracks}).Tracks()
+		if msg.next {
+			return a.requeued(a.queue.InsertAllNext(found...), a.queue.Done(),
+				fmt.Sprintf("playing %s, %s, next", msg.what, tracks(int64(len(found)))))
+		}
+		return a.requeued(a.queue.AppendAll(found...), a.queue.Done(),
+			fmt.Sprintf("added %s, %s, to the end of the queue", msg.what, tracks(int64(len(found)))))
 	case tui.RemoveQueued:
 		at := int(msg)
 		if at < 0 || at >= a.queue.Len() {
@@ -853,6 +873,25 @@ func (a app) enqueue(album subsonic.Album, index int, next bool) (tea.Model, tea
 		where = "playing " + track.Title + " next"
 	}
 	return a, tea.Batch(a.prefetch(), a.queueChanged(), emit(tui.Notice(where)), a.foresee())
+}
+
+// gather reads every track of an artist, an album or a playlist, to be added
+// to the queue. Any other scope is reported.
+func (a app) gather(msg tui.QueueThis) tea.Cmd {
+	switch msg.Scope {
+	case tui.ScopeArtist, tui.ScopeAlbum, tui.ScopePlaylist:
+	default:
+		return emit(tui.Failed{Message: "shanty does not know how to add " + string(msg.Scope) + " to the queue"})
+	}
+	fetch := a.shuffleThis(tui.ShuffleThis{Scope: msg.Scope, ID: msg.ID})
+	return func() tea.Msg {
+		answer := fetch()
+		found, ok := answer.(shuffled)
+		if !ok {
+			return answer
+		}
+		return gathered{tracks: found.tracks, what: found.what, next: msg.Next}
+	}
 }
 
 // requeued takes a queue that was edited in place of the one held. The track

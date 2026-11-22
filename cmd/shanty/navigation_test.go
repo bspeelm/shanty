@@ -239,7 +239,8 @@ func TestRemovingFromOnePlaylistAndOpeningAnotherShowsTheOther(t *testing.T) {
 	opened := a.ui.Playlist()
 
 	// r, back, down and enter, with the removal answered last.
-	a, removed := step(t, a, keyRunes("r"))
+	a, _ = step(t, a, keyRunes("r"))
+	a, removed := step(t, a, keyRunes("y"))
 	a = settle(t, a, keyRunes("h"))
 	a = settle(t, a, keyRunes("j"))
 	a, other := step(t, a, enter)
