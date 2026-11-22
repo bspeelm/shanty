@@ -438,7 +438,7 @@ func TestEWithNoPlaylistOnScreenDoesNothing(t *testing.T) {
 // do. The tracks have to be on screen for r and e to act on them.
 func openPlaylist(t *testing.T, a app) app {
 	t.Helper()
-	pending := []tea.Msg{tui.ShowPlaylists{}}
+	pending := []tea.Msg{keyRunes("g"), keyRunes("p")}
 	for round := 0; len(pending) > 0 && round < 8; round++ {
 		var produced []tea.Msg
 		for _, m := range pending {

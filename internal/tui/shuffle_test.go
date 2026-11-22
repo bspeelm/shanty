@@ -124,7 +124,7 @@ func TestShuffleAsksForWhatTheCursorIsOnOrTheListItIsIn(t *testing.T) {
 	found := send(t, base, SearchLoaded{Query: "water", Results: results()})
 	starred := onStarred(t, base)
 	albums := send(t, base, ArtistLoaded(library.artists[0]))
-	everyAlbums := send(t, base, ShowEveryAlbum{})
+	everyAlbums := send(t, base, keyOf("g"), keyOf("b"))
 	inPlaylist := send(t, base, PlaylistLoaded(eveningOf(3)))
 	onLibrary := func(row string) Model { return onRow(t, library, row) }
 
@@ -187,7 +187,7 @@ func TestShuffleWithNothingUnderItSaysWhatIsWrongAndWhatToDo(t *testing.T) {
 		{"the queue, empty", onQueue(t, base), []string{"queue is empty", "enter"}},
 		{"nothing starred", onStarred(t, base), []string{"nothing is starred", "*"}},
 		{"a search that found nothing", send(t, base, SearchLoaded{Query: "zzz"}), []string{"found nothing", ":search"}},
-		{"every album, with none", send(t, base, ShowEveryAlbum{}, AlbumsLoaded(nil)), []string{"nothing to shuffle here", "press S on"}},
+		{"every album, with none", send(t, base, keyOf("g"), keyOf("b"), AlbumsLoaded(nil)), []string{"nothing to shuffle here", "press S on"}},
 		{"a filter matching nothing", narrowed(t, base, "zzz"), []string{"nothing matches zzz", "/"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

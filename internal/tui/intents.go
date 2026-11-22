@@ -12,9 +12,17 @@ import (
 // Intents are what the interface asks for. Each is a message; the caller
 // performs the work and sends the result back as one of the Inputs below.
 type (
-	OpenArtist struct{ ID string }
-	OpenAlbum  struct{ ID string }
-	PlayFrom   struct {
+	// OpenArtist, OpenAlbum and OpenPlaylist ask for something to be fetched
+	// and shown. Ask numbers the request, and comes back in Opened or Failed.
+	OpenArtist struct {
+		ID  string
+		Ask int
+	}
+	OpenAlbum struct {
+		ID  string
+		Ask int
+	}
+	PlayFrom struct {
 		Album subsonic.Album
 		Index int
 		// Playlist is the identifier of the playlist the tracks came from, and
@@ -77,10 +85,6 @@ type (
 	Reload struct{}
 	// Scan asks the server to look at its music folder again.
 	Scan struct{}
-	// ShowPlaylists and ShowEveryAlbum, sent to the interface, move it to
-	// that screen. The interface does not emit them.
-	ShowPlaylists  struct{}
-	ShowEveryAlbum struct{}
 	// FetchPlaylists and FetchEveryAlbum ask for what a screen the interface
 	// has already moved to shows. Nothing is sent back but the list.
 	FetchPlaylists  struct{}
@@ -105,8 +109,10 @@ type (
 		Songs []subsonic.Song
 		What  string
 	}
-	// OpenPlaylist asks for one playlist's tracks.
-	OpenPlaylist struct{ ID string }
+	OpenPlaylist struct {
+		ID  string
+		Ask int
+	}
 	// EditPlaylist adds or removes the selected track from the playlist being
 	// edited.
 	EditPlaylist struct {
@@ -196,9 +202,22 @@ type (
 	}
 	// PlaylistsLoaded is every playlist the server will show.
 	PlaylistsLoaded []subsonic.Playlist
-	// PlaylistLoaded is one playlist with its tracks. Editing reports the same
-	// message, so the marks follow what the server has.
+	// ArtistLoaded, AlbumLoaded and PlaylistLoaded sent bare are shown.
 	PlaylistLoaded subsonic.Playlist
+	// Opened answers the open numbered Ask with what was loaded, which is an
+	// ArtistLoaded, an AlbumLoaded or a PlaylistLoaded. It is shown only if
+	// that open is the one being waited for, and dropped otherwise.
+	Opened struct {
+		Ask    int
+		Loaded tea.Msg
+	}
+	// Reloaded answers a reload with what was fetched again. It replaces what
+	// is held and never moves the screen.
+	Reloaded struct{ Loaded tea.Msg }
+	// PlaylistChanged is a playlist as the server has it after a rename, a
+	// new order, or a track added or removed. It replaces the copy held and
+	// the edit marks, and never moves the screen.
+	PlaylistChanged subsonic.Playlist
 	// EditingPlaylist puts the library lists into the mode where a track can
 	// be added to or removed from the named playlist.
 	EditingPlaylist subsonic.Playlist
@@ -225,7 +244,13 @@ type (
 	VolumeChanged int
 	// Failed carries a message to display. It is sanitised like any other text,
 	// because it may have come from the server.
-	Failed struct{ Message string }
+	//
+	// Ask is the number of the open that failed, and zero when the failure
+	// is not about an open.
+	Failed struct {
+		Message string
+		Ask     int
+	}
 	// Notice carries a message about something in progress. Failed would clear
 	// the loading flag, which is wrong while a screen is still arriving.
 	Notice string

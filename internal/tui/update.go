@@ -27,6 +27,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		// A page of the wiki has as many rows as its text takes at this width.
+		for _, s := range Screens {
+			m = m.settled(s)
+		}
 		return m, nil
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyCtrlC && (m.mode == modeFilter || m.mode == modeCommand) {
@@ -44,18 +48,50 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ArtistsLoaded:
 		m.artists, m.loading = msg, false
+		if msg == nil {
+			// The list is empty rather than nil once the server has answered.
+			m.artists = []subsonic.Artist{}
+		}
 		m = m.say("").settled(ScreenArtists)
 		if m.screen == ScreenLibrary && m.keep != "" {
 			m.keep = ""
 			return m.say("reloaded: " + plural(len(msg), "artist")), nil
 		}
 		return m.reloaded(ScreenArtists, plural(len(msg), "artist")), nil
-	case ArtistLoaded:
-		artist := subsonic.Artist(msg)
-		m, how := m.arrived(artist.ID)
-		if how == abandoned {
+	case Opened:
+		if msg.Ask == 0 || msg.Ask != m.waiting {
 			return m, nil
 		}
+		m.waiting = 0
+		return m.update(msg.Loaded)
+	case Reloaded:
+		switch loaded := msg.Loaded.(type) {
+		case ArtistLoaded:
+			if loaded.ID != m.artist.ID {
+				return m, nil
+			}
+			m.artist = subsonic.Artist(loaded)
+			if m.screen == ScreenAlbums {
+				m.loading = false
+				m = m.reloaded(ScreenAlbums, plural(len(loaded.Albums), "album"))
+			}
+			return m.settled(ScreenAlbums), nil
+		case AlbumLoaded:
+			if loaded.ID != m.album.ID {
+				return m, nil
+			}
+			m.album = subsonic.Album(loaded)
+			if m.screen == ScreenTracks {
+				m.loading = false
+				m = m.reloaded(ScreenTracks, plural(len(loaded.Songs), "track"))
+			}
+			return m.settled(ScreenTracks), nil
+		case ArtistsLoaded, AlbumsLoaded, PlaylistsLoaded, StarredChanged:
+			return m.update(loaded)
+		}
+		return m, nil
+	case ArtistLoaded:
+		artist := subsonic.Artist(msg)
 		if m.keep != "" && m.screen == ScreenAlbums && artist.ID == m.artist.ID {
 			m.artist, m.loading = artist, false
 			return m.reloaded(ScreenAlbums, plural(len(artist.Albums), "album")), nil
@@ -65,10 +101,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.selecting(ScreenAlbums, 0), nil
 	case AlbumLoaded:
 		album := subsonic.Album(msg)
-		m, how := m.arrived(album.ID)
-		if how == abandoned {
-			return m, nil
-		}
 		reload := m.keep != "" && m.screen == ScreenTracks && album.ID == m.album.ID
 		if album.ID != m.album.ID {
 			// An album with a cover holds the rows for it straight away. The
@@ -106,7 +138,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.volume = int(msg)
 		return m, nil
 	case Failed:
-		m.loading, m.keep = false, ""
+		// The failure of an open that is no longer waited for is kept to be
+		// read, and changes nothing on screen.
+		if msg.Ask != 0 && msg.Ask != m.waiting {
+			return m.remember(msg.Message), nil
+		}
+		m.loading, m.keep, m.waiting = false, "", 0
 		return m.refuse(msg.Message).remember(msg.Message), nil
 	case Notice:
 		return m.say(string(msg)).remember(string(msg)), nil
@@ -129,14 +166,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.keep == "" {
 			m.keep = " " // nothing selected, but a reload is still under way
 		}
-		// The answer for one artist or album is expected like one that was
-		// opened, so that leaving the screen abandons it.
-		switch m.screen {
-		case ScreenAlbums:
-			m.flying = kept(append(m.flying[:len(m.flying):len(m.flying)], m.artist.ID))
-		case ScreenTracks:
-			m.flying = kept(append(m.flying[:len(m.flying):len(m.flying)], m.album.ID))
-		}
 		return m.say("asking the server again"), nil
 	case PlaylistsLoaded:
 		m.playlists, m.loading = msg, false
@@ -148,37 +177,33 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.reloaded(ScreenPlaylists, plural(len(msg), "playlist")), nil
 	case PlaylistLoaded:
 		loaded := subsonic.Playlist(msg)
-		// The same message reports an edit, so the marks follow the server
-		// rather than what was pressed.
-		editing := m.editing.ID == loaded.ID && m.editing.ID != ""
-		if editing {
+		if m.editing.ID == loaded.ID && m.editing.ID != "" {
 			m.editing, m.inPlaylist = loaded, holding(loaded)
-		}
-		m, how := m.arrived(loaded.ID)
-		if how == abandoned {
-			return m, nil
-		}
-		// An answer nobody opened a screen for is a change to the playlist
-		// already held. It is kept, and shown only if that playlist is showing.
-		if loaded.ID == m.playlist.ID && (how == unasked || m.screen == ScreenPlaylist) {
-			m.playlist = loaded
 			if m.screen != ScreenPlaylist {
-				return m.settled(ScreenPlaylist), nil
+				return m, nil
 			}
-			m.loading = false
-			m = m.say("")
-			if m.reordering && !same(idsOf(loaded.Songs), m.drawnFrom) {
-				m.reordering, m.order, m.drawnFrom = false, nil, nil
-				m = m.say(Sanitise(loaded.Name) + " changed on the server, so the arrangement was dropped")
-			}
-			return m.reloaded(ScreenPlaylist, plural(len(loaded.Songs), "track")).settled(ScreenPlaylist), nil
 		}
-		if editing && how == unasked {
-			return m, nil
+		if m.screen == ScreenPlaylist && loaded.ID == m.playlist.ID {
+			return m.say("").refreshed(loaded), nil
 		}
 		m = m.show(ScreenPlaylist)
 		m.playlist, m.loading = loaded, false
 		return m.selecting(ScreenPlaylist, 0), nil
+	case PlaylistChanged:
+		loaded := subsonic.Playlist(msg)
+		if m.editing.ID == loaded.ID && m.editing.ID != "" {
+			m.editing, m.inPlaylist = loaded, holding(loaded)
+		}
+		for i, p := range m.playlists {
+			if p.ID == loaded.ID {
+				m.playlists = append([]subsonic.Playlist(nil), m.playlists...)
+				m.playlists[i].Name, m.playlists[i].SongCount = loaded.Name, len(loaded.Songs)
+			}
+		}
+		if loaded.ID != m.playlist.ID {
+			return m, nil
+		}
+		return m.refreshed(loaded), nil
 	case FullArt:
 		m.bigArt = msg
 		// A cover filling the screen and the one above the track list are the
@@ -208,18 +233,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.say(editingHint(m.editing.Name)).remember(editingHint(m.editing.Name)), nil
 	case Confirm:
 		m.mode, m.asking, m.agreed = modeConfirm, msg.Question, msg.Do
-		return m, nil
-	case ShowPlaylists:
-		m = m.show(ScreenPlaylists)
-		if m.playlists == nil {
-			m.loading = true
-		}
-		return m, nil
-	case ShowEveryAlbum:
-		m = m.show(ScreenEveryAlbum)
-		if len(m.albums) == 0 {
-			m.loading = true
-		}
 		return m, nil
 	case AlbumsLoaded:
 		m.albums, m.loading = msg, false
@@ -414,12 +427,7 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 	if err != nil {
 		return m.refuse(err.Error()), nil
 	}
-	// A rename's argument is the new name, and the playlist is the one on
-	// screen -- the rule ADR-019 set for e and r. Resolved here because this
-	// is the only place that has both the typed line and the screen, and
-	// resolving to an identifier means a name shared by two playlists is not
-	// a question anybody has to answer.
-	if _, ok := intent.(ShowPlaylists); ok {
+	if _, ok := intent.(listPlaylists); ok {
 		return m.goTo("p")
 	}
 	if p, ok := intent.(Playlist); ok && p.Verb == "reorder" {
@@ -435,6 +443,8 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 		return m, emit(DeletePlaylist{ID: m.playlist.ID, Name: m.playlist.Name,
 			Tracks: len(m.playlist.Songs)})
 	}
+	// A rename's argument is the new name. The playlist renamed is the one on
+	// screen, named by its identifier.
 	if p, ok := intent.(Playlist); ok && p.Verb == "rename" {
 		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
 			return m.refuse("rename needs a playlist on screen — gp, enter, then :playlist rename <new name>"), nil
@@ -561,14 +571,11 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 	case "a":
 		return m.show(ScreenArtists), nil
 	case "b":
-		// The screen is shown here and the albums are asked for.
-		next, _ := m.update(ShowEveryAlbum{})
-		return next, emit(FetchEveryAlbum{})
+		return m.show(ScreenEveryAlbum), emit(FetchEveryAlbum{})
 	case "v":
 		return m.openSky()
 	case "p":
-		next, _ := m.update(ShowPlaylists{})
-		return next, emit(FetchPlaylists{})
+		return m.show(ScreenPlaylists), emit(FetchPlaylists{})
 	case "q":
 		m = m.show(ScreenQueue)
 		return m.selecting(ScreenQueue, max(0, min(len(m.queued)-1, m.queuedAt))), nil
@@ -728,19 +735,23 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		// that screen wants it and asks for what the screen shows.
 		return m.goTo(libraryRows[at].key)
 	case ScreenArtists:
-		return m.opening("opening "+m.artists[at].Name, m.artists[at].ID), emit(OpenArtist{ID: m.artists[at].ID})
+		m = m.opening("opening " + m.artists[at].Name)
+		return m, emit(OpenArtist{ID: m.artists[at].ID, Ask: m.waiting})
 	case ScreenAlbums:
 		m.fromTracks = ScreenAlbums
-		return m.opening("opening "+m.artist.Albums[at].Name, m.artist.Albums[at].ID), emit(OpenAlbum{ID: m.artist.Albums[at].ID})
+		m = m.opening("opening " + m.artist.Albums[at].Name)
+		return m, emit(OpenAlbum{ID: m.artist.Albums[at].ID, Ask: m.waiting})
 	case ScreenEveryAlbum:
 		m.fromTracks = ScreenEveryAlbum
-		return m.opening("opening "+m.albums[at].Name, m.albums[at].ID), emit(OpenAlbum{ID: m.albums[at].ID})
+		m = m.opening("opening " + m.albums[at].Name)
+		return m, emit(OpenAlbum{ID: m.albums[at].ID, Ask: m.waiting})
 	case ScreenTracks:
 		return m, emit(PlayFrom{Album: m.album, Index: at})
 	case ScreenQueue:
 		return m, emit(JumpTo(at))
 	case ScreenPlaylists:
-		return m.opening("opening "+m.playlists[at].Name, m.playlists[at].ID), emit(OpenPlaylist{ID: m.playlists[at].ID})
+		m = m.opening("opening " + m.playlists[at].Name)
+		return m, emit(OpenPlaylist{ID: m.playlists[at].ID, Ask: m.waiting})
 	case ScreenPlaylist:
 		return m, emit(PlayFrom{Album: asAlbum(m.playlist), Index: at,
 			Playlist: m.playlist.ID})
@@ -754,10 +765,12 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		r := m.grouped()[at]
 		switch r.kind {
 		case kindArtist:
-			return m.opening("opening "+r.name, r.id), emit(OpenArtist{ID: r.id})
+			m = m.opening("opening " + r.name)
+			return m, emit(OpenArtist{ID: r.id, Ask: m.waiting})
 		case kindAlbum:
 			m.fromTracks = m.screen
-			return m.opening("opening "+r.name, r.id), emit(OpenAlbum{ID: r.id})
+			m = m.opening("opening " + r.name)
+			return m, emit(OpenAlbum{ID: r.id, Ask: m.waiting})
 		case kindSong:
 			return m, emit(PlayFrom{Album: r.album, Index: 0})
 		}
@@ -920,98 +933,60 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 }
 
 // show moves to a screen. The filter on the screen being left is dropped with
-// the cursor kept on the row it was on. Leaving a screen abandons what it was
-// waiting for: the answers to what was opened from it are dropped when they
-// arrive, and a reload of it is forgotten.
+// the cursor kept on the row it was on. Leaving a screen stops it waiting: an
+// open asked for from it is no longer shown when it arrives, a reload of it
+// is forgotten, and it is loading only if the screen arrived at has not been
+// fetched.
 func (m Model) show(s Screen) Model {
 	if m.filter != "" {
 		if rows := m.matches(); len(rows) > 0 {
 			m = m.selecting(m.screen, rows[min(m.cursor[m.screen], len(rows)-1)])
 		}
 		m.filter = ""
+		m = m.settled(m.screen)
 	}
 	if s != m.screen {
-		if len(m.flying) > 0 || m.keep != "" {
-			m.loading = false
-		}
-		m.strayed = kept(append(m.strayed[:len(m.strayed):len(m.strayed)], m.flying...))
-		m.flying, m.keep = nil, ""
+		m.waiting, m.keep, m.loading = 0, "", false
 		if m.mode == modeFilter {
 			m.mode = modeNormal
+		}
+		switch s {
+		case ScreenArtists:
+			m.loading = m.artists == nil
+		case ScreenPlaylists:
+			m.loading = m.playlists == nil
+		case ScreenEveryAlbum:
+			m.loading = len(m.albums) == 0
 		}
 	}
 	m.screen = s
 	return m.say("")
 }
 
-// requestsKept is how many requests in flight, and how many abandoned, are
-// remembered.
-const requestsKept = 8
-
-// kept is the most recent requestsKept of those identifiers.
-func kept(ids []string) []string {
-	if len(ids) > requestsKept {
-		return ids[len(ids)-requestsKept:]
-	}
-	return ids
-}
-
-// without is those identifiers with the first one equal to id taken out, and
-// whether there was one.
-func without(ids []string, id string) ([]string, bool) {
-	for i, was := range ids {
-		if was == id {
-			return append(append([]string(nil), ids[:i]...), ids[i+1:]...), true
-		}
-	}
-	return ids, false
-}
-
-// opening records that the thing with this identifier was asked for, and says
-// so while it arrives. Anything else in flight is abandoned, and the
-// identifier is no longer counted as abandoned.
-func (m Model) opening(status, id string) Model {
-	var flying, strayed []string
-	for _, was := range m.strayed {
-		if was != id {
-			strayed = append(strayed, was)
-		}
-	}
-	for _, was := range m.flying {
-		if was == id {
-			flying = append(flying, was)
-		} else {
-			strayed = append(strayed, was)
-		}
-	}
-	m.flying, m.strayed, m.loading = kept(append(flying, id)), kept(strayed), true
+// opening gives the open being asked for the next number, waits for that
+// number alone, and says what is arriving.
+func (m Model) opening(status string) Model {
+	m.asks++
+	m.waiting, m.loading = m.asks, true
 	return m.say(Sanitise(status))
 }
 
-// arrival is how an answer from the server stands with what was asked for.
-type arrival int
-
-const (
-	// unasked is an answer to nothing this model asked for.
-	unasked arrival = iota
-	// asked is an answer to a request in flight.
-	asked
-	// abandoned is an answer to a request given up on, which is dropped.
-	abandoned
-)
-
-// arrived takes one request for the identifier out of those in flight, or
-// failing that out of those abandoned, and reports which it was.
-func (m Model) arrived(id string) (Model, arrival) {
-	if flying, was := without(m.flying, id); was {
-		m.flying = flying
-		return m, asked
+// refreshed takes a playlist as the server now has it in place of the one
+// held. An arrangement being made of it is dropped if its tracks changed.
+// Where its screen is showing, a reload waiting for it is finished.
+func (m Model) refreshed(loaded subsonic.Playlist) Model {
+	m.playlist = loaded
+	if m.reordering && !same(idsOf(loaded.Songs), m.drawnFrom) {
+		m.reordering, m.order, m.drawnFrom = false, nil, nil
+		if m.screen == ScreenPlaylist {
+			m = m.say(Sanitise(loaded.Name) + " changed on the server, so the arrangement was dropped")
+		}
 	}
-	if strayed, was := without(m.strayed, id); was {
-		m.strayed = strayed
-		return m, abandoned
+	if m.screen == ScreenPlaylist {
+		m.loading = false
+		m = m.reloaded(ScreenPlaylist, plural(len(loaded.Songs), "track"))
 	}
-	return m, unasked
+	return m.settled(ScreenPlaylist)
 }
 
 // settled keeps the cursor of a screen on a row of its list and off a heading.

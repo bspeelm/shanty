@@ -291,42 +291,52 @@ func TestGoingBackToAListThatWasNarrowedLandsOnTheRowThatWasOpened(t *testing.T)
 	}
 }
 
-func TestAnArtistThatArrivesAfterItsScreenWasLeftDoesNotTakeTheScreen(t *testing.T) {
-	m, msg := press(t, loaded(t), "enter")
-	if _, ok := msg.(OpenArtist); !ok {
-		t.Fatalf("enter emitted %T", msg)
+// opened presses enter and returns the number the open was asked with.
+func opened(t *testing.T, m Model) (Model, int) {
+	t.Helper()
+	m, msg := press(t, m, "enter")
+	switch open := msg.(type) {
+	case OpenArtist:
+		return m, open.Ask
+	case OpenAlbum:
+		return m, open.Ask
+	case OpenPlaylist:
+		return m, open.Ask
 	}
+	t.Fatalf("enter emitted %#v, want an open", msg)
+	return m, 0
+}
+
+func TestAnArtistThatArrivesAfterItsScreenWasLeftDoesNotTakeTheScreen(t *testing.T) {
+	m, ask := opened(t, loaded(t))
 	m, _ = press(t, m, "h")
 	if m.loading {
 		t.Error("the library still says it is loading what was walked away from")
 	}
 
-	m = send(t, m, ArtistLoaded(library()[0]))
+	m = send(t, m, Opened{Ask: ask, Loaded: ArtistLoaded(library()[0])})
 	if m.Screen() != ScreenLibrary {
 		t.Fatalf("an artist asked for and then left moved the screen to %s", m.Screen())
 	}
 
 	// The same artist asked for again is shown.
-	m, _ = press(t, onArtists(t, m), "enter")
-	m = send(t, m, ArtistLoaded(library()[0]))
+	m, again := opened(t, onArtists(t, m))
+	m = send(t, m, Opened{Ask: again, Loaded: ArtistLoaded(library()[0])})
 	if m.Screen() != ScreenAlbums {
 		t.Errorf("an artist asked for again was not shown; the screen is %s", m.Screen())
 	}
 }
 
 func TestOfTwoArtistsAskedForOnlyTheLastIsShown(t *testing.T) {
-	m, _ := press(t, loaded(t), "enter")
+	m, first := opened(t, loaded(t))
 	m, _ = press(t, m, "j")
-	m, msg := press(t, m, "enter")
-	if open, ok := msg.(OpenArtist); !ok || open.ID != "ar-2" {
-		t.Fatalf("the second enter emitted %#v", msg)
-	}
+	m, second := opened(t, m)
 
-	m = send(t, m, ArtistLoaded(library()[0]))
+	m = send(t, m, Opened{Ask: first, Loaded: ArtistLoaded(library()[0])})
 	if m.Screen() != ScreenArtists {
 		t.Fatalf("the first artist asked for took the screen to %s", m.Screen())
 	}
-	m = send(t, m, ArtistLoaded(library()[1]))
+	m = send(t, m, Opened{Ask: second, Loaded: ArtistLoaded(library()[1])})
 	if m.Screen() != ScreenAlbums || m.Artist().ID != "ar-2" {
 		t.Errorf("the last artist asked for is not shown: %s, %q", m.Screen(), m.Artist().ID)
 	}
@@ -335,17 +345,17 @@ func TestOfTwoArtistsAskedForOnlyTheLastIsShown(t *testing.T) {
 func TestAnAlbumAndAPlaylistThatArriveAfterTheirScreenWasLeftAreDropped(t *testing.T) {
 	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}}
 	m := send(t, loaded(t), ArtistLoaded(library()[0]))
-	m, _ = press(t, m, "enter")
+	m, ask := opened(t, m)
 	m, _ = press(t, m, "h")
-	m = send(t, m, AlbumLoaded(library()[0].Albums[0]))
-	if m.Screen() != ScreenArtists {
-		t.Errorf("an album asked for and then left moved the screen to %s", m.Screen())
+	m = send(t, m, Opened{Ask: ask, Loaded: AlbumLoaded(library()[0].Albums[0])})
+	if m.Screen() != ScreenArtists || m.Album().ID != "" {
+		t.Errorf("an album asked for and then left: screen %s, album held %q", m.Screen(), m.Album().ID)
 	}
 
 	m = onPlaylists(t, send(t, m, PlaylistsLoaded(lists)))
-	m, _ = press(t, m, "enter")
+	m, ask = opened(t, m)
 	m, _ = press(t, m, "h")
-	m = send(t, m, PlaylistLoaded(lists[0]))
+	m = send(t, m, Opened{Ask: ask, Loaded: PlaylistLoaded(lists[0])})
 	if m.Screen() != ScreenLibrary {
 		t.Errorf("a playlist asked for and then left moved the screen to %s", m.Screen())
 	}
@@ -435,7 +445,7 @@ func TestAReloadTheServerRefusedLeavesNoReloadWaiting(t *testing.T) {
 }
 
 func TestReloadingEveryAlbumKeepsTheSelection(t *testing.T) {
-	m := send(t, loaded(t), ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))
+	m := send(t, loaded(t), keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()))
 	m, _ = press(t, m, "j")
 	was := m.albums[m.Cursor()].ID
 
@@ -469,4 +479,12 @@ func TestReloadingTheStarredListKeepsTheSelection(t *testing.T) {
 	if got := m.starredRows[m.Cursor()].id; got != was {
 		t.Errorf("the cursor moved to %q, want it to stay on %q", got, was)
 	}
+}
+
+// keyOf is a key press as a message, for sending among other messages.
+func keyOf(key string) tea.KeyMsg {
+	if named, ok := namedKeys[key]; ok {
+		return tea.KeyMsg{Type: named}
+	}
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 }

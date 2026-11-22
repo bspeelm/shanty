@@ -186,11 +186,10 @@ type Model struct {
 	// to do if the answer is yes.
 	asking string
 	agreed tea.Msg
-	// flying is the identifiers asked for whose answers have not arrived, one
-	// entry for each request. strayed is the identifiers asked for and then
-	// abandoned, whose answers are dropped.
-	flying  []string
-	strayed []string
+	// asks counts the opens asked for, and waiting is the number of the one
+	// whose answer will be shown. It is zero when none is waited for.
+	asks    int
+	waiting int
 	// keep is what was selected when a reload was asked for, so the cursor can
 	// go back to it once the answer arrives.
 	keep string

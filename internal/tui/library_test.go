@@ -138,7 +138,7 @@ func TestACountNotInYetIsBlankRatherThanAZero(t *testing.T) {
 func TestAnAlbumReturnsToTheListItWasOpenedFrom(t *testing.T) {
 	// From every album.
 	m := send(t, sized(New()), ArtistsLoaded(library()),
-		ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))
+		keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()))
 	m, _ = press(t, m, "enter")
 	m = send(t, m, AlbumLoaded(library()[0].Albums[0]))
 	if m.Screen() != ScreenTracks {
@@ -160,7 +160,7 @@ func TestAnAlbumReturnsToTheListItWasOpenedFrom(t *testing.T) {
 }
 
 func TestEveryAlbumCarriesTheArtistOnEachRow(t *testing.T) {
-	m := send(t, sized(New()), ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))
+	m := send(t, sized(New()), keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()))
 
 	// One artist's album list has the artist in the heading, so the rows do
 	// not repeat it. This screen has no such heading.
@@ -188,7 +188,7 @@ func TestFilteringTheLibraryMatchesTheRowNames(t *testing.T) {
 }
 
 func TestEveryAlbumIsFilteredByItsArtistToo(t *testing.T) {
-	m := send(t, sized(New()), ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))
+	m := send(t, sized(New()), keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()))
 	m, _ = press(t, m, "/")
 	for _, c := range "bilge" {
 		m, _ = press(t, m, string(c))
