@@ -46,7 +46,7 @@ The title bar shows how you got to an album or a playlist, as in
 ## Going to a screen
 
 `g` and a second key go to a screen from anywhere. Each screen is shown with
-the row you had selected there.
+the row you had selected there, and with the filter you had kept on it.
 
 | Keys | Where they go |
 |---|---|
@@ -69,10 +69,8 @@ onto the server after you started shanty is not there.
 
 `:reload` asks again for whatever screen you are on: the library, the artists,
 one artist's albums, every album, one album's tracks, the starred list, the
-playlists, or one playlist. It
-says what came
-back, because a reload that returns the same thing looks exactly like one that
-did nothing.
+playlists, or one playlist. It says what came back, because a reload that
+returns the same thing looks exactly like one that did nothing.
 
 The cursor stays on what you had selected, if it is still there. It reloads
 only the screen you are on rather than the whole library, which on a large one
@@ -187,8 +185,8 @@ and pausing holds it still. The row above the keys still says what is playing.
 
 While it is open, the player keys and `:` work and the list underneath does
 not. It limits how fast large parts of the picture change brightness, to at
-most about two flashes a second. The limit holds on a dark terminal background
-in full colour.
+most about two flashes a second, measured for a dark terminal background in
+full colour.
 
 ## Cover art
 
@@ -335,10 +333,10 @@ the same way search results are.
 
 `gq` shows what is playing and what follows it, with the playing track marked.
 `enter` on a row plays it, `r` takes it out, and `K` and `J` move it up and
-down. A number before `r` takes out that many tracks from the cursor down.
-Taking out the track that is playing starts the one after it, and stops the
-music if it was the last. `K` and `J` do nothing while the queue is narrowed
-by a filter.
+down. A number before `r` takes out that many of the rows shown, from the
+cursor down. Taking out the track that is playing starts the one after it, and
+stops the music if it was the last. While the queue is narrowed by a filter,
+`K` and `J` move nothing and the last row says why.
 
 `a` and `A` add what you have selected: a track, or every track of an album, an
 artist or a playlist in its own order. `a` puts it at the end; `A` plays it
