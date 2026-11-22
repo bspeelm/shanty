@@ -475,9 +475,6 @@ func (m Model) startReorder() Model {
 // moveInOrder moves the selected track by one place and follows it with the
 // cursor, so the row being moved stays under the keys moving it.
 func (m Model) moveInOrder(by int) (tea.Model, tea.Cmd) {
-	if !m.reordering {
-		return m, nil
-	}
 	at := m.cursor[ScreenPlaylist]
 	to := at + by
 	if to < 0 || to >= len(m.order) {
@@ -560,17 +557,19 @@ type under struct {
 	// row is a heading.
 	kind kind
 	id   string
-	// songs is the tracks listed on a search or on the starred screen, for a
-	// track row there.
-	songs []subsonic.Song
+	name string
+	// list is the tracks a track row sits among, and index is its place in
+	// them. On a search and on the starred screen they are the tracks listed.
+	list  subsonic.Album
+	index int
 	// scope and holder name the collection a track row belongs to, where it
 	// belongs to one: an album or a playlist.
 	scope  Scope
 	holder string
 }
 
-// under reports what the cursor is on. The library, the queue, the wiki and
-// the messages report no row.
+// under reports what the cursor is on. The library, the wiki and the messages
+// report no row.
 func (m Model) under() under {
 	if m.rows() == 0 {
 		return under{}
@@ -578,26 +577,37 @@ func (m Model) under() under {
 	at := m.matches()[m.cursor[m.screen]]
 	switch m.screen {
 	case ScreenArtists:
-		return under{kind: kindArtist, id: m.artists[at].ID}
+		return under{kind: kindArtist, id: m.artists[at].ID, name: m.artists[at].Name}
 	case ScreenAlbums:
-		return under{kind: kindAlbum, id: m.artist.Albums[at].ID}
+		return under{kind: kindAlbum, id: m.artist.Albums[at].ID, name: m.artist.Albums[at].Name}
 	case ScreenEveryAlbum:
-		return under{kind: kindAlbum, id: m.albums[at].ID}
+		return under{kind: kindAlbum, id: m.albums[at].ID, name: m.albums[at].Name}
 	case ScreenTracks:
-		return under{kind: kindSong, id: m.album.Songs[at].ID, scope: ScopeAlbum, holder: m.album.ID}
+		return under{kind: kindSong, id: m.album.Songs[at].ID, name: m.album.Songs[at].Title,
+			list: m.album, index: at, scope: ScopeAlbum, holder: m.album.ID}
 	case ScreenPlaylists:
-		return under{kind: kindPlaylist, id: m.playlists[at].ID}
+		return under{kind: kindPlaylist, id: m.playlists[at].ID, name: m.playlists[at].Name}
 	case ScreenPlaylist:
-		return under{kind: kindSong, id: m.idAt(at), scope: ScopePlaylist, holder: m.playlist.ID}
+		list := asAlbum(m.playlist)
+		if m.reordering {
+			list.Songs = m.order
+		}
+		return under{kind: kindSong, id: list.Songs[at].ID, name: list.Songs[at].Title,
+			list: list, index: at, scope: ScopePlaylist, holder: m.playlist.ID}
+	case ScreenQueue:
+		return under{kind: kindSong, id: m.queued[at].ID, name: m.queued[at].Title, index: at, scope: ScopeQueue}
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[at]
-		u := under{kind: r.kind, id: r.id}
+		u := under{kind: r.kind, id: r.id, name: r.name}
 		if r.kind != kindSong {
 			return u
 		}
 		for _, i := range m.matches() {
 			if other := m.grouped()[i]; other.kind == kindSong {
-				u.songs = append(u.songs, other.album.Songs...)
+				if i == at {
+					u.index = len(u.list.Songs)
+				}
+				u.list.Songs = append(u.list.Songs, other.album.Songs...)
 			}
 		}
 		return u
@@ -647,10 +657,10 @@ func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
 	case u.kind == kindSong && u.holder != "":
 		return m, emit(ShuffleThis{Scope: u.scope, ID: u.holder})
 	case u.kind == kindSong && m.screen == ScreenSearch:
-		return m, emit(ShuffleSongs{Songs: u.songs,
-			What: fmt.Sprintf("%s found for %q", plural(len(u.songs), "track"), m.query)})
+		return m, emit(ShuffleSongs{Songs: u.list.Songs,
+			What: fmt.Sprintf("%s found for %q", plural(len(u.list.Songs), "track"), m.query)})
 	case u.kind == kindSong:
-		return m, emit(ShuffleSongs{Songs: u.songs, What: plural(len(u.songs), "starred track")})
+		return m, emit(ShuffleSongs{Songs: u.list.Songs, What: plural(len(u.list.Songs), "starred track")})
 	}
 
 	switch {
@@ -739,92 +749,54 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 			m = m.opening("opening " + r.name)
 			return m, emit(OpenAlbum{ID: r.id, Ask: m.waiting})
 		case kindSong:
-			return m, emit(PlayFrom{Album: r.album, Index: 0})
+			u := m.under()
+			return m, emit(PlayFrom{Album: u.list, Index: u.index})
 		}
 		return m, nil
 	}
 	return m, nil
 }
 
-// queueSelected asks for the selected track to be queued, either after the one
-// playing or at the end. It works on the track list, which is the only screen
-// where a row is one track.
+// queueSelected asks for what the cursor is on to be queued, after the track
+// playing or at the end: a track, or every track of an album, an artist or a
+// playlist in its own order.
 func (m Model) queueSelected(next bool) (tea.Model, tea.Cmd) {
-	if m.screen != ScreenQueue && m.screen != ScreenTracks {
-		return m.say("there is nothing to queue here; open an album first"), nil
-	}
-	if m.screen == ScreenQueue {
+	switch u := m.under(); {
+	case m.screen == ScreenQueue:
 		return m.say("that is already in the queue"), nil
+	case u.kind == kindSong && next:
+		return m, emit(PlayNext{Album: u.list, Index: u.index})
+	case u.kind == kindSong:
+		return m, emit(Enqueue{Album: u.list, Index: u.index})
+	case u.kind == kindArtist:
+		return m, emit(QueueThis{Scope: ScopeArtist, ID: u.id, Next: next})
+	case u.kind == kindAlbum:
+		return m, emit(QueueThis{Scope: ScopeAlbum, ID: u.id, Next: next})
+	case u.kind == kindPlaylist:
+		return m, emit(QueueThis{Scope: ScopePlaylist, ID: u.id, Next: next})
 	}
-	if m.rows() == 0 {
-		return m, nil
-	}
-	at := m.matches()[m.cursor[ScreenTracks]]
-	if next {
-		return m, emit(PlayNext{Album: m.album, Index: at})
-	}
-	return m, emit(Enqueue{Album: m.album, Index: at})
+	return m.say("nothing here to add to the queue — press a or A on a track, an album, an artist or a playlist"), nil
 }
 
 // starSelected asks for the starred state of the selected row to be turned
-// over. Every list holds something that can be starred, so this works on all
-// of them.
+// over.
 func (m Model) starSelected() (tea.Model, tea.Cmd) {
-	if m.rows() == 0 {
-		return m, nil
+	u := m.under()
+	kind := map[kind]Kind{kindArtist: StarArtist, kindAlbum: StarAlbum, kindSong: StarSong}[u.kind]
+	if kind == "" {
+		return m.say("nothing here can be starred — press * on an artist, an album or a track"), nil
 	}
-	at := m.matches()[m.cursor[m.screen]]
-	kind, id := Kind(""), ""
-	switch m.screen {
-	case ScreenArtists:
-		kind, id = StarArtist, m.artists[at].ID
-	case ScreenAlbums:
-		kind, id = StarAlbum, m.artist.Albums[at].ID
-	case ScreenEveryAlbum:
-		kind, id = StarAlbum, m.albums[at].ID
-	case ScreenTracks:
-		kind, id = StarSong, m.album.Songs[at].ID
-	case ScreenQueue:
-		kind, id = StarSong, m.queued[at].ID
-	case ScreenSearch, ScreenStarred:
-		r := m.grouped()[at]
-		switch r.kind {
-		case kindArtist:
-			kind, id = StarArtist, r.id
-		case kindAlbum:
-			kind, id = StarAlbum, r.id
-		case kindSong:
-			kind, id = StarSong, r.id
-		}
-	}
-	if id == "" {
-		return m, nil
-	}
-	return m, emit(ToggleStar{Kind: kind, ID: id, Starred: !m.starred[id]})
+	return m, emit(ToggleStar{Kind: kind, ID: u.id, Starred: !m.starred[u.id]})
 }
 
 // editSelected adds the selected track to the playlist being edited, or takes
-// it out. The library lists are what is on screen, so the row is a track.
+// it out.
 func (m Model) editSelected(add bool) (tea.Model, tea.Cmd) {
-	if m.rows() == 0 {
-		return m, nil
+	u := m.under()
+	if u.kind != kindSong {
+		return m.say("there is no track here to add or take out — open an album and press a or r on a track"), nil
 	}
-	at := m.matches()[m.cursor[m.screen]]
-	id := ""
-	switch m.screen {
-	case ScreenTracks:
-		id = m.album.Songs[at].ID
-	case ScreenQueue:
-		id = m.queued[at].ID
-	case ScreenSearch, ScreenStarred:
-		if r := m.grouped()[at]; r.kind == kindSong {
-			id = r.id
-		}
-	}
-	if id == "" {
-		return m.say("there is no track here to add; open an album"), nil
-	}
-	if add == m.inPlaylist[id] {
+	if add == m.inPlaylist[u.id] {
 		// Already as asked. Saying so is better than a request that changes
 		// nothing and looks like it worked.
 		what := "already in"
@@ -833,7 +805,46 @@ func (m Model) editSelected(add bool) (tea.Model, tea.Cmd) {
 		}
 		return m.say("that track is " + what + " " + Sanitise(m.editing.Name)), nil
 	}
-	return m, emit(EditPlaylist{ID: m.editing.ID, SongID: id, Add: add, At: -1})
+	return m, emit(EditPlaylist{ID: m.editing.ID, SongID: u.id, Add: add, At: -1})
+}
+
+// removeSelected takes the selected track out of the playlist being edited,
+// the queue, or the playlist on screen. A playlist on screen is asked about
+// first.
+func (m Model) removeSelected() (tea.Model, tea.Cmd) {
+	u := m.under()
+	switch {
+	case m.editing.ID != "":
+		return m.editSelected(false)
+	case m.reordering:
+		return m.say("a track cannot be taken out while the playlist is being reordered — enter saves, esc discards"), nil
+	case u.scope == ScopeQueue:
+		return m, emit(RemoveQueued(u.index))
+	case u.scope == ScopePlaylist:
+		m.mode, m.asking = modeConfirm, "take "+u.name+" out of "+m.playlist.Name+"?"
+		m.agreed = EditPlaylist{ID: m.playlist.ID, SongID: u.id, Add: false, At: u.index}
+		return m, nil
+	}
+	return m.say("r takes a track out of the queue or a playlist — press it on a track in one of them"), nil
+}
+
+// moveSelected moves the selected track one place: in the arrangement of a
+// playlist being reordered, or in the queue. The cursor follows the track.
+func (m Model) moveSelected(by int) (tea.Model, tea.Cmd) {
+	switch {
+	case m.reordering:
+		return m.moveInOrder(by)
+	case m.screen != ScreenQueue || m.rows() == 0:
+		return m.say("K and J move a track in the queue, or in a playlist once :playlist reorder has begun"), nil
+	case m.filter != "":
+		return m.say("the queue cannot be rearranged while it is narrowed — esc shows all of it"), nil
+	}
+	at := m.cursor[ScreenQueue]
+	to := at + by
+	if to < 0 || to >= len(m.queued) {
+		return m, nil
+	}
+	return m.selecting(ScreenQueue, to), emit(MoveQueued{From: at, To: to})
 }
 
 // holding is the identifiers of the tracks in a playlist.
@@ -1234,26 +1245,4 @@ func (m Model) editPlaylist(p subsonic.Playlist) (tea.Model, tea.Cmd) {
 	m.editing, m.inPlaylist = p, holding(p)
 	m = m.show(ScreenArtists)
 	return m.say(editingHint(p.Name)).remember(editingHint(p.Name)), nil
-}
-
-// removeFromPlaylist takes the selected track out of the playlist on screen.
-//
-// The server removes by position rather than by identifier, and the position
-// it means is the one in the playlist rather than the one on screen, which
-// differ whenever a filter is narrowing the list.
-func (m Model) removeFromPlaylist() (tea.Model, tea.Cmd) {
-	if m.rows() == 0 || m.playlist.ID == "" {
-		return m, nil
-	}
-	if m.reordering {
-		return m.say("a track cannot be taken out while the playlist is being reordered — enter saves, esc discards"), nil
-	}
-	at := m.matches()[m.cursor[m.screen]]
-	if at >= len(m.playlist.Songs) {
-		return m, nil
-	}
-	// Nothing is said until the server has done it. Saying so first reads as
-	// success, and the removal can still be refused.
-	track := m.playlist.Songs[at]
-	return m, emit(EditPlaylist{ID: m.playlist.ID, SongID: track.ID, Add: false, At: at})
 }

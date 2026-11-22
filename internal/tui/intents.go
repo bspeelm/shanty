@@ -75,6 +75,14 @@ type (
 		Album subsonic.Album
 		Index int
 	}
+	// QueueThis asks for every track of an artist, an album or a playlist to
+	// be added to the queue in its own order, after the track playing when
+	// Next is set and at the end otherwise.
+	QueueThis struct {
+		Scope Scope
+		ID    string
+		Next  bool
+	}
 	// JumpTo asks for the queue to move to one of its own tracks.
 	JumpTo int
 	// RemoveQueued asks for the track at that place in the queue to be taken

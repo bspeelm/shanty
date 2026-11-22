@@ -78,14 +78,14 @@ func Actions() []Action {
 				return m, nil
 			}},
 
-		{Name: "queue-append", Summary: "add the selected track to the end of the queue, or add it to the playlist being edited",
+		{Name: "queue-append", Summary: "add the selected track, album, artist or playlist to the end of the queue, or a track to the playlist being edited",
 			Keys: []string{"a"}, do: modelCmd(func(m Model) (tea.Model, tea.Cmd) {
 				if m.editing.ID != "" {
 					return m.editSelected(true)
 				}
 				return m.queueSelected(false)
 			})},
-		{Name: "queue-next", Summary: "play the selected track after the one playing", Keys: []string{"A"},
+		{Name: "queue-next", Summary: "play the selected track, album, artist or playlist after the one playing", Keys: []string{"A"},
 			do: modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.queueSelected(true) })},
 		{Name: "playlist-edit", Summary: "add to the playlist you are looking at, or leave the one you are adding to",
 			Keys: []string{"e"}, do: modelCmd(func(m Model) (tea.Model, tea.Cmd) {
@@ -100,20 +100,10 @@ func Actions() []Action {
 				if m.screen == ScreenPlaylist && m.playlist.ID != "" {
 					return m.editPlaylist(m.playlist)
 				}
-				return m, nil
+				return m.say("e adds to the playlist on screen — open one from gp, or type :playlist edit <name>"), nil
 			})},
-		{Name: "playlist-remove", Summary: "take the selected track out of the playlist you are looking at, or the one you are adding to",
-			Keys: []string{"r"}, do: modelCmd(func(m Model) (tea.Model, tea.Cmd) {
-				if m.editing.ID != "" {
-					return m.editSelected(false)
-				}
-				// A playlist on screen is a list of the tracks in it, so a
-				// track can be taken out of it without editing it first.
-				if m.screen == ScreenPlaylist {
-					return m.removeFromPlaylist()
-				}
-				return m, nil
-			})},
+		{Name: "playlist-remove", Summary: "take the selected track out of the queue, the playlist you are looking at, or the one you are adding to",
+			Keys: []string{"r"}, do: modelCmd((Model).removeSelected)},
 		{
 			Name:    "keys",
 			Summary: "show the list of commands and what each one does",
@@ -122,15 +112,15 @@ func Actions() []Action {
 		},
 		{
 			Name:    "playlist-move-up",
-			Summary: "move the selected track up one place, while reordering",
+			Summary: "move the selected track up one place, in the queue or while reordering a playlist",
 			Keys:    []string{"K"},
-			do:      modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.moveInOrder(-1) }),
+			do:      modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.moveSelected(-1) }),
 		},
 		{
 			Name:    "playlist-move-down",
-			Summary: "move the selected track down one place, while reordering",
+			Summary: "move the selected track down one place, in the queue or while reordering a playlist",
 			Keys:    []string{"J"},
-			do:      modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.moveInOrder(1) }),
+			do:      modelCmd(func(m Model) (tea.Model, tea.Cmd) { return m.moveSelected(1) }),
 		},
 		{
 			Name:    "shuffle-selected",

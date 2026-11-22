@@ -300,9 +300,10 @@ func TestAChangeToOnePlaylistDoesNotTakeTheScreenFromAnother(t *testing.T) {
 	morning := subsonic.Playlist{ID: "pl-2", Name: "Morning", Songs: eveningOf(1).Songs}
 	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
 	m := send(t, loaded(t), PlaylistsLoaded(lists), PlaylistLoaded(eveningOf(3)))
-	m, removed := press(t, m, "r")
+	m, _ = press(t, m, "r")
+	m, removed := press(t, m, "y")
 	if _, ok := removed.(EditPlaylist); !ok {
-		t.Fatalf("r emitted %#v", removed)
+		t.Fatalf("r and then y emitted %#v", removed)
 	}
 	m, _ = press(t, m, "h")
 	m, _ = press(t, m, "j")
@@ -349,6 +350,7 @@ func TestAnOpenTriedAgainAfterItFailedDoesNotLoseTheNextChange(t *testing.T) {
 	m, second := opened(t, m)
 	m = send(t, m, Opened{Ask: second, Loaded: PlaylistLoaded(eveningOf(3))})
 	m, _ = press(t, m, "r")
+	m, _ = press(t, m, "y")
 
 	m = send(t, m, PlaylistChanged(eveningOf(2)))
 	if len(m.Playlist().Songs) != 2 || m.Screen() != ScreenPlaylist {
