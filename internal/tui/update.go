@@ -124,16 +124,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The list is empty rather than nil once the server has answered.
 			m.playlists = []subsonic.Playlist{}
 		}
-		// A playlist the server no longer lists is not gone back to.
-		m = m.remembering(func(p place) (place, bool) {
-			for _, list := range m.playlists {
-				if list.ID == p.playlist.ID {
-					return p, true
-				}
-			}
-			return p, p.screen != ScreenPlaylist
-		})
-		return m.say("").settled(ScreenPlaylists), nil
+		return m.pruned().say("").settled(ScreenPlaylists), nil
 	case PlaylistLoaded:
 		m = m.show(ScreenPlaylist)
 		m.playlist = subsonic.Playlist(msg)
@@ -858,6 +849,21 @@ func each(places []place, f func(place) (place, bool)) []place {
 	return out
 }
 
+// pruned forgets the way back to any playlist the server no longer lists.
+func (m Model) pruned() Model {
+	if m.playlists == nil {
+		return m
+	}
+	return m.remembering(func(p place) (place, bool) {
+		for _, list := range m.playlists {
+			if list.ID == p.playlist.ID {
+				return p, true
+			}
+		}
+		return p, p.screen != ScreenPlaylist
+	})
+}
+
 // remembering applies f to every place there is a way back to.
 func (m Model) remembering(f func(place) (place, bool)) Model {
 	m.trail, m.up = each(m.trail, f), each(m.up, f)
@@ -937,7 +943,7 @@ func (m Model) show(s Screen) Model {
 	if deep(s) {
 		m.up = append(from.up[:len(from.up):len(from.up)], from)
 		m.up = m.up[max(0, len(m.up)-trailKept):]
-		return m.say("")
+		return m.pruned().say("")
 	}
 	var trail []place
 	m.up, m.filter = nil, ""
@@ -953,7 +959,7 @@ func (m Model) show(s Screen) Model {
 	if s == ScreenLibrary {
 		m.trail = nil
 	}
-	return m.say("").settled(s)
+	return m.pruned().say("").settled(s)
 }
 
 // opening gives the open being asked for the next number, waits for that

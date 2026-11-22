@@ -412,3 +412,15 @@ func TestAnArtistOrAlbumGoneBackToIsAsItWasLastFetched(t *testing.T) {
 		t.Errorf("back shows %q with %d albums, want Aoi as reloaded", m.Artist().Name, m.rows())
 	}
 }
+
+func TestAPlaylistTheServerDroppedWhileItWasShowingIsNotGoneBackTo(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
+	m := send(t, onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists))), PlaylistLoaded(eveningOf(3)))
+	m = send(t, m, PlaylistsLoaded(lists[1:]))
+
+	m = onQueue(t, m)
+	m, _ = press(t, m, "esc")
+	if m.Screen() == ScreenPlaylist {
+		t.Errorf("back from the queue shows %q, which the server no longer has", frameHead(m))
+	}
+}
