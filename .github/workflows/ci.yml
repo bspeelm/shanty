@@ -26,7 +26,11 @@ jobs:
       # published, so `make standard` skips here and runs only on the
       # maintainer's machine. A green check job is not evidence the standard
       # passed. Publishing it is what would close that gap.
-      - run: make check
+      #
+      # The visualiser's tests are not run here. They draw thousands of frames
+      # and belong to `make check` on the machine the work is done on. `make
+      # vet` still compiles them.
+      - run: make check TESTED="$(go list ./... | grep -v /internal/sky)"
 
       # vendor/ is what a Copr build root uses in place of a network, so it has
       # to match go.mod exactly. The toolchain refuses to build when they
@@ -167,7 +171,7 @@ jobs:
       - run: make build
 
       - name: the suite passes on macOS
-        run: go test ./... -timeout 15m
+        run: go test $(go list ./... | grep -v /internal/sky) -timeout 15m
 
       - name: the binary runs and the doctor reports every check
         run: |
@@ -257,7 +261,7 @@ jobs:
       - run: |
           docker run --rm -v "$PWD":/src:ro -w /src golang:1.26-alpine sh -c '
             apk add --no-cache make git >/dev/null &&
-            go test -mod=readonly ./...'
+            go test -mod=readonly $(go list ./... | grep -v /internal/sky)'
 
   # §8 as a job. The ran-count assertion is the point: a filter that stops
   # matching reports a clean run over nothing at all, and an isolation suite
