@@ -463,12 +463,13 @@ func (s *scene) step(f *frame) {
 		w.ready = true
 		turn := (w.v[1] - 0.5) * 1.5
 		if s.lock > 0.5 && sig.onTheBeat() {
-			// Turning steps a little on each beat and settles between.
+			// Turning steps a little on each beat and settles between. For
+			// steady music the step is smaller and takes longer to settle.
 			if sig.Beat != w.beat {
 				w.beat = sig.Beat
-				w.aim += turn * 60 / sig.Tempo * 2
+				w.aim += turn * 60 / sig.Tempo * 2 * sig.eased(steadyTurn)
 			}
-			w.clock = glide(w.clock, w.aim, f.dt, 0.08)
+			w.clock = glide(w.clock, w.aim, f.dt, turnSettle*(1+turnSlack*sig.Steady))
 		} else {
 			w.clock += f.dt * turn
 			w.aim = w.clock

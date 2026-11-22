@@ -43,6 +43,13 @@ const (
 	// music that is steady in full, and pulseFrame the length of a frame.
 	pulseAttack = 3
 	pulseFrame  = 1.0 / 30
+	// steadyTurn is the share of the turn a warp makes on each beat that is
+	// given up for music that is steady in full. turnSettle is how long a
+	// step takes to settle, in seconds, and turnSlack how much longer it
+	// takes for music that is steady in full, as a share.
+	steadyTurn = 0.6
+	turnSettle = 0.08
+	turnSlack  = 1.0
 )
 
 // run is a run of events of one kind: whether it has begun, the time since
