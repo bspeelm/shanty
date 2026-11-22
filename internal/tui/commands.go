@@ -51,7 +51,7 @@ var commands = []command{
 	},
 	{
 		name:    "visualizer",
-		summary: "fill the screen with a turning pattern drawn from the clock",
+		summary: "fill the screen with a picture that moves with the music",
 		run:     func(string) (any, error) { return ShowVisualiser{}, nil },
 	},
 	{
@@ -87,7 +87,7 @@ var commands = []command{
 	},
 	{
 		name:    "wiki",
-		summary: "explain the commands",
+		summary: "list every key and every command",
 		run:     func(string) (any, error) { return ShowWiki{}, nil },
 	},
 	{

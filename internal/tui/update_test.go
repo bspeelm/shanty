@@ -1285,17 +1285,23 @@ func TestTheWikiOpensACommandAndComesBack(t *testing.T) {
 	if m.Screen() != ScreenWiki {
 		t.Fatalf(":wiki went to %s", m.Screen())
 	}
-	if m.rows() != len(commands) {
-		t.Errorf("the wiki lists %d rows and there are %d commands", m.rows(), len(commands))
+	listed := 0
+	for _, r := range m.keyRows() {
+		if r.kind == kindCommand {
+			listed++
+		}
 	}
-	if frame := m.View(); !strings.Contains(frame, ":search") {
+	if listed != len(commands) {
+		t.Errorf("the wiki lists %d commands and there are %d", listed, len(commands))
+	}
+	// The first command, whichever that is. Naming a command here would tie
+	// the test to the order of the list, and the order is a decision that is
+	// allowed to change.
+	first := commands[0]
+	m = onCommand(t, m, first.name)
+	if frame := m.View(); !strings.Contains(frame, ":"+first.name) {
 		t.Errorf("the list does not name the commands:\n%s", frame)
 	}
-
-	// Open the one the cursor starts on, whichever that is. Naming a command
-	// here would tie the test to the order of the list, and the order is a
-	// decision that is allowed to change.
-	first := commands[0]
 	m, _ = press(t, m, "enter")
 	if m.Screen() != ScreenWiki {
 		t.Fatalf("opening a command went to %s", m.Screen())
@@ -1330,7 +1336,7 @@ func TestTheWikiOpensACommandAndComesBack(t *testing.T) {
 // scrolled, and a highlight sitting on a sentence reads as a selection that
 // does nothing.
 func TestReadingAPageHasNoCursorOnIt(t *testing.T) {
-	m := send(t, loaded(t), ShowWiki{})
+	m := onCommand(t, send(t, loaded(t), ShowWiki{}), commands[0].name)
 	list := m.View()
 	m, _ = press(t, m, "enter")
 	page := m.View()
@@ -1349,8 +1355,7 @@ func TestReadingAPageHasNoCursorOnIt(t *testing.T) {
 // TestAWikiPageScrolls covers a description longer than the screen, which is
 // most of them.
 func TestAWikiPageScrolls(t *testing.T) {
-	m := send(t, loaded(t), ShowWiki{})
-	m, _ = press(t, m, "j") // search, which is long
+	m := onCommand(t, send(t, loaded(t), ShowWiki{}), "search") // which is long
 	m, _ = press(t, m, "enter")
 
 	first := m.View()

@@ -9,7 +9,7 @@ are loaded one album at a time, so a track on an album you have not opened is
 not there to be filtered. This asks the server instead.
 
 The results are the three kinds together under headings. `enter` opens an
-artist or an album, or plays a track. `esc` returns to the artist list.
+artist or an album, or plays a track. `esc` goes back, and `g/` returns here.
 
 ## playlist
 
@@ -168,9 +168,9 @@ with however it is set.
 
 ## wiki
 
-Shows this.
-
-`enter` on a command explains it, and `esc` goes back to the list.
+Lists every key, with the keys bound to each now, and every command. `?` shows
+the same. `/` finds a key by what it does. `enter` on a command explains it,
+and `esc` goes back to the list.
 
 ## messages
 
@@ -199,8 +199,8 @@ account. shanty says which of the two it ran into.
 Asks the server again for whatever screen you are on.
 
 A list is fetched once and kept, so an album added to the server after shanty
-started is not there. This asks again for the artist list, one artist's albums,
-one album's tracks, or the starred list.
+started is not there. This asks again for the library, the artists, one
+artist's albums, every album, one album's tracks, or the starred list.
 
 The cursor stays on what you had selected if it is still there, and the last
 row says what came back.

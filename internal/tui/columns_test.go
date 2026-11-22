@@ -206,12 +206,22 @@ func TestTheListHasTheSameRowsWhetherOrNotThereIsMusic(t *testing.T) {
 func frameRows(frame string) int { return strings.Count(frame, "\n") + 1 }
 
 func TestTheHelpLineEndsOnAWholeItem(t *testing.T) {
+	m := send(t, loaded(t), AlbumLoaded(tenTracks()))
+	whole := strings.Split(m.hintLine(400), " · ")
+	listed := func(s string) bool {
+		for _, item := range whole {
+			if item == s {
+				return true
+			}
+		}
+		return s == "…"
+	}
 	for _, w := range []int{40, 64, 80, 100, 132} {
-		line := helpLine(w)
+		line := m.hintLine(w)
 		if lipgloss.Width(line) > w {
 			t.Errorf("at width %d the help line is %d columns: %q", w, lipgloss.Width(line), line)
 		}
-		for _, item := range strings.Split(strings.TrimSuffix(line, " …"), " · ") {
+		for _, item := range strings.Split(line, " · ") {
 			if !listed(item) {
 				t.Errorf("at width %d the help line stops part way through an item: %q\n"+
 					"  the offending piece is %q", w, line, item)
@@ -220,26 +230,18 @@ func TestTheHelpLineEndsOnAWholeItem(t *testing.T) {
 	}
 }
 
-func listed(s string) bool {
-	for _, item := range helpItems {
-		if item == s {
-			return true
-		}
-	}
-	return false
-}
-
 func TestTheHelpLineSaysWhenItHasLeftSomethingOut(t *testing.T) {
-	narrow := helpLine(64)
-	if !strings.HasSuffix(narrow, " …") {
-		t.Errorf("not every item fits in 64 columns, so the line should say so: %q", narrow)
+	m := send(t, loaded(t), AlbumLoaded(tenTracks()))
+	narrow := m.hintLine(64)
+	if !strings.HasSuffix(narrow, " · … · ? keys") {
+		t.Errorf("not every item fits in 64 columns, so the line should say so and still end on the key that lists them: %q", narrow)
 	}
-	wide := helpLine(400)
-	if strings.HasSuffix(wide, " …") {
+	wide := m.hintLine(400)
+	if strings.Contains(wide, "…") {
 		t.Errorf("everything fits in 400 columns, so nothing should be left out: %q", wide)
 	}
-	if last := helpItems[len(helpItems)-1]; !strings.Contains(wide, last) {
-		t.Errorf("%q is missing from a line with room for it: %q", last, wide)
+	if !strings.HasSuffix(wide, " · ? keys") {
+		t.Errorf("the key that lists every key is not last on a line with room for it: %q", wide)
 	}
 }
 
