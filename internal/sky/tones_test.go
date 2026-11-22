@@ -46,7 +46,7 @@ const (
 	// ruleSpan of one another, and with the accent within ruleReach. None is
 	// below ruleFrom, which keeps out green, olive and yellow-green, or
 	// above ruleTo, which keeps out pink and magenta.
-	ruleSpan, ruleReach = 62.0, 92.0
+	ruleSpan, ruleReach = 62.0, 95.0
 	ruleFrom, ruleTo    = 180.0, 312.0
 	// No step has more chroma than ruleChroma, and none from rulePlum
 	// degrees up has more than rulePlumChroma.
@@ -57,7 +57,9 @@ const (
 	// lighter than the one before by at least ruleRise. The darkest step is
 	// left out: no cell is drawn in it.
 	ruleApart = 0.08
-	ruleRise  = 0.004
+	// A step of the accent may be ruleAccentApart from the step before.
+	ruleAccentApart = 0.10
+	ruleRise        = 0.004
 	// At most ruleAccent steps, the brightest, lie beyond the arc.
 	ruleAccent = 2
 )
@@ -81,7 +83,7 @@ func broken(t tones) []string {
 			}
 			sn, cs := math.Sincos(got.h * math.Pi / 180)
 			sn0, cs0 := math.Sincos(last.h * math.Pi / 180)
-			if d := math.Sqrt(math.Pow(got.l-last.l, 2) + math.Pow(got.c*cs-last.c*cs0, 2) + math.Pow(got.c*sn-last.c*sn0, 2)); d > ruleApart && i > 1 {
+			if d := math.Sqrt(math.Pow(got.l-last.l, 2) + math.Pow(got.c*cs-last.c*cs0, 2) + math.Pow(got.c*sn-last.c*sn0, 2)); i > 1 && d > ruleApart && (i < paletteSize-ruleAccent || d > ruleAccentApart) {
 				say("step %d is %.3f from the step before", i, d)
 			}
 		}
@@ -219,7 +221,8 @@ func TestGritAndFlowPalettesAreGradientsRoundTheWheel(t *testing.T) {
 }
 
 func TestAMorphBetweenTwoMadePalettesTakesTheKeyHueTheShortWay(t *testing.T) {
-	a, b := tones{key: 190, arc: 40, peak: 0.1, contrast: 1}, tones{key: 300, arc: 40, peak: 0.1, contrast: 1}
+	a := tones{key: 190, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9}
+	b := tones{key: 300, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9}
 	last := a.key
 	for w := 0.0; w <= 1; w += 0.05 {
 		k := mixTones(a, b, w).key

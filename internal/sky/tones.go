@@ -132,8 +132,11 @@ type tones struct {
 	key, arc float64
 	peak     float64
 	// contrast is the power the lightness rises by: below 1 the middle of
-	// the ramp is brighter, above 1 darker.
-	contrast float64
+	// the ramp is brighter, above 1 darker. light is the lightness the rise
+	// reaches at the bright end, and top the lightness of the brightest
+	// step, which the last few steps rise to.
+	contrast   float64
+	light, top float64
 	// The top accentSteps steps turn accentTurn degrees beyond the bright
 	// end of the arc, at a chroma of accent.
 	accentSteps        int
@@ -148,13 +151,13 @@ type tones struct {
 // made reports whether the palette is made from numbers.
 func (t tones) made() bool { return t.fixed == nil }
 
-// The lightness of the darkest and the brightest step of a made ramp, the
-// chroma of its ends as a share of its peak, and the hue its dark end leans
-// towards.
+// The lightness of the darkest step of a made ramp as a share of the
+// lightness its rise reaches, the chroma of its ends as a share of its peak,
+// and the hue its dark end leans towards.
 const (
-	rampDark, rampBright = 0.2, 0.97
-	rampEnds             = 0.3
-	coolHue              = 265.0
+	rampDark = 0.2
+	rampEnds = 0.3
+	coolHue  = 265.0
 )
 
 // leaning returns arc with the sign that takes the dark end of a ramp
@@ -170,7 +173,8 @@ func leaning(key, arc float64) float64 {
 // step returns the colour at a place along a made ramp, from 0 at its dark
 // end to 1 at its bright end. top is set for a step that carries the accent.
 func (t tones) step(at float64, top bool) lch {
-	c := lch{l: rampDark + (rampBright-rampDark)*math.Pow(at, t.contrast), h: t.key + t.arc*(at-0.5)}
+	c := lch{l: t.light*(rampDark+(1-rampDark)*math.Pow(at, t.contrast)) + (t.top-t.light)*math.Pow(at, 4),
+		h: t.key + t.arc*(at-0.5)}
 	bell := rampEnds + (1-rampEnds)*math.Sin(math.Pi*math.Pow(at, 0.85))
 	c.c = t.peak * bell * (1 - 0.8*math.Pow(at, 6))
 	// An accent that would leave the hues a made palette may have is left
@@ -228,6 +232,8 @@ func mixTones(a, b tones, w float64) tones {
 		arc:      mix(a.arc, b.arc),
 		peak:     mix(a.peak, b.peak),
 		contrast: mix(a.contrast, b.contrast),
+		light:    mix(a.light, b.light),
+		top:      mix(a.top, b.top),
 		land:     mix(a.land, b.land),
 	}
 	// Tones without an accent count as having one that is not turned and
