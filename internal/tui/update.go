@@ -71,16 +71,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.selecting(ScreenAlbums, 0), nil
 	case AlbumLoaded:
 		album := subsonic.Album(msg)
-		if album.ID != m.album.ID {
-			// An album with a cover holds the rows for it straight away. The
-			// picture is a request away and the list would otherwise jump
-			// when it lands.
-			m.art = nil
-			if album.CoverArt != "" {
-				m.art = m.artBlank
-			}
-		}
 		m = m.show(ScreenTracks)
+		if album.ID != m.album.ID {
+			m = m.covered(album, nil)
+		}
 		m.album = album
 		return m.selecting(ScreenTracks, 0), nil
 
@@ -181,7 +175,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.artBlank = blankLike(msg.Lines)
 		}
 		if msg.AlbumID == m.album.ID && msg.AlbumID != "" {
-			m.art, m.artOf = msg.Lines, msg.AlbumID
+			m = m.covered(m.album, msg.Lines)
 		}
 		return m, nil
 	case EditingPlaylist:
@@ -837,18 +831,26 @@ func (m Model) returned(p place) Model {
 	case p.screen == ScreenAlbums && p.artist.ID != m.artist.ID:
 		m.artist = p.artist
 	case p.screen == ScreenTracks && p.album.ID != m.album.ID:
-		m.album, m.art, m.artOf = p.album, p.art, p.album.ID
-		if p.art == nil {
-			// The cover was not held. Its rows are, if it has one.
-			m.artOf = ""
-			if p.album.CoverArt != "" {
-				m.art = m.artBlank
-			}
-		}
+		m.album = p.album
+		m = m.covered(p.album, p.art)
 	case p.screen == ScreenPlaylist && p.playlist.ID != m.playlist.ID:
 		m.playlist = p.playlist
 	}
 	return m.say("").selecting(p.screen, p.cursor).settled(p.screen)
+}
+
+// covered sets the cover drawn for an album and whose cover it is, together.
+// With no picture the album's rows are held blank if it has a cover, and no
+// cover is recorded as held.
+func (m Model) covered(album subsonic.Album, picture []string) Model {
+	m.art, m.artOf = picture, album.ID
+	if picture == nil {
+		m.artOf = ""
+		if album.CoverArt != "" {
+			m.art = m.artBlank
+		}
+	}
+	return m
 }
 
 // each is those places and the places each was opened through, with f applied

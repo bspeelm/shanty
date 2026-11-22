@@ -982,3 +982,32 @@ func TestALibraryReloadWhoseSecondListFailsShowsTheFailure(t *testing.T) {
 		t.Errorf("a reload of both lists: loading %v, %d albums, %q", m.loading(), len(m.albums), m.Status())
 	}
 }
+
+// TestBackToAnAlbumOpenedAgainBeforeItsCoverCameAsksForTheCover is an album
+// whose cover was held, left, and opened again: the cover is not held the
+// second time until it arrives, whatever was held the first time.
+func TestBackToAnAlbumOpenedAgainBeforeItsCoverCameAsksForTheCover(t *testing.T) {
+	a := subsonic.Album{ID: "al-a", Name: "A", CoverArt: "cv-a", Songs: tenTracks().Songs}
+	b := subsonic.Album{ID: "al-b", Name: "B", CoverArt: "cv-b", Songs: tenTracks().Songs}
+	picture := []string{"a picture", "of a cover"}
+	next, _ := New().Update(tea.WindowSizeMsg{Width: 64, Height: 40})
+	m := onArtists(t, send(t, next.(Model), ArtistsLoaded(library()), AlbumsLoaded([]subsonic.Album{a, b})))
+
+	// A with its cover, back, B, back, A again, and away before A's cover.
+	m = send(t, m, keyOf("g"), keyOf("b"), AlbumLoaded(a), CoverArt{AlbumID: "al-a", Lines: picture}, keyOf("esc"))
+	m = send(t, m, AlbumLoaded(b), keyOf("esc"), AlbumLoaded(a))
+	m = send(t, onQueue(t, m), keyOf("g"), keyOf("b"), AlbumLoaded(b), CoverArt{AlbumID: "al-a", Lines: picture})
+
+	var asked tea.Msg
+	for range 3 {
+		var msg tea.Msg
+		m, msg = press(t, m, "esc")
+		if m.Screen() == ScreenTracks && m.Album().ID == "al-a" {
+			asked = msg
+			break
+		}
+	}
+	if m.Album().ID != "al-a" || !reflect.DeepEqual(asked, FetchCover{Album: a}) {
+		t.Errorf("back to %q emitted %#v, want its cover asked for", m.Album().Name, asked)
+	}
+}
