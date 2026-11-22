@@ -256,3 +256,23 @@ func TestHalfAScreenIsMovedByItsOwnKeys(t *testing.T) {
 		t.Errorf("ctrl+u went to row %d", got)
 	}
 }
+
+func TestTheJumpToANarrowedQueueLandsOnARowOfIt(t *testing.T) {
+	m := onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued(), At: 2}))
+	m = narrowed(t, m, "aoi")
+	if m.rows() != 2 {
+		t.Fatalf("the filter leaves %d rows", m.rows())
+	}
+	m = onQueue(t, onArtists(t, m))
+	if m.Filter() != "aoi" || m.Cursor() >= m.rows() {
+		t.Fatalf("gq came back with the filter %q on row %d of %d", m.Filter(), m.Cursor(), m.rows())
+	}
+
+	m = onQueue(t, onArtists(t, send(t, m, QueueChanged{Tracks: queued(), At: 1})))
+	if m.selectedIndex() != 1 {
+		t.Errorf("gq is on track %d of the queue, want the one playing", m.selectedIndex())
+	}
+}
+
+// selectedIndex is the place in the whole list of the row the cursor is on.
+func (m Model) selectedIndex() int { return m.matches()[m.cursor[m.screen]] }
