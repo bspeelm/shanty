@@ -130,7 +130,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The list is empty rather than nil once the server has answered.
 			m.playlists = []subsonic.Playlist{}
 		}
-		return m.pruned().say("").settled(ScreenPlaylists), nil
+		m = m.pruned().say("").settled(ScreenPlaylists)
+		if m.screen == ScreenPlaylist && !m.lists(m.playlist.ID) {
+			// The playlist on screen is gone, so the screen is left.
+			m.reordering, m.order, m.drawnFrom = false, nil, nil
+			return m.leave()
+		}
+		return m, nil
 	case PlaylistLoaded:
 		m = m.show(ScreenPlaylist)
 		m.playlist = subsonic.Playlist(msg)
@@ -872,13 +878,18 @@ func (m Model) pruned() Model {
 		return m
 	}
 	return m.remembering(func(p place) (place, bool) {
-		for _, list := range m.playlists {
-			if list.ID == p.playlist.ID {
-				return p, true
-			}
-		}
-		return p, p.screen != ScreenPlaylist
+		return p, p.screen != ScreenPlaylist || m.lists(p.playlist.ID)
 	})
+}
+
+// lists reports whether the server's list of playlists holds one.
+func (m Model) lists(id string) bool {
+	for _, list := range m.playlists {
+		if list.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // remembering applies f to every place there is a way back to.
@@ -937,6 +948,12 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		m.topic, m.topicText = "", ""
 		return m.returned(m.listed), nil
 	}
+	return m.leave()
+}
+
+// leave shows the place the screen showing was opened from, or the screen
+// that was showing before it, or the library.
+func (m Model) leave() (tea.Model, tea.Cmd) {
 	p := place{screen: ScreenLibrary, cursor: m.cursor[ScreenLibrary]}
 	if n := len(m.up); n > 0 {
 		p = m.up[n-1]

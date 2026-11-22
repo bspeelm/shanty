@@ -160,6 +160,11 @@ type (
 		what   string
 		next   bool
 	}
+	// deleted is a playlist that was deleted, with the playlists that are left.
+	deleted struct {
+		name  string
+		lists []subsonic.Playlist
+	}
 	// savedQueue is what the server was holding when this started.
 	savedQueue subsonic.PlayQueue
 	// stallCheck asks whether playback has moved on from the position it
@@ -330,6 +335,9 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, emit(shuffled{tracks: msg.Songs, what: msg.What})
 	case deletePlaylist:
 		return a, a.removePlaylist(msg)
+	case deleted:
+		next, _ := a.forward(tui.PlaylistsLoaded(msg.lists))
+		return next.(app).forward(tui.Notice("deleted " + msg.name))
 	case shuffled:
 		if len(msg.tracks) == 0 {
 			return a.forward(tui.Failed{Message: "there is nothing to shuffle"})
@@ -1622,7 +1630,12 @@ func (a app) removePlaylist(msg deletePlaylist) tea.Cmd {
 		if err := client.DeletePlaylist(a.ctx, msg.id); err != nil {
 			return tui.Failed{Message: err.Error()}
 		}
-		return tui.Notice("deleted " + msg.name)
+		// The list is read again, so the screen stops showing what is gone.
+		lists, err := client.Playlists(a.ctx)
+		if err != nil {
+			return tui.Notice("deleted " + msg.name)
+		}
+		return deleted{name: msg.name, lists: lists}
 	}
 }
 
