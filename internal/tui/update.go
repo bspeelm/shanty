@@ -982,7 +982,7 @@ func (m Model) show(s Screen) Model {
 	if deep(s) {
 		m.up = append(from.up[:len(from.up):len(from.up)], from)
 		m.up = m.up[max(0, len(m.up)-trailKept):]
-		return m.pruned().say("")
+		return m.say("")
 	}
 	var trail []place
 	m.up, m.filter = nil, m.kept[s]
