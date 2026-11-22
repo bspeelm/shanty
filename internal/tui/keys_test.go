@@ -283,8 +283,12 @@ func TestACountIsListedForEveryKeyThatTakesOne(t *testing.T) {
 		if a.Keys[0] == "ctrl+u" || a.Keys[0] == "ctrl+d" {
 			key = tea.KeyMsg{Type: map[string]tea.KeyType{"ctrl+u": tea.KeyCtrlU, "ctrl+d": tea.KeyCtrlD}[a.Keys[0]]}
 		}
-		plain, cmd := base.Update(key)
-		with := send(t, base, keyOf("2"))
+		from := base
+		if a.Name == "playlist-remove" {
+			from = onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()}))
+		}
+		plain, cmd := from.Update(key)
+		with := send(t, from, keyOf("2"))
 		numbered, counting := with.Update(key)
 		var one, two tea.Msg
 		if cmd != nil {

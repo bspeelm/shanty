@@ -140,15 +140,15 @@ func TestEnterOnATrackFoundPlaysFromTheTracksListedThere(t *testing.T) {
 func TestTheQueueIsEditedWithTheKeysThatEditAPlaylist(t *testing.T) {
 	m := down(t, onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()})), 1)
 
-	if _, msg := press(t, m, "r"); msg != RemoveQueued(1) {
+	if _, msg := press(t, m, "r"); msg != (RemoveQueued{At: 1, ID: "tr-2", Count: 1}) {
 		t.Errorf("r on the second track emitted %#v", msg)
 	}
 	up, msg := press(t, m, "K")
-	if msg != (MoveQueued{From: 1, To: 0}) || up.Cursor() != 0 {
+	if msg != (MoveQueued{From: 1, To: 0, ID: "tr-2"}) || up.Cursor() != 0 {
 		t.Errorf("K emitted %#v and left the cursor on row %d", msg, up.Cursor())
 	}
 	dn, msg := press(t, m, "J")
-	if msg != (MoveQueued{From: 1, To: 2}) || dn.Cursor() != 2 {
+	if msg != (MoveQueued{From: 1, To: 2, ID: "tr-2"}) || dn.Cursor() != 2 {
 		t.Errorf("J emitted %#v and left the cursor on row %d", msg, dn.Cursor())
 	}
 	if _, msg := press(t, dn, "J"); msg != nil {
@@ -158,13 +158,24 @@ func TestTheQueueIsEditedWithTheKeysThatEditAPlaylist(t *testing.T) {
 		t.Errorf("K on the first row emitted %#v", msg)
 	}
 
-	kept := narrowed(t, onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()})), "a")
+	// Narrowed to the two tracks by one artist, the second row shown is the
+	// second track of the queue, and the row after the filter is the third.
+	kept := narrowed(t, onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()})), "low")
+	if kept.rows() != 1 {
+		t.Fatalf("the filter leaves %d rows, want only the third track", kept.rows())
+	}
 	said, msg := press(t, kept, "J")
 	if msg != nil || !strings.Contains(said.Status(), "narrowed") {
 		t.Errorf("J on a narrowed queue emitted %#v and said %q", msg, said.Status())
 	}
-	if _, msg := press(t, down(t, kept, 1), "r"); msg != RemoveQueued(1) {
-		t.Errorf("r on a narrowed queue emitted %#v, want the track's own place", msg)
+	if _, msg := press(t, kept, "r"); msg != (RemoveQueued{At: 2, ID: "tr-9", Count: 1}) {
+		t.Errorf("r on a narrowed queue emitted %#v, want the track's own place in the queue", msg)
+	}
+
+	counted := onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()}))
+	counted, _ = press(t, counted, "2")
+	if _, msg := press(t, counted, "r"); msg != (RemoveQueued{At: 0, ID: "tr-1", Count: 2}) {
+		t.Errorf("2r emitted %#v, want two tracks taken from the cursor down", msg)
 	}
 }
 

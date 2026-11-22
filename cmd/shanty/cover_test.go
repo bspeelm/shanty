@@ -633,3 +633,25 @@ func TestAnAlbumOpenedWithEnterGetsItsCoverAskedForOnce(t *testing.T) {
 		t.Errorf("the cover was asked for %d times, want once", n)
 	}
 }
+
+// TestACoverAskedForOnTheWayBackIsFetched covers the request the interface
+// makes when it goes back to an album whose cover it does not hold.
+func TestACoverAskedForOnTheWayBackIsFetched(t *testing.T) {
+	a, srv := withCovers(t)
+	album, err := a.client.Album(t.Context(), "al-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The album is put on screen without the app, which would fetch its cover.
+	shown, _ := a.ui.Update(tui.AlbumLoaded(album))
+	a.ui = shown.(tui.Model)
+	if strings.Contains(a.View(), "f=100") || requests(srv, 0, "getCoverArt") != 0 {
+		t.Fatal("the cover is on screen before it was asked for")
+	}
+
+	a = settle(t, a, tui.FetchCover{Album: album})
+
+	if !strings.Contains(a.View(), "f=100") || requests(srv, 0, "getCoverArt") != 1 {
+		t.Errorf("the cover was asked for %d times and the screen shows:\n%s", requests(srv, 0, "getCoverArt"), visible(a.View()))
+	}
+}

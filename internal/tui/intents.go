@@ -85,16 +85,31 @@ type (
 	}
 	// JumpTo asks for the queue to move to one of its own tracks.
 	JumpTo int
-	// RemoveQueued asks for the track at that place in the queue to be taken
-	// out of it, and MoveQueued for the track at From to be put at To.
-	RemoveQueued int
-	MoveQueued   struct{ From, To int }
+	// RemoveQueued asks for Count tracks to be taken out of the queue, from
+	// the place At down, and MoveQueued for the track at From to be put at
+	// To. ID is the track the screen showed at that place, and nothing is
+	// done if another is there now.
+	RemoveQueued struct {
+		At    int
+		ID    string
+		Count int
+	}
+	MoveQueued struct {
+		From, To int
+		ID       string
+	}
+	// FetchCover asks for the cover of an album that is on screen without
+	// one.
+	FetchCover struct{ Album subsonic.Album }
 	// Search asks the server for anything matching the query.
 	Search string
 	// Resume asks for the queue the server is holding to be taken up.
 	Resume struct{}
 	// Reload asks for what is on screen to be fetched from the server again.
-	Reload struct{}
+	// Ask numbers the reload when the interface asks for it, and comes back
+	// in the Failed that answers it. Sent to the interface with no number,
+	// it begins a reload the caller is making.
+	Reload struct{ Ask int }
 	// Scan asks the server to look at its music folder again.
 	Scan struct{}
 	// FetchPlaylists and FetchEveryAlbum ask for what a screen the interface
@@ -151,11 +166,14 @@ type (
 	// Was is the order the screen was drawn from: the caller compares it to
 	// what the server holds and writes nothing if they differ, because the
 	// only call that can express an order replaces the whole playlist.
+	//
+	// Ask numbers the request, and comes back in the Failed that refuses it.
 	ReorderPlaylist struct {
 		ID    string
 		Name  string
 		Songs []string
 		Was   []string
+		Ask   int
 	}
 	// RenamePlaylist gives a playlist a new name. It carries the identifier
 	// rather than the old name, because the playlist is the one on screen and
