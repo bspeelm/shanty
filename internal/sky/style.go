@@ -185,7 +185,7 @@ const (
 	// are a yellow of hue gritHot, at gritAccent of its peak chroma, and its
 	// peak chroma is gritStrength of what its saturation gives.
 	gritArc, gritHot, gritAccent = 30.0, 90.0, 0.5
-	gritLight, gritTop, gritDark = 0.66, 0.813, 0.29
+	gritLight, gritTop, gritDark = 0.66, 0.87, 0.29
 	gritStrength                 = 1.15
 	// Flow is keyed anywhere in the gold family. Its second member has
 	// flowMate of the chroma of its first.
