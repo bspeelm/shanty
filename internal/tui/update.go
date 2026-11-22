@@ -588,23 +588,21 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 
 // under is what the cursor is on.
 type under struct {
-	// kind is what the row is. It is kindHeading when there is no row.
+	// kind is what the row is. It is kindHeading when there is no row, or the
+	// row is a heading.
 	kind kind
 	id   string
-	// name is what the row is called.
-	name string
-	// songs is the list a track row sits in and index is its place in it. On
-	// a search and on the starred screen the list is the tracks shown there.
-	songs subsonic.Album
-	index int
+	// songs is the tracks listed on a search or on the starred screen, for a
+	// track row there.
+	songs []subsonic.Song
 	// scope and holder name the collection a track row belongs to, where it
-	// belongs to one: an album, a playlist or the queue.
+	// belongs to one: an album or a playlist.
 	scope  Scope
 	holder string
 }
 
-// under reports what the cursor is on. The library, the wiki and the messages
-// hold nothing that can be played, so they report no row.
+// under reports what the cursor is on. The library, the queue, the wiki and
+// the messages report no row.
 func (m Model) under() under {
 	if m.rows() == 0 {
 		return under{}
@@ -612,39 +610,26 @@ func (m Model) under() under {
 	at := m.matches()[m.cursor[m.screen]]
 	switch m.screen {
 	case ScreenArtists:
-		return under{kind: kindArtist, id: m.artists[at].ID, name: m.artists[at].Name}
+		return under{kind: kindArtist, id: m.artists[at].ID}
 	case ScreenAlbums:
-		return under{kind: kindAlbum, id: m.artist.Albums[at].ID, name: m.artist.Albums[at].Name}
+		return under{kind: kindAlbum, id: m.artist.Albums[at].ID}
 	case ScreenEveryAlbum:
-		return under{kind: kindAlbum, id: m.albums[at].ID, name: m.albums[at].Name}
+		return under{kind: kindAlbum, id: m.albums[at].ID}
 	case ScreenTracks:
-		song := m.album.Songs[at]
-		return under{kind: kindSong, id: song.ID, name: song.Title, songs: m.album, index: at,
-			scope: ScopeAlbum, holder: m.album.ID}
+		return under{kind: kindSong, id: m.album.Songs[at].ID, scope: ScopeAlbum, holder: m.album.ID}
 	case ScreenPlaylists:
-		return under{kind: kindPlaylist, id: m.playlists[at].ID, name: m.playlists[at].Name}
+		return under{kind: kindPlaylist, id: m.playlists[at].ID}
 	case ScreenPlaylist:
-		list := asAlbum(m.playlist)
-		if m.reordering {
-			list.Songs = m.order
-		}
-		return under{kind: kindSong, id: list.Songs[at].ID, name: list.Songs[at].Title, songs: list,
-			index: at, scope: ScopePlaylist, holder: m.playlist.ID}
-	case ScreenQueue:
-		return under{kind: kindSong, id: m.queued[at].ID, name: m.queued[at].Title, index: at,
-			scope: ScopeQueue}
+		return under{kind: kindSong, id: m.idAt(at), scope: ScopePlaylist, holder: m.playlist.ID}
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[at]
-		u := under{kind: r.kind, id: r.id, name: r.name}
+		u := under{kind: r.kind, id: r.id}
 		if r.kind != kindSong {
 			return u
 		}
 		for _, i := range m.matches() {
 			if other := m.grouped()[i]; other.kind == kindSong {
-				if i == at {
-					u.index = len(u.songs.Songs)
-				}
-				u.songs.Songs = append(u.songs.Songs, other.album.Songs...)
+				u.songs = append(u.songs, other.album.Songs...)
 			}
 		}
 		return u
@@ -658,12 +643,11 @@ func (m Model) under() under {
 // An artist, an album or a playlist row is that collection. A track row is the
 // album or the playlist holding it, and on a search or the starred screen it
 // is every track listed there. The queue is the tracks after the one playing.
-// A library row is what the row opens. :shuffle keeps its own meaning, which
-// is the whole server.
+// On the library the Starred and Queue rows are shuffled, and the other rows
+// say where to press S.
 func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
-	queue := emit(ShuffleThis{Scope: ScopeQueue})
-	if len(m.queued) == 0 {
-		queue = nil
+	if m.reordering {
+		return m.say("nothing is shuffled while the playlist is being reordered — enter saves, esc discards"), nil
 	}
 	switch m.screen {
 	case ScreenLibrary:
@@ -671,22 +655,16 @@ func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
 			break
 		}
 		switch libraryRows[m.matches()[m.cursor[m.screen]]].screen {
-		case ScreenArtists, ScreenEveryAlbum:
-			return m, emit(Shuffle{})
 		case ScreenStarred:
 			return m, emit(ShuffleThis{Scope: ScopeStarred})
 		case ScreenQueue:
-			if queue != nil {
-				return m, queue
-			}
-			return m.say("the queue is empty, so there is nothing to shuffle — enter on a track plays it"), nil
+			return m.shuffleQueue()
+		case ScreenPlaylists:
+			return m.say("choose a playlist to shuffle — enter lists them, then press S on one"), nil
 		}
-		return m.say("choose a playlist to shuffle — enter lists them, then press S on one"), nil
+		return m.say(":shuffle plays everything on the server — or enter lists these, then press S on one"), nil
 	case ScreenQueue:
-		if queue != nil {
-			return m, queue
-		}
-		return m.say("the queue is empty, so there is nothing to shuffle — enter on a track plays it"), nil
+		return m.shuffleQueue()
 	case ScreenWiki, ScreenMessages:
 		return m.say("nothing to shuffle here — press S on an artist, an album, a playlist or a track"), nil
 	}
@@ -701,14 +679,15 @@ func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
 	case u.kind == kindSong && u.holder != "":
 		return m, emit(ShuffleThis{Scope: u.scope, ID: u.holder})
 	case u.kind == kindSong && m.screen == ScreenSearch:
-		return m, emit(ShuffleSongs{Songs: u.songs.Songs,
-			What: fmt.Sprintf("%s found for %q", plural(len(u.songs.Songs), "track"), m.query)})
+		return m, emit(ShuffleSongs{Songs: u.songs,
+			What: fmt.Sprintf("%s found for %q", plural(len(u.songs), "track"), m.query)})
 	case u.kind == kindSong:
-		return m, emit(ShuffleSongs{Songs: u.songs.Songs,
-			What: plural(len(u.songs.Songs), "starred track")})
+		return m, emit(ShuffleSongs{Songs: u.songs, What: plural(len(u.songs), "starred track")})
 	}
 
 	switch {
+	case m.rows() > 0:
+		return m.say("that row is a heading — move to an artist, an album or a track and press S"), nil
 	case m.filter != "":
 		return m.say("nothing matches " + Sanitise(m.filter) + ", so there is nothing to shuffle — / narrows the list again"), nil
 	case m.screen == ScreenStarred:
@@ -717,6 +696,20 @@ func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
 		return m.say("the search found nothing to shuffle — :search <words> looks again"), nil
 	}
 	return m.say("nothing to shuffle here — press S on an artist, an album, a playlist or a track"), nil
+}
+
+// shuffleQueue asks for the tracks after the one playing to be put in a random
+// order, or refuses and says why when fewer than two follow it.
+func (m Model) shuffleQueue() (tea.Model, tea.Cmd) {
+	switch after := len(m.queued) - m.queuedAt - 1; {
+	case len(m.queued) == 0:
+		return m.refuse("the queue is empty, so there is nothing to shuffle — enter on a track plays it"), nil
+	case after < 0:
+		return m.refuse("nothing is playing, so there is nothing after it to shuffle — enter on a track plays it"), nil
+	case after < 2:
+		return m.refuse("fewer than two tracks follow the one playing, so there is nothing to shuffle — a on a track adds it"), nil
+	}
+	return m, emit(ShuffleThis{Scope: ScopeQueue})
 }
 
 // open moves down one screen, or plays the selected track. The album travels

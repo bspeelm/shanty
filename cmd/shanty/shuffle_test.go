@@ -273,6 +273,7 @@ func TestShufflingAQueueWithNothingToShuffleSaysSoAndChangesNothing(t *testing.T
 		wants string
 	}{
 		"empty":     {nil, "the queue is empty"},
+		"finished":  {tui.PlayFrom{Album: album, Index: 3}, "nothing is playing"},
 		"last":      {tui.PlayFrom{Album: album, Index: 2}, "fewer than two"},
 		"one after": {tui.PlayFrom{Album: album, Index: 1}, "fewer than two"},
 	} {
@@ -311,6 +312,26 @@ func TestAShuffleTheServerDoesNotAnswerIsReportedAndTheQueueIsKept(t *testing.T)
 				t.Errorf("the queue was changed to %v at %d", ids(a), a.queue.At())
 			}
 		})
+	}
+}
+
+// TestAStarredShuffleThatFailsPartWayQueuesNothing covers a failure after
+// some of what is starred has already been read.
+func TestAStarredShuffleThatFailsPartWayQueuesNothing(t *testing.T) {
+	a, srv := withPlaylists(t, nil)
+	a = sixQueued(t, a)
+	star(t, a, subsonic.KindSong, "tr-4")
+	star(t, a, subsonic.KindAlbum, "al-1")
+	star(t, a, subsonic.KindArtist, "ar-2")
+	srv.Refuse("ar-2")
+
+	a = settle(t, a, tui.ShuffleThis{Scope: tui.ScopeStarred})
+
+	if strings.Contains(a.ui.Status(), "shuffling") || a.ui.Status() == "" {
+		t.Errorf("a starred artist that could not be read left %q", a.ui.Status())
+	}
+	if a.queue.Len() != 6 || a.queue.At() != 1 {
+		t.Errorf("the queue was changed to %v at %d", ids(a), a.queue.At())
 	}
 }
 

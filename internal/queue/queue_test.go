@@ -387,9 +387,9 @@ func TestShufflingNothingIsNothing(t *testing.T) {
 	}
 }
 
-// TestShufflingTheRestKeepsEveryTrackAndWhatHasPlayed is the property the
-// queue screen relies on: the track playing and those before it stay where
-// they are, and nothing is gained or lost after them.
+// TestShufflingTheRestKeepsEveryTrackAndWhatHasPlayed checks that the track
+// playing and those before it stay where they are, and that nothing is gained
+// or lost after them.
 func TestShufflingTheRestKeepsEveryTrackAndWhatHasPlayed(t *testing.T) {
 	for n := range 12 {
 		for at := 0; at <= n; at++ {

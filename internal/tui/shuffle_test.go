@@ -152,8 +152,6 @@ func TestShuffleAsksForWhatTheCursorIsOnOrTheListItIsIn(t *testing.T) {
 			ShuffleSongs{Songs: results().Songs[:1], What: `1 track found for "water"`}},
 		{"a starred track", down(t, starred, 2),
 			ShuffleSongs{Songs: starredChanged().Results.Songs, What: "1 starred track"}},
-		{"the library's artists", onLibrary("Artists"), Shuffle{}},
-		{"the library's albums", onLibrary("Albums"), Shuffle{}},
 		{"the library's starred", onLibrary("Starred"), ShuffleThis{Scope: ScopeStarred}},
 		{"the library's queue", onLibrary("Queue"), ShuffleThis{Scope: ScopeQueue}},
 		{"the queue", onQueue(t, library), ShuffleThis{Scope: ScopeQueue}},
@@ -183,8 +181,18 @@ func TestShuffleWithNothingUnderItSaysWhatIsWrongAndWhatToDo(t *testing.T) {
 		wants []string
 	}{
 		{"the library's playlists", onRow(t, library, "Playlists"), []string{"choose a playlist", "press S"}},
+		{"the library's artists", onRow(t, library, "Artists"), []string{":shuffle", "press S"}},
+		{"the library's albums", onRow(t, library, "Albums"), []string{":shuffle", "press S"}},
 		{"the library's queue, empty", onRow(t, library, "Queue"), []string{"queue is empty", "enter"}},
 		{"the queue, empty", onQueue(t, base), []string{"queue is empty", "enter"}},
+		{"the queue, finished", onQueue(t, send(t, base, QueueChanged{Tracks: queued(), At: 3})),
+			[]string{"nothing is playing", "enter"}},
+		{"the queue, on its last track", onQueue(t, send(t, base, QueueChanged{Tracks: queued(), At: 2})),
+			[]string{"fewer than two tracks follow", "a on a track"}},
+		{"the queue, with one track left", onQueue(t, send(t, base, QueueChanged{Tracks: queued(), At: 1})),
+			[]string{"fewer than two tracks follow", "a on a track"}},
+		{"a playlist being reordered", reordering(t, evening3(t)), []string{"being reordered", "enter saves"}},
+		{"a heading", onHeading(t, searched(t)), []string{"heading", "press S"}},
 		{"nothing starred", onStarred(t, base), []string{"nothing is starred", "*"}},
 		{"a search that found nothing", send(t, base, SearchLoaded{Query: "zzz"}), []string{"found nothing", ":search"}},
 		{"every album, with none", send(t, base, keyOf("g"), keyOf("b"), AlbumsLoaded(nil)), []string{"nothing to shuffle here", "press S on"}},
@@ -223,5 +231,24 @@ func TestShuffleEverythingIsStillItsOwnCommand(t *testing.T) {
 	_, msg := typeCommand(t, loaded(t), "shuffle")
 	if _, ok := msg.(Shuffle); !ok {
 		t.Errorf(":shuffle emitted %#v, want Shuffle", msg)
+	}
+}
+
+// onHeading puts the cursor on the first row of a search, which is a heading.
+// No key leaves it there.
+func onHeading(t *testing.T, m Model) Model {
+	t.Helper()
+	m = m.selecting(m.screen, 0)
+	if m.grouped()[0].selectable() {
+		t.Fatal("the first row is not a heading")
+	}
+	return m
+}
+
+func TestTheQueueIsRefusedTheSameWayHereAsByTheApp(t *testing.T) {
+	m := onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued(), At: 2}))
+	m, _ = press(t, m, "S")
+	if !m.statusFailed {
+		t.Errorf("too few tracks to shuffle is not drawn as a refusal: %q", m.Status())
 	}
 }
