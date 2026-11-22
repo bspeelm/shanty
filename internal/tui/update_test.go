@@ -1196,7 +1196,7 @@ func TestReloadKeepsTheSelectionOnWhatWasSelected(t *testing.T) {
 
 	was := m.artists[m.Cursor()].ID
 	m = send(t, m, Reload{})
-	if !m.loading {
+	if !m.loading() {
 		t.Error("a reload does not say it is under way")
 	}
 
@@ -1205,7 +1205,7 @@ func TestReloadKeepsTheSelectionOnWhatWasSelected(t *testing.T) {
 	grown := append([]subsonic.Artist{{ID: "ar-0", Name: "A New Arrival", AlbumCount: 1}}, library()...)
 	m = send(t, m, ArtistsLoaded(grown))
 
-	if m.loading {
+	if m.loading() {
 		t.Error("the reload never finished")
 	}
 	if got := m.artists[m.Cursor()].ID; got != was {

@@ -310,7 +310,7 @@ func opened(t *testing.T, m Model) (Model, int) {
 func TestAnArtistThatArrivesAfterItsScreenWasLeftDoesNotTakeTheScreen(t *testing.T) {
 	m, ask := opened(t, loaded(t))
 	m, _ = press(t, m, "h")
-	if m.loading {
+	if m.loading() {
 		t.Error("the library still says it is loading what was walked away from")
 	}
 
@@ -434,8 +434,8 @@ func TestAMessageAboutSomethingStillArrivingStaysWhileKeysArePressed(t *testing.
 
 func TestAReloadTheServerRefusedLeavesNoReloadWaiting(t *testing.T) {
 	m := send(t, onQueue(t, loaded(t)), Reload{}, Failed{Message: "there is nothing here to fetch again"})
-	if m.loading || m.keep != "" {
-		t.Fatalf("a refused reload is still waiting: loading %v, keeping %q", m.loading, m.keep)
+	if m.loading() || m.keep != "" {
+		t.Fatalf("a refused reload is still waiting: loading %v, keeping %q", m.loading(), m.keep)
 	}
 
 	m = send(t, onArtists(t, m), ArtistsLoaded(library()))
@@ -473,7 +473,7 @@ func TestReloadingTheStarredListKeepsTheSelection(t *testing.T) {
 	grown.IDs["ar-3"] = true
 	m = send(t, m, Reload{}, grown)
 
-	if m.loading {
+	if m.loading() {
 		t.Error("the reload never finished")
 	}
 	if got := m.starredRows[m.Cursor()].id; got != was {

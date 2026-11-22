@@ -168,8 +168,12 @@ type Model struct {
 	paused     bool
 	volume     int
 
-	status  string
-	loading bool
+	// status is the message on the last row. starting says the library has
+	// not arrived since the program began, and stalled that something failed
+	// while this screen was showing, so its own list is not waited for.
+	status   string
+	starting bool
+	stalled  bool
 
 	// said is every message shown this session, oldest first, so that one
 	// which scrolled past can be read again. It is kept in memory only.
@@ -190,6 +194,8 @@ type Model struct {
 	// whose answer will be shown. It is zero when none is waited for.
 	asks    int
 	waiting int
+	// opens is what to say while the open waited for arrives.
+	opens string
 	// keep is what was selected when a reload was asked for, so the cursor can
 	// go back to it once the answer arrives.
 	keep string
@@ -217,11 +223,11 @@ const remembered = 200
 // New returns a model with nothing loaded.
 func New() Model {
 	return Model{
-		cursor:  map[Screen]int{},
-		volume:  100,
-		loading: true,
-		status:  "loading the library",
-		now:     time.Now,
+		cursor:   map[Screen]int{},
+		volume:   100,
+		starting: true,
+		status:   "loading the library",
+		now:      time.Now,
 	}
 }
 
@@ -237,8 +243,16 @@ func (m Model) Line() string     { return m.line }
 func (m Model) Pending() string  { return m.pending }
 func (m Model) Count() string    { return m.count }
 func (m Model) Cursor() int      { return m.cursor[m.screen] }
-func (m Model) Status() string   { return m.status }
 func (m Model) Paused() bool     { return m.paused }
+
+// Status is the message on the last row, or what is still arriving when
+// there is none.
+func (m Model) Status() string {
+	if m.status != "" {
+		return m.status
+	}
+	return m.arriving()
+}
 
 // Editing is the playlist the library lists are adding to, if any.
 func (m Model) Editing() subsonic.Playlist { return m.editing }
