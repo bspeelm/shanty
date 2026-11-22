@@ -270,14 +270,16 @@ func TestACountIsListedForEveryKeyThatTakesOne(t *testing.T) {
 	if !strings.Contains(text, "0-9  type a number") {
 		t.Errorf("the keys screen does not list the digits:\n%s", text)
 	}
+	if !listedKeys(base, "UNDER THE VISUALISER OR A COVER")["0-9"] {
+		t.Error("the keys screen does not list the digits under the visualiser or a cover")
+	}
 	counted := 0
 	for _, a := range Actions() {
-		if a.Count == "" {
-			continue
-		}
-		counted++
-		if !strings.Contains(text, "{n} "+strings.Join(base.keysFor(a.Name), " ")+"  "+a.Count) {
-			t.Errorf("%s takes a count and the keys screen does not list it", a.Name)
+		if a.Count != "" {
+			counted++
+			if !strings.Contains(text, "{n} "+strings.Join(base.keysFor(a.Name), " ")+"  "+a.Count) {
+				t.Errorf("%s takes a count and the keys screen does not list it", a.Name)
+			}
 		}
 		key := keyOf(a.Keys[0])
 		if a.Keys[0] == "ctrl+u" || a.Keys[0] == "ctrl+d" {
@@ -297,8 +299,14 @@ func TestACountIsListedForEveryKeyThatTakesOne(t *testing.T) {
 		if counting != nil {
 			two = counting()
 		}
-		if reflect.DeepEqual(seen(plain.(Model), one), seen(numbered.(Model), two)) {
+		// Both ways: a key listed as taking a number does something else
+		// with one, and a key that does something else with one is listed.
+		same := reflect.DeepEqual(seen(plain.(Model), one), seen(numbered.(Model), two))
+		if same && a.Count != "" {
 			t.Errorf("a number before %s changes nothing, and it is listed as taking one", a.Name)
+		}
+		if !same && a.Count == "" {
+			t.Errorf("a number before %s changes what it does, and it is not listed as taking one", a.Name)
 		}
 	}
 	if counted < 7 {

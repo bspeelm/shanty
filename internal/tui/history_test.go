@@ -98,6 +98,24 @@ func TestWhatBackRemembersIsBounded(t *testing.T) {
 	if len(m.up) != trailKept {
 		t.Errorf("the screen showing was opened through %d places, want %d", len(m.up), trailKept)
 	}
+
+	// By the keys: an artist is opened and the artists are jumped back to,
+	// which remembers the artist's albums each time.
+	m = loaded(t)
+	for range trailKept + 9 {
+		m = onArtists(t, send(t, m, ArtistLoaded(library()[0])))
+	}
+	if len(m.trail) != trailKept {
+		t.Fatalf("%d places are remembered after opening and leaving an artist %d times, want %d",
+			len(m.trail), trailKept+9, trailKept)
+	}
+	backs := 0
+	for ; m.Screen() != ScreenLibrary && backs < 5*trailKept; backs++ {
+		m, _ = press(t, m, "esc")
+	}
+	if m.Screen() != ScreenLibrary || backs < trailKept {
+		t.Errorf("%d backs ended on %s", backs, m.Screen())
+	}
 	for range 3 {
 		for _, s := range Screens {
 			if !deep(s) {
@@ -281,10 +299,13 @@ func TestTheJumpToANarrowedQueueLandsOnARowOfIt(t *testing.T) {
 func (m Model) selectedIndex() int { return m.matches()[m.cursor[m.screen]] }
 
 func TestANewSearchDropsTheFilterKeptOnTheOldResults(t *testing.T) {
+	// The results are narrowed and left by a jump, which is the way out that
+	// keeps their filter for the way back.
 	m := send(t, loaded(t), SearchLoaded{Query: "water", Results: results()})
-	m = narrowed(t, m, "water")
-	m, _ = press(t, m, "enter")
-	m = send(t, m, AlbumLoaded(library()[0].Albums[1]))
+	m = onArtists(t, down(t, narrowed(t, m, "water"), 2))
+	if m.kept[ScreenSearch] != "water" {
+		t.Fatalf("the filter kept on the results is %q", m.kept[ScreenSearch])
+	}
 
 	// Fewer results than the old filter's row, and none that it matches.
 	m = send(t, m, SearchLoaded{Query: "bilge", Results: subsonic.Results{

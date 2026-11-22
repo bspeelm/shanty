@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/config"
+	"github.com/bspeelm/shanty/internal/cover"
 	"github.com/bspeelm/shanty/internal/mpv"
 	"github.com/bspeelm/shanty/internal/subsonic"
 	"github.com/bspeelm/shanty/internal/subsonic/fake"
@@ -325,7 +326,11 @@ func TestADeadPlayerBecomesAMessageAndNotARestart(t *testing.T) {
 // through to the screen unhandled would be a key that silently does nothing.
 func TestEveryIntentIsWiredUp(t *testing.T) {
 	a, rec, _ := wired(t)
-	album := subsonic.Album{ID: "al-1", Songs: []subsonic.Song{{ID: "tr-1"}}}
+	album := subsonic.Album{ID: "al-1", CoverArt: "mf-al-1", Songs: []subsonic.Song{{ID: "tr-1"}, {ID: "tr-2"}}}
+	// A queue to edit and a terminal that draws covers, so that the intents
+	// which edit the one and fetch the other have something to do.
+	a.queue = queueFrom(album)
+	a.covers, a.art = cover.NewCache(t.TempDir()), cover.Kitty
 
 	for name, msg := range map[string]tea.Msg{
 		"OpenArtist":      tui.OpenArtist{ID: "ar-1"},
@@ -349,8 +354,10 @@ func TestEveryIntentIsWiredUp(t *testing.T) {
 		"ShuffleSongs":    tui.ShuffleSongs{Songs: album.Songs, What: "1 starred track"},
 		"Playlist":        tui.Playlist{Verb: "create", Name: "Evening"},
 		"QueueThis":       tui.QueueThis{Scope: tui.ScopeAlbum, ID: "al-1"},
-		"RemoveQueued":    tui.RemoveQueued{},
-		"MoveQueued":      tui.MoveQueued{From: 0, To: 1},
+		"RemoveQueued":    tui.RemoveQueued{Tracks: []tui.Queued{{At: 1, ID: "tr-2"}}},
+		"MoveQueued":      tui.MoveQueued{From: 0, To: 1, ID: "tr-1"},
+		"FetchCover":      tui.FetchCover{Album: album},
+		"Reload":          tui.Reload{Ask: 1, Screen: tui.ScreenArtists},
 		"FetchPlaylists":  tui.FetchPlaylists{},
 		"FetchEveryAlbum": tui.FetchEveryAlbum{},
 	} {
@@ -358,6 +365,11 @@ func TestEveryIntentIsWiredUp(t *testing.T) {
 			next, cmd := a.Update(msg)
 			if cmd == nil {
 				t.Errorf("%s produced no command, so the key does nothing", name)
+			}
+			for _, back := range runAll(cmd) {
+				if failed, ok := back.(tui.Failed); ok && (name == "RemoveQueued" || name == "MoveQueued") {
+					t.Errorf("%s was refused: %s", name, failed.Message)
+				}
 			}
 			_ = next
 		})
