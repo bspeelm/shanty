@@ -47,7 +47,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.key(msg)
 
 	case ArtistsLoaded:
-		m.artists, m.loading = msg, false
+		m.artists, m.starting = msg, false
 		if msg == nil {
 			// The list is empty rather than nil once the server has answered.
 			m.artists = []subsonic.Artist{}
@@ -72,7 +72,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.artist = subsonic.Artist(loaded)
 			if m.screen == ScreenAlbums {
-				m.loading = false
 				m = m.reloaded(ScreenAlbums, plural(len(loaded.Albums), "album"))
 			}
 			return m.settled(ScreenAlbums), nil
@@ -82,7 +81,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.album = subsonic.Album(loaded)
 			if m.screen == ScreenTracks {
-				m.loading = false
 				m = m.reloaded(ScreenTracks, plural(len(loaded.Songs), "track"))
 			}
 			return m.settled(ScreenTracks), nil
@@ -93,11 +91,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ArtistLoaded:
 		artist := subsonic.Artist(msg)
 		if m.keep != "" && m.screen == ScreenAlbums && artist.ID == m.artist.ID {
-			m.artist, m.loading = artist, false
+			m.artist = artist
 			return m.reloaded(ScreenAlbums, plural(len(artist.Albums), "album")), nil
 		}
 		m = m.show(ScreenAlbums)
-		m.artist, m.loading = artist, false
+		m.artist = artist
 		return m.selecting(ScreenAlbums, 0), nil
 	case AlbumLoaded:
 		album := subsonic.Album(msg)
@@ -112,11 +110,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if reload {
-			m.album, m.loading = album, false
+			m.album = album
 			return m.reloaded(ScreenTracks, plural(len(album.Songs), "track")), nil
 		}
 		m = m.show(ScreenTracks)
-		m.album, m.loading = album, false
+		m.album = album
 		return m.selecting(ScreenTracks, 0), nil
 
 	case NowPlaying:
@@ -143,32 +141,34 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Ask != 0 && msg.Ask != m.waiting {
 			return m.remember(msg.Message), nil
 		}
-		m.loading, m.keep, m.waiting = false, "", 0
+		if msg.Ask != 0 {
+			m.waiting = 0
+		}
+		m.keep, m.starting, m.stalled = "", false, true
 		return m.refuse(msg.Message).remember(msg.Message), nil
 	case Notice:
 		return m.say(string(msg)).remember(string(msg)), nil
 	case StarredChanged:
 		m.starredRows, m.starred = flatten(msg.Results), msg.IDs
 		if m.screen == ScreenStarred && m.keep != "" {
-			m.loading = false
 			m = m.reloaded(ScreenStarred, plural(len(msg.IDs), "starred thing"))
 		}
 		return m.settled(ScreenStarred), nil
 	case SearchLoaded:
 		m = m.show(ScreenSearch)
-		m.found, m.query, m.loading = flatten(msg.Results), msg.Query, false
+		m.found, m.query = flatten(msg.Results), msg.Query
 		return m.selecting(ScreenSearch, firstSelectable(m.found)), nil
 	case Reload:
 		// What was selected is remembered, so a reload leaves the cursor
 		// where it was rather than at the top of a list that mostly did not
 		// change.
-		m.keep, m.loading = m.selectedID(), true
+		m.keep = m.selectedID()
 		if m.keep == "" {
 			m.keep = " " // nothing selected, but a reload is still under way
 		}
-		return m.say("asking the server again"), nil
+		return m.say(""), nil
 	case PlaylistsLoaded:
-		m.playlists, m.loading = msg, false
+		m.playlists = msg
 		if msg == nil {
 			// The list is empty rather than nil once the server has answered.
 			m.playlists = []subsonic.Playlist{}
@@ -184,7 +184,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.say("").refreshed(loaded), nil
 		}
 		m = m.show(ScreenPlaylist)
-		m.playlist, m.loading = loaded, false
+		m.playlist = loaded
 		return m.selecting(ScreenPlaylist, 0), nil
 	case PlaylistChanged:
 		loaded := subsonic.Playlist(msg)
@@ -226,13 +226,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Editing shows the library, because that is where the music is.
 		m.editing, m.inPlaylist = subsonic.Playlist(msg), holding(subsonic.Playlist(msg))
 		m = m.show(ScreenArtists)
-		m.loading = false
 		return m.say(editingHint(m.editing.Name)).remember(editingHint(m.editing.Name)), nil
 	case Confirm:
 		m.mode, m.asking, m.agreed = modeConfirm, msg.Question, msg.Do
 		return m, nil
 	case AlbumsLoaded:
-		m.albums, m.loading = msg, false
+		m.albums = msg
+		if msg == nil {
+			m.albums = []subsonic.Album{}
+		}
 		m = m.say("").settled(ScreenEveryAlbum)
 		return m.reloaded(ScreenEveryAlbum, plural(len(msg), "album")), nil
 	case ShowVisualiser:
@@ -282,11 +284,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
-	// A key clears the message on the last row, unless the message is about
-	// something still arriving.
-	if !m.loading {
-		m = m.say("")
-	}
+	// A key clears the message on the last row.
+	m = m.say("")
 	digit := len(key) == 1 && key[0] >= '0' && key[0] <= '9'
 
 	// While the visualiser or a cover fills the screen, only the actions in
@@ -924,9 +923,8 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 
 // show moves to a screen. The filter on the screen being left is dropped with
 // the cursor kept on the row it was on. Leaving a screen stops it waiting: an
-// open asked for from it is no longer shown when it arrives, a reload of it
-// is forgotten, and it is loading only if the screen arrived at has not been
-// fetched.
+// open asked for from it is no longer shown when it arrives, and a reload of
+// it is forgotten.
 func (m Model) show(s Screen) Model {
 	if m.filter != "" {
 		if rows := m.matches(); len(rows) > 0 {
@@ -936,17 +934,9 @@ func (m Model) show(s Screen) Model {
 		m = m.settled(m.screen)
 	}
 	if s != m.screen {
-		m.waiting, m.keep, m.loading = 0, "", false
+		m.waiting, m.keep, m.stalled = 0, "", false
 		if m.mode == modeFilter {
 			m.mode = modeNormal
-		}
-		switch s {
-		case ScreenArtists:
-			m.loading = m.artists == nil
-		case ScreenPlaylists:
-			m.loading = m.playlists == nil
-		case ScreenEveryAlbum:
-			m.loading = len(m.albums) == 0
 		}
 	}
 	m.screen = s
@@ -954,11 +944,40 @@ func (m Model) show(s Screen) Model {
 }
 
 // opening gives the open being asked for the next number, waits for that
-// number alone, and says what is arriving.
-func (m Model) opening(status string) Model {
+// number alone, and keeps what to say while it arrives.
+func (m Model) opening(what string) Model {
 	m.asks++
-	m.waiting, m.loading = m.asks, true
-	return m.say(Sanitise(status))
+	m.waiting, m.opens = m.asks, Sanitise(what)
+	return m.say("")
+}
+
+// loading reports whether the screen showing is waiting for something: an
+// open, a reload, or its own list where that has not been fetched.
+func (m Model) loading() bool {
+	if m.waiting != 0 || m.keep != "" {
+		return true
+	}
+	switch m.screen {
+	case ScreenLibrary, ScreenArtists:
+		return m.starting
+	case ScreenPlaylists:
+		return m.playlists == nil && !m.stalled
+	case ScreenEveryAlbum:
+		return m.albums == nil && !m.stalled
+	}
+	return false
+}
+
+// arriving is what to say on the last row about something still on its way,
+// when there is no message there.
+func (m Model) arriving() string {
+	switch {
+	case m.waiting != 0:
+		return m.opens
+	case m.keep != "":
+		return "asking the server again"
+	}
+	return ""
 }
 
 // refreshed takes a playlist as the server now has it in place of the one
@@ -973,7 +992,6 @@ func (m Model) refreshed(loaded subsonic.Playlist) Model {
 		}
 	}
 	if m.screen == ScreenPlaylist {
-		m.loading = false
 		m = m.reloaded(ScreenPlaylist, plural(len(loaded.Songs), "track"))
 	}
 	return m.settled(ScreenPlaylist)
@@ -1143,7 +1161,6 @@ func (m Model) confirmKey(key string) (tea.Model, tea.Cmd) {
 func (m Model) editPlaylist(p subsonic.Playlist) (tea.Model, tea.Cmd) {
 	m.editing, m.inPlaylist = p, holding(p)
 	m = m.show(ScreenArtists)
-	m.loading = false
 	return m.say(editingHint(p.Name)).remember(editingHint(p.Name)), nil
 }
 

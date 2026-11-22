@@ -171,6 +171,9 @@ func (m Model) footer(w int) string {
 	if m.mode == modeConfirm {
 		return alarm().Render(fit(Sanitise(m.asking)+"  [y/N]", w))
 	}
+	if arriving := m.arriving(); m.status == "" && arriving != "" {
+		return statusStyle.Render(fit(arriving, w))
+	}
 	if m.status == "" {
 		// Editing is a mode, and a mode that cannot be seen is not allowed to
 		// change what a key does (ADR-019). The artist and album lists carry
@@ -339,7 +342,7 @@ func (m Model) list(w, visible int) string {
 	if rows == 0 {
 		body := "nothing here"
 		switch {
-		case m.loading:
+		case m.loading():
 			body = "loading…"
 		case m.filter != "":
 			body = "nothing matches " + Sanitise(m.filter)

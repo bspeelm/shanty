@@ -182,8 +182,8 @@ func TestReloadingTheLibraryWithFewerArtistsThanItHasRows(t *testing.T) {
 	m, _ = press(t, m, "end")
 
 	m = send(t, m, Reload{}, ArtistsLoaded(library()))
-	if m.Screen() != ScreenLibrary || m.loading {
-		t.Fatalf("the library is on %s, loading %v", m.Screen(), m.loading)
+	if m.Screen() != ScreenLibrary || m.loading() {
+		t.Fatalf("the library is on %s, loading %v", m.Screen(), m.loading())
 	}
 	if !strings.Contains(m.Status(), "reloaded") {
 		t.Errorf("the reload did not say it finished: %q", m.Status())
@@ -196,8 +196,8 @@ func TestReloadingTheLibraryWithFewerArtistsThanItHasRows(t *testing.T) {
 func TestLeavingAScreenDropsTheReloadItWasWaitingFor(t *testing.T) {
 	m := send(t, loaded(t), keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()), Reload{})
 	m, _ = press(t, m, "esc")
-	if m.loading || m.keep != "" {
-		t.Fatalf("the library is still waiting for a reload: loading %v, keeping %q", m.loading, m.keep)
+	if m.loading() || m.keep != "" {
+		t.Fatalf("the library is still waiting for a reload: loading %v, keeping %q", m.loading(), m.keep)
 	}
 	m = send(t, onArtists(t, m), ArtistsLoaded(library()), AlbumsLoaded(everyAlbum()))
 	if strings.Contains(m.Status(), "reloaded") {
@@ -211,22 +211,22 @@ func TestAReloadAnsweredAfterItsScreenWasLeftDoesNotTakeTheScreen(t *testing.T) 
 	m := send(t, loaded(t), ArtistLoaded(artist), AlbumLoaded(album), Reload{})
 	m, _ = press(t, m, "h")
 	m = send(t, m, Reloaded{Loaded: AlbumLoaded(album)})
-	if m.Screen() != ScreenAlbums || m.loading {
-		t.Errorf("an album reloaded and then left: screen %s, loading %v", m.Screen(), m.loading)
+	if m.Screen() != ScreenAlbums || m.loading() {
+		t.Errorf("an album reloaded and then left: screen %s, loading %v", m.Screen(), m.loading())
 	}
 
 	m = send(t, m, Reload{})
 	m, _ = press(t, m, "h")
 	m = send(t, m, Reloaded{Loaded: ArtistLoaded(artist)})
-	if m.Screen() != ScreenArtists || m.loading {
-		t.Errorf("an artist reloaded and then left: screen %s, loading %v", m.Screen(), m.loading)
+	if m.Screen() != ScreenArtists || m.loading() {
+		t.Errorf("an artist reloaded and then left: screen %s, loading %v", m.Screen(), m.loading())
 	}
 
 	m = send(t, onStarred(t, send(t, m, starredChanged())), Reload{})
 	m, _ = press(t, m, "h")
 	m = send(t, m, Reloaded{Loaded: starredChanged()})
-	if m.loading || strings.Contains(m.Status(), "reloaded") {
-		t.Errorf("a starred list reloaded and then left: loading %v, said %q", m.loading, m.Status())
+	if m.loading() || strings.Contains(m.Status(), "reloaded") {
+		t.Errorf("a starred list reloaded and then left: loading %v, said %q", m.loading(), m.Status())
 	}
 }
 
@@ -245,8 +245,8 @@ func TestAReloadAskedForTwiceKeepsTheSelectionThroughBothAnswers(t *testing.T) {
 	m := send(t, loaded(t), ArtistLoaded(artist), AlbumLoaded(album))
 	m, _ = press(t, m, "j")
 	m = send(t, m, Reload{}, Reload{}, Reloaded{Loaded: AlbumLoaded(album)}, Reloaded{Loaded: AlbumLoaded(album)})
-	if m.Screen() != ScreenTracks || m.Cursor() != 1 || m.loading {
-		t.Errorf("tracks: screen %s, cursor %d, loading %v", m.Screen(), m.Cursor(), m.loading)
+	if m.Screen() != ScreenTracks || m.Cursor() != 1 || m.loading() {
+		t.Errorf("tracks: screen %s, cursor %d, loading %v", m.Screen(), m.Cursor(), m.loading())
 	}
 
 	m, _ = press(t, m, "h")
@@ -336,8 +336,8 @@ func TestAnOpenTriedAgainAfterItFailedDoesNotLoseTheNextChange(t *testing.T) {
 	m := onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists)))
 	m, first := opened(t, m)
 	m = send(t, m, Failed{Message: "the server did not answer", Ask: first})
-	if m.loading || m.waiting != 0 {
-		t.Fatalf("the failed open is still waited for: loading %v, waiting %d", m.loading, m.waiting)
+	if m.loading() || m.waiting != 0 {
+		t.Fatalf("the failed open is still waited for: loading %v, waiting %d", m.loading(), m.waiting)
 	}
 	m, second := opened(t, m)
 	m = send(t, m, Opened{Ask: second, Loaded: PlaylistLoaded(eveningOf(3))})
@@ -368,8 +368,8 @@ func TestTheFailureOfAnOpenThatWasLeftIsKeptToReadAndChangesNothing(t *testing.T
 	m, second := opened(t, m)
 
 	m = send(t, m, Failed{Message: "the first did not arrive", Ask: first})
-	if !m.loading || m.statusFailed {
-		t.Errorf("the failure of the open left behind stopped the one waited for: loading %v", m.loading)
+	if !m.loading() || m.statusFailed {
+		t.Errorf("the failure of the open left behind stopped the one waited for: loading %v", m.loading())
 	}
 	if len(m.said) == 0 || m.said[len(m.said)-1].text != "the first did not arrive" {
 		t.Error("the failure was not kept to be read")
@@ -571,17 +571,17 @@ func TestLeavingAGroupedListWithAFilterThatMatchesNothingLeavesTheCursorOffAHead
 func TestAScreenThatHasItsListIsNotDrawnAsLoadingBecauseAnotherIsStillArriving(t *testing.T) {
 	m, _ := press(t, loaded(t), "g")
 	m, _ = press(t, m, "p")
-	if !m.loading {
+	if !m.loading() {
 		t.Fatal("playlists not fetched yet are not drawn as loading")
 	}
 	m, _ = press(t, m, "esc")
 	m = onQueue(t, m)
-	if m.loading || strings.Contains(m.View(), "loading") {
+	if m.loading() || strings.Contains(m.View(), "loading") {
 		t.Errorf("the queue says it is loading while the playlists arrive:\n%s", m.View())
 	}
 
 	m = onPlaylists(t, m)
-	if !m.loading {
+	if !m.loading() {
 		t.Error("going back to playlists that have not arrived does not say they are loading")
 	}
 }
@@ -647,5 +647,54 @@ func TestAPlaylistBeingAddedToCanBeOpened(t *testing.T) {
 	}
 	if strings.Contains(m.Status(), "opening") {
 		t.Errorf("the last row still says %q", m.Status())
+	}
+}
+
+func TestAFailureThatIsNotAboutTheOpenDoesNotCancelIt(t *testing.T) {
+	m, ask := opened(t, loaded(t))
+
+	m = send(t, m, Failed{Message: "nothing is playing to seek in"})
+	if !m.loading() {
+		t.Error("the artist is no longer drawn as arriving")
+	}
+	m, _ = press(t, m, "j")
+	if !strings.Contains(m.Status(), "opening Aoi") {
+		t.Errorf("after the failure was read the last row says %q", m.Status())
+	}
+
+	m = send(t, m, Opened{Ask: ask, Loaded: ArtistLoaded(library()[0])})
+	if m.Screen() != ScreenAlbums {
+		t.Errorf("the artist was dropped; the screen is %s", m.Screen())
+	}
+}
+
+func TestAListOrANoticeArrivingDoesNotHideWhatIsBeingOpened(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}}
+	for name, arrives := range map[string]tea.Msg{
+		"playlists":   PlaylistsLoaded(lists),
+		"artists":     ArtistsLoaded(library()),
+		"every album": AlbumsLoaded(everyAlbum()),
+		"starred":     starredChanged(),
+		"a reload":    Reloaded{Loaded: ArtistsLoaded(library())},
+	} {
+		m := onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists)))
+		m, ask := opened(t, m)
+
+		m = send(t, m, arrives)
+		if !m.loading() || !strings.Contains(m.Status(), "opening Evening") {
+			t.Errorf("%s arriving left loading %v and %q", name, m.loading(), m.Status())
+		}
+		m = send(t, m, Opened{Ask: ask, Loaded: PlaylistLoaded(eveningOf(3))})
+		if m.Screen() != ScreenPlaylist || m.loading() {
+			t.Errorf("%s: the playlist did not open cleanly: %s, loading %v", name, m.Screen(), m.loading())
+		}
+	}
+
+	m := onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists)))
+	m, _ = opened(t, m)
+	m = send(t, m, Notice("playing Ballast next"))
+	m, _ = press(t, m, "j")
+	if !m.loading() || !strings.Contains(m.Status(), "opening Evening") {
+		t.Errorf("after a notice was read: loading %v, %q", m.loading(), m.Status())
 	}
 }

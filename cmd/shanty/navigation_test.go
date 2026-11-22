@@ -284,3 +284,19 @@ func TestAPlaylistBeingAddedToOpensFromTheList(t *testing.T) {
 		t.Errorf("the screen still says the playlist is opening:\n%s", a.ui.View())
 	}
 }
+
+func TestSeekingWithNothingPlayingDoesNotCancelAnArtistBeingOpened(t *testing.T) {
+	a, _, _ := wired(t)
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	a = settle(t, a, a.fetchArtists()())
+
+	a, artist := step(t, a, enter)
+	a = settle(t, settle(t, settle(t, a, keyRunes("5")), keyRunes("0")), keyRunes("%"))
+	if !strings.Contains(a.ui.Status(), "nothing is playing") {
+		t.Fatalf("seeking with nothing playing said %q", a.ui.Status())
+	}
+	a = deliver(t, a, artist)
+	if a.ui.Screen() != tui.ScreenAlbums {
+		t.Errorf("the artist was dropped; the screen is %s", a.ui.Screen())
+	}
+}
