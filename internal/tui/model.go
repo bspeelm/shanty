@@ -447,6 +447,7 @@ func (m Model) pageLines() []string {
 func (m Model) saidAt(row int) int { return len(m.said) - 1 - row }
 
 // remember keeps a message so that it can be read after it has been replaced.
+// The selection on the messages screen stays on the message it was on.
 func (m Model) remember(text string) Model {
 	if strings.TrimSpace(text) == "" {
 		return m
@@ -462,5 +463,16 @@ func (m Model) remember(text string) Model {
 		said = said[len(said)-remembered:]
 	}
 	m.said = said
-	return m
+	// The newest message is listed first. A selection below the top stays on
+	// its message, and one at the top stays at the top.
+	if at := m.cursor[ScreenMessages]; at > 0 {
+		m = m.selecting(ScreenMessages, at+1)
+	}
+	m = m.remembering(func(p place) (place, bool) {
+		if p.screen == ScreenMessages && p.cursor > 0 {
+			p.cursor++
+		}
+		return p, true
+	})
+	return m.settled(ScreenMessages)
 }

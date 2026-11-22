@@ -1051,3 +1051,26 @@ func TestTheHintLineLeavesNothingOutWhenItFitsExactly(t *testing.T) {
 		t.Errorf("one column narrower the line reads %q", shorter)
 	}
 }
+
+func TestAMessageArrivingKeepsTheSelectionOfTheMessagesOnTheSameMessage(t *testing.T) {
+	m := send(t, loaded(t), Notice("one water"), Notice("two"), Notice("three water"), ShowMessages{})
+	m = narrowed(t, m, "water")
+	m, _ = press(t, m, "j")
+	if m.said[m.saidAt(m.at())].text != "one water" {
+		t.Fatalf("the cursor is on %q", m.said[m.saidAt(m.at())].text)
+	}
+
+	m = send(t, onArtists(t, m), Notice("four"), Failed{Message: "five"})
+	if err := cursorsWithinTheirLists(m); err != nil {
+		t.Fatal(err)
+	}
+	m = send(t, m, keyOf("esc"))
+	if m.Screen() != ScreenMessages || m.Filter() != "water" || m.said[m.saidAt(m.at())].text != "one water" {
+		t.Errorf("back on %s narrowed by %q the cursor is on %q", m.Screen(), m.Filter(), m.said[m.saidAt(m.at())].text)
+	}
+
+	top := send(t, loaded(t), Notice("one"), ShowMessages{}, Notice("two"))
+	if top.said[top.saidAt(top.at())].text != "two" {
+		t.Errorf("at the top of the messages a new one is not the one selected")
+	}
+}
