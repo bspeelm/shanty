@@ -49,8 +49,11 @@ test:
 # The race detector is not optional here: a TUI, a persistent child process and
 # an HTTP client is three sources of concurrency, and a data race in that mix
 # shows up as a rendering artifact nobody can reproduce.
+# The limit is thirty minutes for each package. The visualiser's tests replay
+# whole tracks frame by frame, and under the race detector on a small runner
+# they take longer than the ten minutes go test allows by default.
 race:
-	go test -race ./...
+	go test -race -timeout 30m ./...
 
 budgets:
 	@sh scripts/budgets.sh
