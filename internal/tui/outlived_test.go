@@ -709,6 +709,34 @@ func TestAListOrANoticeArrivingDoesNotHideWhatIsBeingOpened(t *testing.T) {
 	}
 }
 
+func TestAnOrderJustSavedIsNotReorderedAgainUntilItIsAnswered(t *testing.T) {
+	m := reordering(t, evening3(t))
+	m, _ = press(t, m, "J")
+	m, saved := press(t, m, "enter")
+	order, ok := saved.(ReorderPlaylist)
+	if !ok {
+		t.Fatalf("enter emitted %#v", saved)
+	}
+
+	m, _ = typeCommand(t, m, "playlist reorder")
+	if m.Reordering() || !m.statusFailed {
+		t.Fatalf("a second reorder began before the first was answered: %q", m.Status())
+	}
+
+	now := eveningOf(3)
+	now.Songs = []subsonic.Song{now.Songs[1], now.Songs[0], now.Songs[2]}
+	if !same(idsOf(now.Songs), order.Songs) {
+		t.Fatalf("the fixture is not the order that was saved: %v", order.Songs)
+	}
+	m = send(t, m, PlaylistChanged(now))
+	if strings.Contains(m.Status(), "changed on the server") {
+		t.Errorf("the order just saved was reported as someone else's change: %q", m.Status())
+	}
+	if m = reordering(t, m); m.order[0].ID != "tr-2" {
+		t.Errorf("the next arrangement starts from %v, want the order that was saved", idsOf(m.order))
+	}
+}
+
 func TestTheQueueIsRefusedInTheSameWordsWhereverItIsNoticed(t *testing.T) {
 	for _, tc := range []struct {
 		tracks, at int

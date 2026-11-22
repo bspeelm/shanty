@@ -136,6 +136,8 @@ type Model struct {
 	reordering bool
 	order      []subsonic.Song
 	drawnFrom  []string
+	// saving says an arrangement has been sent and not yet answered.
+	saving bool
 
 	// found is what the last search returned, flattened into rows with a
 	// heading before each group. query is what was asked for.

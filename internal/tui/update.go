@@ -107,7 +107,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Ask != 0 {
 			m.waiting = 0
 		}
-		m.keep, m.starting, m.stalled = "", false, true
+		m.keep, m.starting, m.stalled, m.saving = "", false, true, false
 		return m.refuse(msg.Message).remember(msg.Message), nil
 	case Notice:
 		return m.say(string(msg)).remember(string(msg)), nil
@@ -382,6 +382,9 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
 			return m.refuse("reorder needs a playlist on screen — gp, enter, then :playlist reorder"), nil
 		}
+		if m.saving {
+			return m.refuse("the order just saved has not been answered yet — reorder again once it has"), nil
+		}
 		return m.startReorder(), nil
 	}
 	if p, ok := intent.(Playlist); ok && p.Verb == "delete" && p.Name == "" {
@@ -482,6 +485,7 @@ func (m Model) saveReorder() (tea.Model, tea.Cmd) {
 	if same(order, was) {
 		return m.say("nothing was moved"), nil
 	}
+	m.saving = true
 	return m, emit(ReorderPlaylist{ID: id, Name: name, Songs: order, Was: was})
 }
 
@@ -895,7 +899,7 @@ func (m Model) show(s Screen) Model {
 		m = m.settled(m.screen)
 	}
 	if s != m.screen {
-		m.waiting, m.keep, m.stalled = 0, "", false
+		m.waiting, m.keep, m.stalled, m.saving = 0, "", false, false
 		if m.mode == modeFilter {
 			m.mode = modeNormal
 		}
@@ -981,7 +985,7 @@ func (m Model) refetched(loaded tea.Msg) Model {
 // held. An arrangement being made of it is dropped if its tracks changed.
 // Where its screen is showing, a reload waiting for it is finished.
 func (m Model) refreshed(loaded subsonic.Playlist) Model {
-	m.playlist = loaded
+	m.playlist, m.saving = loaded, false
 	if m.reordering && !same(idsOf(loaded.Songs), m.drawnFrom) {
 		m.reordering, m.order, m.drawnFrom = false, nil, nil
 		if m.screen == ScreenPlaylist {
