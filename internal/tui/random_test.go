@@ -385,6 +385,7 @@ func (r *run) send(msg tea.Msg) {
 			r.failf(msg, "%v", err)
 		}
 		r.check(was, msg)
+		r.held(was, msg)
 		if r.m.screen == ScreenWiki && r.m.topic == "" && r.m.filter == "" && was.screen != ScreenWiki {
 			listed := listedKeys(r.m, "")
 			for _, j := range jumps() {
@@ -407,6 +408,55 @@ func (r *run) send(msg tea.Msg) {
 			if r.app.broke != "" {
 				r.failf(emitted, "%s", r.app.broke)
 			}
+		}
+	}
+}
+
+// held checks what must hold after any message: a wait for an open does not
+// outlive the screen it was asked from, the way back is bounded and names
+// nothing the server no longer lists, and the path is the list a screen was
+// opened from and what it was opened through.
+func (r *run) held(was Model, msg tea.Msg) {
+	r.t.Helper()
+	if r.m.screen != was.screen && r.m.waiting != 0 && r.m.waiting == was.waiting {
+		r.failf(msg, "the wait for open %d outlived the %s screen it was asked from", r.m.waiting, was.screen)
+	}
+	if len(r.m.trail) > trailKept || len(r.m.up) > trailKept {
+		r.failf(msg, "%d lists and %d places opened through are remembered, and the bound is %d",
+			len(r.m.trail), len(r.m.up), trailKept)
+	}
+	listed := map[string]bool{}
+	for _, p := range r.m.playlists {
+		listed[p.ID] = true
+	}
+	each(append(append([]place{}, r.m.trail...), r.m.up...), func(p place) (place, bool) {
+		if p.screen == ScreenPlaylist && r.m.playlists != nil && !listed[p.playlist.ID] {
+			r.failf(msg, "there is a way back to the playlist %q, which the server no longer lists", p.playlist.ID)
+		}
+		return p, true
+	})
+	path := r.m.path(1000)
+	switch {
+	case !deep(r.m.screen) && (len(r.m.up) > 0 || strings.Contains(path, "›")):
+		r.failf(msg, "a list is headed %q, as if it had been opened from a row", path)
+	case deep(r.m.screen) && (len(r.m.up) == 0 || deep(r.m.up[0].screen) ||
+		!strings.HasPrefix(path, r.m.up[0].screen.String()+" › ")):
+		r.failf(msg, "the path %q does not begin with the list the screen was opened from", path)
+	}
+	if opened, ok := msg.(Opened); ok && opened.Ask != 0 && opened.Ask == was.waiting {
+		if n := len(r.m.up); n != len(was.up)+1 || r.m.up[n-1].screen != was.screen {
+			r.failf(msg, "what was opened from the %s screen is headed %q", was.screen, path)
+		}
+	}
+}
+
+// inAndOut opens a row, jumps back to the list, and opens a row again, so
+// that the way back grows by a place each time.
+func (r *run) inAndOut(times int) {
+	for range times {
+		r.press("g", "a", pick(r.r, "j", "k"), "enter")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
 		}
 	}
 }
@@ -492,7 +542,7 @@ func (r *run) press(keys ...string) {
 // reachesTheLibrary reports whether back, pressed often enough, ends on the
 // library from here. Nothing answers what the presses ask for.
 func reachesTheLibrary(m Model) bool {
-	for range trailKept + 12 {
+	for range 4*trailKept + 12 {
 		key := keyOf("esc")
 		if m.Confirming() {
 			key = keyOf("n")
@@ -546,6 +596,23 @@ func (r *run) step() {
 	// The playlist being added to is looked for in the list of playlists.
 	if r.m.Editing().ID != "" && r.m.Screen() != ScreenPlaylists && r.r.IntN(6) == 0 {
 		r.press("g", "p")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		r.press("home", "enter")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		return
+	}
+	// The playlist held is changed by somebody else while another screen shows.
+	if r.m.playlist.ID != "" && r.m.screen != ScreenPlaylist && r.r.IntN(12) == 0 {
+		r.send(PlaylistChanged(r.app.playlist(r.m.playlist.ID)))
+		return
+	}
+	// A row of the keys screen is opened to be read.
+	if r.m.screen == ScreenWiki && !r.m.reading() && r.m.mode == modeNormal && r.r.IntN(6) == 0 {
+		r.press(pick(r.r, "j", "G", "pgdown"), "enter")
 		return
 	}
 	// A page of the wiki is read to its end and the window is resized.
@@ -553,6 +620,35 @@ func (r *run) step() {
 		r.press("G")
 		r.kinds["a resize"]++
 		r.send(tea.WindowSizeMsg{Width: pick(r.r, 24, 40, 80, 200), Height: 4 + r.r.IntN(30)})
+		return
+	}
+	// A search narrowed by a kept filter is gone into, and searched again.
+	if r.m.screen == ScreenSearch && r.m.filter != "" && r.m.mode == modeNormal && r.r.IntN(2) == 0 {
+		r.kinds["a new search after leaving narrowed results"]++
+		r.press("g", pick(r.r, "a", "q", "s"))
+		r.command("search water")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		r.press(pick(r.r, "enter", "a", "S", "*"))
+		return
+	}
+	// A row is opened and walked away from before it arrives.
+	if (r.m.screen == ScreenArtists || r.m.screen == ScreenPlaylists) && r.m.rows() > 0 &&
+		r.m.mode == modeNormal && r.m.filter == "" && len(r.app.waiting) == 0 && r.r.IntN(10) == 0 {
+		r.kinds["an open walked away from"]++
+		r.press("enter", pick(r.r, "h", "h", "g"), "l")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		return
+	}
+	// A list is narrowed and the filter kept.
+	if r.m.mode == modeNormal && r.m.filter == "" && !r.m.reading() && r.r.IntN(14) == 0 {
+		r.press("/", pick(r.r, "a", "o", "w", "e", "t"), "enter")
+		if r.m.filter != "" {
+			r.kinds["a filter kept"]++
+		}
 		return
 	}
 	// An artist, and then one of their albums, is opened and waited for.
@@ -565,7 +661,7 @@ func (r *run) step() {
 	}
 	// From a screen opened from a row, another artist is opened from the
 	// starred list and the way back is walked.
-	if deep(r.m.screen) && r.m.screen != ScreenPlaylist && r.m.artist.ID != "ar-1" && r.r.IntN(3) == 0 {
+	if deep(r.m.screen) && r.m.screen != ScreenPlaylist && r.m.artist.ID != "ar-1" && r.r.IntN(2) == 0 {
 		r.send(starredChanged())
 		r.press("g", "s", "enter")
 		for len(r.app.waiting) > 0 {
@@ -576,7 +672,22 @@ func (r *run) step() {
 	}
 	// The track playing, and others, are taken out of the queue and moved.
 	if r.m.screen == ScreenQueue && r.r.IntN(3) == 0 {
-		r.press(pick(r.r, "r", "r", "K", "J", "j", "k"))
+		if r.m.editing.ID != "" {
+			r.press("e")
+		}
+		if len(r.m.queued) < 2 {
+			r.app.q = queue.New(queued()...).Jump(r.r.IntN(3))
+			r.send(r.app.queued())
+		}
+		// A move is often of the track beside the one playing, across it.
+		switch r.r.IntN(6) {
+		case 0:
+			r.press("g", "q", "k", "J")
+		case 1:
+			r.press("g", "q", "j", "K")
+		default:
+			r.press(pick(r.r, "r", "r", "K", "J", "j", "k"))
+		}
 		return
 	}
 	// A seek with nothing playing fails while something is being opened.
@@ -615,7 +726,7 @@ func (r *run) step() {
 		// Something the server sends without being asked, as another client
 		// changing a playlist does.
 		changed := r.app.playlist(pick(r.r, "pl-1", "pl-2"))
-		if r.m.playlist.ID != "" && r.r.IntN(2) == 0 {
+		if r.m.playlist.ID != "" && (r.m.screen != ScreenPlaylist || r.r.IntN(2) == 0) {
 			changed.ID = r.m.playlist.ID
 		}
 		switch r.r.IntN(8) {
@@ -666,6 +777,9 @@ var kindsWanted = []string{
 	"a changed playlist during a reorder of it",
 	"a changed playlist while adding to it",
 	"a reorder entered",
+	"a filter kept",
+	"a new search after leaving narrowed results",
+	"an open walked away from",
 	"a back to a place that was left",
 	"a back to an artist other than the one held",
 	"a track taken out of the queue",
@@ -684,7 +798,7 @@ var kindsWanted = []string{
 // each one sends.
 const (
 	randomSeeds    = 6
-	randomMessages = 400
+	randomMessages = 500
 )
 
 // TestNoRunOfKeysAndAnswersBreaksWhatEachMessageMayDo drives the interface
@@ -705,6 +819,9 @@ func TestNoRunOfKeysAndAnswersBreaksWhatEachMessageMayDo(t *testing.T) {
 				}
 			}()
 			r.send(ArtistsLoaded(library()))
+			if seed == randomSeeds {
+				r.inAndOut(2 * trailKept)
+			}
 			for r.steps < randomMessages {
 				r.step()
 				if r.steps%20 == 0 && !reachesTheLibrary(r.m) {
