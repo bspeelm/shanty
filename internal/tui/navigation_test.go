@@ -438,7 +438,7 @@ func TestAReloadTheServerRefusedLeavesNoReloadWaiting(t *testing.T) {
 		t.Fatalf("a refused reload is still waiting: loading %v, keeping %q", m.loading(), m.keep)
 	}
 
-	m = send(t, onArtists(t, m), ArtistsLoaded(library()))
+	m = send(t, onArtists(t, m), Reloaded{Loaded: ArtistsLoaded(library())})
 	if strings.Contains(m.Status(), "reloaded") {
 		t.Errorf("a list that arrived later was reported as the reload: %q", m.Status())
 	}
@@ -450,7 +450,7 @@ func TestReloadingEveryAlbumKeepsTheSelection(t *testing.T) {
 	was := m.albums[m.Cursor()].ID
 
 	grown := append([]subsonic.Album{{ID: "al-0", Name: "A New Arrival", Artist: "Aoi"}}, everyAlbum()...)
-	m = send(t, m, Reload{}, AlbumsLoaded(grown))
+	m = send(t, m, Reload{}, Reloaded{Loaded: AlbumsLoaded(grown)})
 	if got := m.albums[m.Cursor()].ID; got != was {
 		t.Errorf("the cursor moved to %q, want it to stay on %q", got, was)
 	}
@@ -471,7 +471,7 @@ func TestReloadingTheStarredListKeepsTheSelection(t *testing.T) {
 	grown := starredChanged()
 	grown.Results.Artists = append([]subsonic.Artist{{ID: "ar-3", Name: "坂本龍一"}}, grown.Results.Artists...)
 	grown.IDs["ar-3"] = true
-	m = send(t, m, Reload{}, grown)
+	m = send(t, m, Reload{}, Reloaded{Loaded: grown})
 
 	if m.loading() {
 		t.Error("the reload never finished")

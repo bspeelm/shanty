@@ -52,12 +52,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The list is empty rather than nil once the server has answered.
 			m.artists = []subsonic.Artist{}
 		}
-		m = m.say("").settled(ScreenArtists)
-		if m.screen == ScreenLibrary && m.keep != "" {
-			m.keep = ""
-			return m.say("reloaded: " + plural(len(msg), "artist")), nil
-		}
-		return m.reloaded(ScreenArtists, plural(len(msg), "artist")), nil
+		return m.say("").settled(ScreenArtists), nil
 	case Opened:
 		if msg.Ask == 0 || msg.Ask != m.waiting {
 			return m, nil
@@ -65,41 +60,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.waiting = 0
 		return m.update(msg.Loaded)
 	case Reloaded:
-		switch loaded := msg.Loaded.(type) {
-		case ArtistLoaded:
-			if loaded.ID != m.artist.ID {
-				return m, nil
-			}
-			m.artist = subsonic.Artist(loaded)
-			if m.screen == ScreenAlbums {
-				m = m.reloaded(ScreenAlbums, plural(len(loaded.Albums), "album"))
-			}
-			return m.settled(ScreenAlbums), nil
-		case AlbumLoaded:
-			if loaded.ID != m.album.ID {
-				return m, nil
-			}
-			m.album = subsonic.Album(loaded)
-			if m.screen == ScreenTracks {
-				m = m.reloaded(ScreenTracks, plural(len(loaded.Songs), "track"))
-			}
-			return m.settled(ScreenTracks), nil
-		case ArtistsLoaded, AlbumsLoaded, PlaylistsLoaded, StarredChanged:
-			return m.update(loaded)
-		}
-		return m, nil
+		return m.refetched(msg.Loaded), nil
 	case ArtistLoaded:
-		artist := subsonic.Artist(msg)
-		if m.keep != "" && m.screen == ScreenAlbums && artist.ID == m.artist.ID {
-			m.artist = artist
-			return m.reloaded(ScreenAlbums, plural(len(artist.Albums), "album")), nil
-		}
 		m = m.show(ScreenAlbums)
-		m.artist = artist
+		m.artist = subsonic.Artist(msg)
 		return m.selecting(ScreenAlbums, 0), nil
 	case AlbumLoaded:
 		album := subsonic.Album(msg)
-		reload := m.keep != "" && m.screen == ScreenTracks && album.ID == m.album.ID
 		if album.ID != m.album.ID {
 			// An album with a cover holds the rows for it straight away. The
 			// picture is a request away and the list would otherwise jump
@@ -108,10 +75,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if album.CoverArt != "" {
 				m.art = m.artBlank
 			}
-		}
-		if reload {
-			m.album = album
-			return m.reloaded(ScreenTracks, plural(len(album.Songs), "track")), nil
 		}
 		m = m.show(ScreenTracks)
 		m.album = album
@@ -150,9 +113,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.say(string(msg)).remember(string(msg)), nil
 	case StarredChanged:
 		m.starredRows, m.starred = flatten(msg.Results), msg.IDs
-		if m.screen == ScreenStarred && m.keep != "" {
-			m = m.reloaded(ScreenStarred, plural(len(msg.IDs), "starred thing"))
-		}
 		return m.settled(ScreenStarred), nil
 	case SearchLoaded:
 		m = m.show(ScreenSearch)
@@ -173,18 +133,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The list is empty rather than nil once the server has answered.
 			m.playlists = []subsonic.Playlist{}
 		}
-		m = m.say("").settled(ScreenPlaylists)
-		return m.reloaded(ScreenPlaylists, plural(len(msg), "playlist")), nil
+		return m.say("").settled(ScreenPlaylists), nil
 	case PlaylistLoaded:
-		loaded := subsonic.Playlist(msg)
-		if m.editing.ID == loaded.ID && m.editing.ID != "" {
-			m.editing, m.inPlaylist = loaded, holding(loaded)
-		}
-		if m.screen == ScreenPlaylist && loaded.ID == m.playlist.ID {
-			return m.say("").refreshed(loaded), nil
-		}
 		m = m.show(ScreenPlaylist)
-		m.playlist = loaded
+		m.playlist = subsonic.Playlist(msg)
+		m.reordering, m.order, m.drawnFrom = false, nil, nil
 		return m.selecting(ScreenPlaylist, 0), nil
 	case PlaylistChanged:
 		loaded := subsonic.Playlist(msg)
@@ -235,8 +188,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg == nil {
 			m.albums = []subsonic.Album{}
 		}
-		m = m.say("").settled(ScreenEveryAlbum)
-		return m.reloaded(ScreenEveryAlbum, plural(len(msg), "album")), nil
+		return m.say("").settled(ScreenEveryAlbum), nil
 	case ShowVisualiser:
 		return m.openSky()
 	case Heard:
@@ -978,6 +930,42 @@ func (m Model) arriving() string {
 		return "asking the server again"
 	}
 	return ""
+}
+
+// refetched takes what a reload fetched in place of what is held. One artist
+// or album is taken only if it is the one held. Where the reload was asked
+// for from the screen showing, the cursor goes back to what was selected and
+// the last row says what came back.
+func (m Model) refetched(loaded tea.Msg) Model {
+	switch loaded := loaded.(type) {
+	case ArtistsLoaded:
+		next, _ := m.update(loaded)
+		m = next.(Model)
+		if m.screen == ScreenLibrary && m.keep != "" {
+			m.keep = ""
+			return m.say("reloaded: " + plural(len(loaded), "artist"))
+		}
+		return m.reloaded(ScreenArtists, plural(len(loaded), "artist"))
+	case AlbumsLoaded:
+		next, _ := m.update(loaded)
+		return next.(Model).reloaded(ScreenEveryAlbum, plural(len(loaded), "album"))
+	case StarredChanged:
+		next, _ := m.update(loaded)
+		return next.(Model).reloaded(ScreenStarred, plural(len(loaded.IDs), "starred thing")).settled(ScreenStarred)
+	case ArtistLoaded:
+		if loaded.ID != m.artist.ID {
+			return m
+		}
+		m.artist = subsonic.Artist(loaded)
+		return m.reloaded(ScreenAlbums, plural(len(loaded.Albums), "album")).settled(ScreenAlbums)
+	case AlbumLoaded:
+		if loaded.ID != m.album.ID {
+			return m
+		}
+		m.album = subsonic.Album(loaded)
+		return m.reloaded(ScreenTracks, plural(len(loaded.Songs), "track")).settled(ScreenTracks)
+	}
+	return m
 }
 
 // refreshed takes a playlist as the server now has it in place of the one
