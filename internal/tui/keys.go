@@ -96,13 +96,10 @@ func modeKeys() []modeKey {
 			m.mode, m.filter = modeNormal, ""
 			return m.moveTo(0).ontoARow()
 		})},
-		{modeFilter, "enter", "keep the filter, and open the row when only one is left", func(m Model) (tea.Model, tea.Cmd) {
+		{modeFilter, "enter", "keep the filter", moved(func(m Model) Model {
 			m.mode = modeNormal
-			if m.rows() == 1 {
-				return m.open()
-			}
-			return m, nil
-		}},
+			return m
+		})},
 		{modeFilter, "backspace", "take back the last character", moved(func(m Model) Model {
 			if m.filter != "" {
 				m.filter = m.filter[:len(m.filter)-1]
