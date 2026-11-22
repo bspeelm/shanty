@@ -356,6 +356,15 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.JumpTo:
 		a.queue = a.queue.Jump(int(msg))
 		return a, tea.Batch(a.playCurrent(), a.queueChanged())
+	case tui.RemoveQueued:
+		at := int(msg)
+		if at < 0 || at >= a.queue.Len() {
+			return a, emit(tui.Failed{Message: "there is no track there to take out of the queue"})
+		}
+		said := "took " + a.queue.Tracks()[at].Title + " out of the queue"
+		return a.requeued(a.queue.Remove(at), at == a.queue.At(), said)
+	case tui.MoveQueued:
+		return a.requeued(a.queue.Move(msg.From, msg.To), false, "")
 
 	case tui.TogglePause:
 		return a, a.togglePause()
@@ -844,6 +853,27 @@ func (a app) enqueue(album subsonic.Album, index int, next bool) (tea.Model, tea
 		where = "playing " + track.Title + " next"
 	}
 	return a, tea.Batch(a.prefetch(), a.queueChanged(), emit(tui.Notice(where)), a.foresee())
+}
+
+// requeued takes a queue that was edited in place of the one held. The track
+// playing carries on unless restart says it was the one taken out, in which
+// case the track now current is started. mpv is told what comes next when
+// that changed.
+func (a app) requeued(next queue.Queue, restart bool, said string) (tea.Model, tea.Cmd) {
+	followed, _ := a.queue.Upcoming()
+	a.queue = next
+	cmds := []tea.Cmd{a.queueChanged()}
+	if said != "" {
+		cmds = append(cmds, emit(tui.Notice(said)))
+	}
+	follows, _ := a.queue.Upcoming()
+	switch {
+	case restart:
+		cmds = append(cmds, a.playCurrent())
+	case follows != followed:
+		cmds = append(cmds, a.prefetch(), a.foresee())
+	}
+	return a, tea.Batch(cmds...)
 }
 
 // prefetch tells mpv which track follows the one playing.
