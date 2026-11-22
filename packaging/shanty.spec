@@ -10,7 +10,7 @@
 %global debug_package %{nil}
 
 Name:           shanty
-Version:        0.3.4
+Version:        0.4.0
 Release:        1%{?dist}
 Summary:        A terminal client for Navidrome and other Subsonic servers
 
@@ -85,6 +85,9 @@ go test ./...
 %{_datadir}/fish/vendor_completions.d/%{name}.fish
 
 %changelog
+* Sun Nov 22 2026 Bryan Speelman <bryspeelm@gmail.com> - 0.4.0-1
+- See https://github.com/bspeelm/shanty/releases/tag/v0.4.0
+
 * Wed Oct 21 2026 Bryan Speelman <bryspeelm@gmail.com> - 0.3.4-1
 - See https://github.com/bspeelm/shanty/releases/tag/v0.3.4
 
