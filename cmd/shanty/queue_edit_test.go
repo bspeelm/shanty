@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bspeelm/shanty/internal/mpv"
+	"github.com/bspeelm/shanty/internal/subsonic"
 
 	"github.com/bspeelm/shanty/internal/tui"
 )
@@ -389,17 +390,38 @@ func TestAnEditThatNamesATrackNoLongerAtThatPlaceIsRefused(t *testing.T) {
 	}
 }
 
-func TestAQueueWithNothingInItIsNotMarkedAsComingFromAPlaylist(t *testing.T) {
-	a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2"}})
-	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
-	a = settle(t, settle(t, a, enter), enter)
-	a = settle(t, a, keyRunes("h"))
-	if !strings.Contains(a.ui.View(), "▶ Evening") {
-		t.Fatalf("the playlist playing is not marked:\n%s", a.ui.View())
+// TestThePlaylistMarkFollowsWhereTheQueueCameFrom covers each way the queue
+// can stop being a playlist's, and the way it stays one.
+func TestThePlaylistMarkFollowsWhereTheQueueCameFrom(t *testing.T) {
+	album := subsonic.Album{Name: "Other", Songs: []subsonic.Song{{ID: "tr-9", Title: "Elsewhere"}}}
+	marked := func(a app) bool {
+		a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+		return strings.Contains(a.ui.View(), "▶ Evening")
 	}
+	playing := func() app {
+		a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2"}})
+		a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+		a = settle(t, settle(t, a, enter), enter)
+		if !marked(a) {
+			t.Fatal("the playlist playing is not marked")
+		}
+		return a
+	}
+	both := tui.RemoveQueued{Tracks: []tui.Queued{{At: 0, ID: "tr-1"}, {At: 1, ID: "tr-2"}}}
 
-	a = settle(t, a, tui.RemoveQueued{Tracks: []tui.Queued{{At: 0, ID: "tr-1"}, {At: 1, ID: "tr-2"}}})
-	if a.queue.Len() != 0 || strings.Contains(a.ui.View(), "▶ Evening") {
-		t.Errorf("with %d tracks queued the playlist is still marked:\n%s", a.queue.Len(), a.ui.View())
+	if a := settle(t, playing(), both); marked(a) {
+		t.Error("an emptied queue still marks the playlist")
+	}
+	if a := settle(t, settle(t, playing(), both), tui.Enqueue{Album: album}); marked(a) || a.queue.Len() != 1 {
+		t.Error("a track added to an emptied queue marks the playlist again")
+	}
+	if a := settle(t, playing(), tui.PlayFrom{Album: album}); marked(a) {
+		t.Error("a queue replaced by an album still marks the playlist")
+	}
+	if a := settle(t, playing(), tui.Shuffle{}); marked(a) {
+		t.Error("a queue replaced by a shuffle of everything still marks the playlist")
+	}
+	if a := settle(t, settle(t, playing(), tui.Enqueue{Album: album}), tui.RemoveQueued{Tracks: []tui.Queued{{At: 0, ID: "tr-1"}}}); !marked(a) {
+		t.Error("a queue that still holds the playlist's tracks, with one added and one taken out, lost the mark")
 	}
 }

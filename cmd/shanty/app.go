@@ -991,6 +991,11 @@ func (a app) gather(msg tui.QueueThis) tea.Cmd {
 func (a app) requeued(next queue.Queue, restart bool, said string) (tea.Model, tea.Cmd) {
 	followed, _ := a.queue.Upcoming()
 	a.queue = next
+	if a.queue.Empty() {
+		// A queue that was emptied no longer comes from a playlist, whatever
+		// is added to it afterwards.
+		a.playingList = ""
+	}
 	cmds := []tea.Cmd{a.queueChanged()}
 	if said != "" {
 		cmds = append(cmds, emit(tui.Notice(said)))
@@ -1071,12 +1076,7 @@ func (a app) search(query string) tea.Cmd {
 
 // queueChanged sends the interface the queue to draw.
 func (a app) queueChanged() tea.Cmd {
-	from := a.playingList
-	if a.queue.Empty() {
-		// A queue with nothing in it came from nowhere.
-		from = ""
-	}
-	return emit(tui.QueueChanged{Tracks: a.queue.Tracks(), At: a.queue.At(), From: from})
+	return emit(tui.QueueChanged{Tracks: a.queue.Tracks(), At: a.queue.At(), From: a.playingList})
 }
 
 // trackFrom turns a song on an album into a queue entry.
