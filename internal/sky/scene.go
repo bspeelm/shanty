@@ -375,12 +375,8 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 
 	if rng.IntN(2) == 0 && !far {
 		// A scene that grows out of another keeps a likeness of its colours,
-		// with their hue turned.
-		if s.tones.made() {
-			s.moveTo(s.tones.turned((rng.Float64() - 0.5) * 2 * turnMost))
-		} else {
-			s.moveTo(tones{fixed: turnPalette(s.palette, rng)})
-		}
+		// with their key hue turned.
+		s.moveTo(s.tones.turned((rng.Float64() - 0.5) * 2 * turnMost))
 	} else {
 		s.moveTo(st.tones(rng, c))
 	}
@@ -463,7 +459,7 @@ func (s *scene) moveTo(to tones) {
 	s.fromPalette, s.toPalette = s.palette, to.ramp()
 	s.paletteAt, s.paletteFor = 0, 0
 	far := 0.0
-	if s.tones.made() && to.made() {
+	if s.tones.made() && s.tones.fam == to.fam {
 		far = math.Abs(turnTo(s.tones.key, to.key)) * (1 - clamp01(math.Max(s.tones.land, to.land)))
 	}
 	s.paletteOver = math.Max(math.Max(s.morph, far/hueRate), 0.1)
@@ -634,14 +630,13 @@ func (s *scene) advance(dt float64) {
 	if s.toPalette != nil {
 		s.paletteFor += dt
 		s.paletteAt += dt / s.paletteOver
-		// Two made palettes move by their numbers. Any other pair moves
-		// colour by colour, and what is on screen meanwhile is held as it is.
+		// Two made palettes move by their numbers. A scene whose palette was
+		// not made moves colour by colour.
 		if w := smooth(0, 1, s.paletteAt); s.fromTones.made() && s.toTones.made() {
 			s.tones = mixTones(s.fromTones, s.toTones, w)
 			s.palette = s.tones.ramp()
 		} else {
 			s.palette = blendPalettes(s.fromPalette, s.toPalette, w)
-			s.tones = tones{fixed: s.palette}
 		}
 		if s.paletteAt >= 1 {
 			s.tones, s.palette, s.fromPalette, s.toPalette = s.toTones, s.toPalette, nil, nil

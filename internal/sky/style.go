@@ -166,115 +166,94 @@ func (s *style) param(rng *rand.Rand) param {
 	return p
 }
 
-// The hues a family of made palettes is keyed in, in degrees, and how far
-// its hue moves from the dark end of a ramp to the bright end.
+// The measures of the palettes drawn for each kind of music. Hues are in
+// degrees.
 const (
-	// Calm is keyed from blue to blue-violet.
+	// Calm is keyed from blue to blue-violet, and its hue moves calmArc from
+	// the dark end of a ramp to the bright end. Its ramps rise to a
+	// lightness of calmLight and end at calmTop.
 	calmFrom, calmTo, calmArc = 200.0, 280.0, 30.0
-	// Drive is keyed from teal to violet, with the widest arc, and one in
-	// greyShare of its palettes is of greys.
-	driveFrom, driveTo, driveArc, driveArcMost = keyFrom, keyTo, 40.0, 60.0
-	greyShare                                  = 0.25
+	calmLight, calmTop        = 0.87, 0.90
+	// Drive is keyed anywhere in the cool family, with the widest arc.
+	driveArc, driveArcMost = 40.0, 60.0
+	driveLight, driveTop   = 0.77, 0.85
+	// Grit is keyed anywhere in the ember family. Its two brightest steps
+	// are a yellow of hue gritHot, at gritAccent of its peak chroma, and its
+	// peak chroma is gritStrength of what its saturation gives.
+	gritArc, gritHot, gritAccent = 30.0, 90.0, 0.5
+	gritLight, gritTop           = 0.72, 0.9
+	gritStrength                 = 1.15
+	// Flow is keyed anywhere in the gold family. Its second member has
+	// flowMate of the chroma of its first.
+	flowArc            = 40.0
+	flowLight, flowTop = 0.67, 0.84
+	flowStrength       = 1.1
+	flowMate           = 0.45
+	// greyShare of the palettes for driving and for heavy music have greys
+	// for one member: for driving music, half of those for the first member
+	// and half for the second.
+	greyShare = 0.25
 	// chromaLeast is the peak chroma of a style with no saturation, and
 	// chromaSpan how much a style of full saturation adds.
 	chromaLeast, chromaSpan = 0.05, 0.08
-	// lightMost is the lightness the rise of a ramp reaches in a style with
-	// no saturation, and topMost the lightness of its brightest step.
-	// lightFall and topFall are how much lower each is at full saturation.
-	lightMost, lightFall = 1.0, 0.23
-	topMost, topFall     = 0.96, 0.11
 	// turnMost is how far a scene that grows out of another may turn the key
-	// hue of a made palette, in degrees either way.
+	// hue of its palette, in degrees either way.
 	turnMost = 54.0
 )
 
 // tones draws a palette. Its family comes from one axis, drawn by the
-// character's weights; its chroma and contrast are the style's. Calm and
-// Drive palettes are made from numbers. Grit palettes, of reds, oranges and
-// hot whites, and Flow palettes, of golds, ambers and soft greens, are
-// gradients round the colour wheel.
+// character's weights; its chroma and contrast are the style's.
 func (s *style) tones(rng *rand.Rand, c Character) tones {
 	axes := c.sharpened().axes()
-	t := tones{peak: chromaLeast + chromaSpan*s.sat, contrast: s.contrast,
-		light: lightMost - lightFall*s.sat, top: topMost - topFall*s.sat}
+	t := tones{peak: chromaLeast + chromaSpan*s.sat, contrast: s.contrast}
 	// part returns a second number from 0 to 1 drawn out of one already
 	// drawn, so that a family takes as many draws as it always has.
 	part := func(v float64) float64 { return math.Mod(v*97, 1) }
+	// keyed sets the family, the key hue from a number from 0 to 1, and a
+	// second member as far from the first as another such number says.
+	keyed := func(f family, from, to, v float64) {
+		t.fam, t.key = f, from+(to-from)*v
+		t.mate, t.matePeak = f.mateLeast+(f.mateMost-f.mateLeast)*part(v*31), t.peak
+	}
 	switch pick(rng, axes[:]) {
 	case 0:
-		v := rng.Float64()
-		t.key, t.arc = calmFrom+(calmTo-calmFrom)*v, calmArc
-		t.mate, t.matePeak = mated(t.key, mateLeast+(mateMost-mateLeast)*part(v*31)), t.peak
+		keyed(cool, calmFrom, calmTo, rng.Float64())
+		t.arc, t.light, t.top = calmArc, calmLight, calmTop
 	case 1:
 		v, u := rng.Float64(), rng.Float64()
-		t.key, t.arc = driveFrom+(driveTo-driveFrom)*v, driveArc+(driveArcMost-driveArc)*u
-		// One palette in greyShare has greys for its first member, and
-		// another for its second.
-		t.mate, t.matePeak = mateLeast+(mateMost-mateLeast)*part(v*31), t.peak
+		keyed(cool, cool.keyFrom, cool.keyTo, v)
+		t.arc, t.light, t.top = driveArc+(driveArcMost-driveArc)*u, driveLight, driveTop
 		switch grey := part(v); {
-		case grey < greyShare:
+		case grey < greyShare/2:
 			t.mate, t.key, t.peak = t.key-greyKey, greyKey, greyPeak
-		case grey < 2*greyShare:
+		case grey < greyShare:
 			t.matePeak = greyPeak
 		case part(u) < 0.5:
 			t.accentSteps, t.accentTurn, t.accent = 1+int(2*part(u*7)), 20+10*part(u*13), 0.6*t.peak
 		}
-		if t.peak > greyPeak {
-			t.mate = mated(t.key, t.mate)
-		}
 	case 2:
-		return tones{fixed: s.wheel(0.92+0.15*rng.Float64(), 0.15)}
+		v := rng.Float64()
+		t.peak *= gritStrength
+		keyed(ember, ember.keyFrom, ember.keyTo, v)
+		t.arc, t.light, t.top = gritArc, gritLight, gritTop
+		t.accentSteps, t.accentTurn, t.accent = 2, gritHot-(t.key+gritArc/2), gritAccent*t.peak
+		if part(v) < greyShare {
+			t.matePeak = greyPeak
+		}
 	default:
-		return tones{fixed: s.wheel(0.05+0.2*rng.Float64(), 0.25)}
+		v := rng.Float64()
+		t.peak *= flowStrength
+		keyed(gold, gold.keyFrom, gold.keyTo, v)
+		t.arc, t.light, t.top = flowArc, flowLight, flowTop
+		t.matePeak = flowMate * t.peak
 	}
-	t.arc = leaning(t.key, t.arc)
+	t.arc = t.fam.leaning(t.key, t.arc)
+	if t.peak > greyPeak {
+		t.mate = t.fam.mated(t.key, t.mate)
+	}
 	return t
 }
 
-// palette makes a gradient from dark to bright in the style.
+// palette makes the first member of a palette drawn in the style: a
+// gradient from dark to bright.
 func (s *style) palette(rng *rand.Rand, c Character) []RGB { return s.tones(rng, c).ramp() }
-
-// wheel makes a gradient from dark to bright whose hue starts wander/2
-// before hue on the colour wheel, as a share of the way round, and ends as
-// far after it. Its saturation and contrast are the style's.
-func (s *style) wheel(hue, wander float64) []RGB {
-	p := make([]RGB, paletteSize)
-	for i := range p {
-		t := float64(i) / float64(paletteSize-1)
-		light := 0.12 + 0.88*math.Pow(t, s.contrast)
-		h := hue + wander*(t-0.5)
-		var c [3]uint8
-		for ch := range 3 {
-			v := 0.5 + 0.5*math.Cos(2*math.Pi*(h+float64(ch)/3))
-			v = s.sat*v + (1-s.sat)*0.6
-			// The brightest steps whiten, so that the top of every palette
-			// reads as light.
-			v += (1 - v) * math.Pow(t, 4) * 0.6
-			c[ch] = uint8(255 * clamp01(v*light))
-		}
-		p[i] = RGB{c[0], c[1], c[2]}
-	}
-	return p
-}
-
-// turnPalette returns p with its hue turned by up to a tenth of the way round,
-// for a scene that grows out of another and keeps a likeness of its colours.
-// Each colour is rotated about the grey axis, which turns hue and keeps
-// lightness.
-func turnPalette(p []RGB, rng *rand.Rand) []RGB {
-	sn, cs := math.Sincos((rng.Float64() - 0.5) * 0.6 * math.Pi)
-	k := sn / math.Sqrt(3)
-	out := make([]RGB, len(p))
-	for i, col := range p {
-		r, g, b := float64(col.R), float64(col.G), float64(col.B)
-		m := (r + g + b) / 3
-		out[i] = RGB{
-			byteOf(m + (r-m)*cs + k*(b-g)),
-			byteOf(m + (g-m)*cs + k*(r-b)),
-			byteOf(m + (b-m)*cs + k*(g-r)),
-		}
-	}
-	return out
-}
-
-func byteOf(v float64) uint8 { return uint8(math.Min(math.Max(v, 0), 255) + 0.5) }

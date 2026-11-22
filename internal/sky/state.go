@@ -278,7 +278,9 @@ func (s *State) tint(dt float64) {
 	switch {
 	case !made:
 		s.drawing = false
-	case !s.drawing || s.cutting:
+	case !s.drawing || s.cutting || s.drawn.fam != to.fam:
+		// Between two families no hue moves: the colours fade to grey and
+		// rise again in the palette the scenes give.
 		s.drawn, s.drawing = to, true
 	default:
 		step := hueRate * dt

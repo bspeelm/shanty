@@ -160,13 +160,16 @@ func TestEachCharacterHasItsOwnColours(t *testing.T) {
 }
 
 func TestTurningAPaletteKeepsItsLightness(t *testing.T) {
-	p := []RGB{{200, 40, 40}, {30, 120, 220}}
-	turned := turnPalette(p, rand.New(rand.NewPCG(3, 3)))
-	for i := range p {
-		before := float64(p[i].R) + float64(p[i].G) + float64(p[i].B)
-		after := float64(turned[i].R) + float64(turned[i].G) + float64(turned[i].B)
-		if math.Abs(before-after) > 6 {
-			t.Errorf("turning %v gave %v, changing its lightness", p[i], turned[i])
+	for _, c := range []Character{{Calm: 1}, {Drive: 1}, {Grit: 1}, {Flow: 1}} {
+		rng := rand.New(rand.NewPCG(3, 3))
+		was := styleFor(c).tones(rng, c)
+		for _, by := range []float64{-turnMost, -20, 35, turnMost} {
+			before, after := was.ramp(), was.turned(by).ramp()
+			for i := range before {
+				if d := math.Abs(lchOf(before[i]).l - lchOf(after[i]).l); d > 0.01 {
+					t.Errorf("turning %+v by %v degrees moved the lightness of step %d by %.3f", c, by, i, d)
+				}
+			}
 		}
 	}
 }
