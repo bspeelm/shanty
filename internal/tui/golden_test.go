@@ -200,8 +200,8 @@ func TestGoldenScreens(t *testing.T) {
 		{"library", send(t, loadedAll, AlbumsLoaded(everyAlbum()), starredChanged(),
 			PlaylistsLoaded([]subsonic.Playlist{{ID: "pl-1", Name: "Evening", SongCount: 12}}),
 			QueueChanged{Tracks: queued(), At: 0})},
-		{"every-album", send(t, loadedAll, ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))},
-		{"every-album-starred", send(t, loadedAll, ShowEveryAlbum{},
+		{"every-album", send(t, loadedAll, keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()))},
+		{"every-album-starred", send(t, loadedAll, keyOf("g"), keyOf("b"),
 			AlbumsLoaded(everyAlbum()), starredChanged())},
 		// The visualiser over the album it was opened from, so the frame shows
 		// that what is playing is still readable underneath it.
@@ -227,11 +227,11 @@ func TestGoldenScreens(t *testing.T) {
 		{"tracks-starred", send(t, tracks, starredChanged())},
 		{"starred", onStarred(t, send(t, tracks, starredChanged()))},
 		{"starred-nothing", onStarred(t, tracks)},
-		{"playlists", send(t, artists, ShowPlaylists{}, PlaylistsLoaded([]subsonic.Playlist{
+		{"playlists", send(t, artists, keyOf("g"), keyOf("p"), PlaylistsLoaded([]subsonic.Playlist{
 			{ID: "pl-1", Name: "Evening", SongCount: 12},
 			{ID: "pl-2", Name: "Long Watch", SongCount: 41},
 		}))},
-		{"playlists-none", send(t, artists, ShowPlaylists{}, PlaylistsLoaded(nil))},
+		{"playlists-none", send(t, artists, keyOf("g"), keyOf("p"), PlaylistsLoaded(nil))},
 		{"playlist", send(t, artists, PlaylistLoaded(subsonic.Playlist{
 			ID: "pl-1", Name: "Evening", Songs: []subsonic.Song{
 				{ID: "tr-1", Title: "Slipway", Artist: "Aoi", Duration: 180},

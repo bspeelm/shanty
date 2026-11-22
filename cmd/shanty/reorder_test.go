@@ -15,6 +15,8 @@ import (
 
 func TestReorderingWritesTheNewOrder(t *testing.T) {
 	a, srv := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2", "tr-3"}})
+	// The playlist is on screen, which is the only place an order is made.
+	a = openPlaylist(t, a)
 
 	a, _ = runTo(t, a, tui.ReorderPlaylist{
 		ID:    "pl-1",

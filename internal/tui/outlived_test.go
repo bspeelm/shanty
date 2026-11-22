@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -84,7 +83,7 @@ func TestAListReplacedWhileAnotherScreenIsShowingKeepsItsCursorOnARow(t *testing
 	}{
 		{"artists", func(m Model) Model { return m }, ArtistsLoaded(library()[:1])},
 		{"every album", func(m Model) Model {
-			return send(t, m, ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))
+			return send(t, m, keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()))
 		}, AlbumsLoaded(everyAlbum()[:1])},
 		{"queue", func(m Model) Model {
 			return onQueue(t, send(t, m, QueueChanged{Tracks: queued()}))
@@ -97,7 +96,7 @@ func TestAListReplacedWhileAnotherScreenIsShowingKeepsItsCursorOnARow(t *testing
 		}, PlaylistsLoaded(lists[:1])},
 		{"playlist", func(m Model) Model {
 			return send(t, m, PlaylistLoaded(eveningOf(3)))
-		}, PlaylistLoaded(eveningOf(1))},
+		}, PlaylistChanged(eveningOf(1))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := tc.reach(loaded(t))
@@ -126,13 +125,13 @@ func TestAListReplacedWhileAnotherScreenIsShowingKeepsItsCursorOnARow(t *testing
 }
 
 func TestEveryAlbumComingBackShorterLeavesTheCursorOnARow(t *testing.T) {
-	m := send(t, loaded(t), ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()))
+	m := send(t, loaded(t), keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()))
 	m, _ = press(t, m, "end")
 	m = send(t, m, AlbumsLoaded(everyAlbum()[:1]))
 	if m.Cursor() != 0 {
 		t.Fatalf("the cursor is on row %d of a list of one", m.Cursor())
 	}
-	if _, msg := press(t, m, "enter"); msg != (OpenAlbum{ID: "al-1"}) {
+	if _, msg := press(t, m, "enter"); msg.(OpenAlbum).ID != "al-1" {
 		t.Errorf("enter emitted %#v", msg)
 	}
 }
@@ -148,22 +147,19 @@ func TestAnAnswerHoldingNoPlaylistsIsDrawnAsFetched(t *testing.T) {
 	}
 }
 
-func TestAReturningJumpCannotUndoAKeyPressedSince(t *testing.T) {
+func TestAPlaylistOpenedStraightAfterTheJumpToThemIsShown(t *testing.T) {
 	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}}
 	m := send(t, loaded(t), PlaylistsLoaded(lists))
 
 	m, _ = press(t, m, "g")
-	m, asked := press(t, m, "p")
-	m, msg := press(t, m, "enter")
-	if _, ok := msg.(OpenPlaylist); !ok {
-		t.Fatalf("enter emitted %T", msg)
+	m, fetch := press(t, m, "p")
+	if fetch != (FetchPlaylists{}) {
+		t.Fatalf("gp emitted %#v", fetch)
 	}
-	// The interface is handed nothing back for the jump, so the playlist that
-	// was opened is shown when it arrives.
-	if asked == nil {
-		t.Fatal("gp asked for nothing")
-	}
-	m = send(t, m, PlaylistLoaded(eveningOf(3)))
+	m, ask := opened(t, m)
+	// What gp asked for is answered with the list, which does not move the
+	// screen or stop the open being waited for.
+	m = send(t, m, PlaylistsLoaded(lists), Opened{Ask: ask, Loaded: PlaylistLoaded(eveningOf(3))})
 	if m.Screen() != ScreenPlaylist {
 		t.Errorf("the playlist opened after gp is not shown; the screen is %s", m.Screen())
 	}
@@ -198,7 +194,7 @@ func TestReloadingTheLibraryWithFewerArtistsThanItHasRows(t *testing.T) {
 }
 
 func TestLeavingAScreenDropsTheReloadItWasWaitingFor(t *testing.T) {
-	m := send(t, loaded(t), ShowEveryAlbum{}, AlbumsLoaded(everyAlbum()), Reload{})
+	m := send(t, loaded(t), keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum()), Reload{})
 	m, _ = press(t, m, "esc")
 	if m.loading || m.keep != "" {
 		t.Fatalf("the library is still waiting for a reload: loading %v, keeping %q", m.loading, m.keep)
@@ -214,21 +210,21 @@ func TestAReloadAnsweredAfterItsScreenWasLeftDoesNotTakeTheScreen(t *testing.T) 
 
 	m := send(t, loaded(t), ArtistLoaded(artist), AlbumLoaded(album), Reload{})
 	m, _ = press(t, m, "h")
-	m = send(t, m, AlbumLoaded(album))
+	m = send(t, m, Reloaded{Loaded: AlbumLoaded(album)})
 	if m.Screen() != ScreenAlbums || m.loading {
 		t.Errorf("an album reloaded and then left: screen %s, loading %v", m.Screen(), m.loading)
 	}
 
 	m = send(t, m, Reload{})
 	m, _ = press(t, m, "h")
-	m = send(t, m, ArtistLoaded(artist))
+	m = send(t, m, Reloaded{Loaded: ArtistLoaded(artist)})
 	if m.Screen() != ScreenArtists || m.loading {
 		t.Errorf("an artist reloaded and then left: screen %s, loading %v", m.Screen(), m.loading)
 	}
 
 	m = send(t, onStarred(t, send(t, m, starredChanged())), Reload{})
 	m, _ = press(t, m, "h")
-	m = send(t, m, starredChanged())
+	m = send(t, m, Reloaded{Loaded: starredChanged()})
 	if m.loading || strings.Contains(m.Status(), "reloaded") {
 		t.Errorf("a starred list reloaded and then left: loading %v, said %q", m.loading, m.Status())
 	}
@@ -238,9 +234,41 @@ func TestAReloadAnsweredOnItsScreenStillKeepsTheSelection(t *testing.T) {
 	artist, album := library()[0], library()[0].Albums[0]
 	m := send(t, loaded(t), ArtistLoaded(artist), AlbumLoaded(album))
 	m, _ = press(t, m, "j")
-	m = send(t, m, Reload{}, AlbumLoaded(album))
+	m = send(t, m, Reload{}, Reloaded{Loaded: AlbumLoaded(album)})
 	if m.Screen() != ScreenTracks || m.Cursor() != 1 || !strings.Contains(m.Status(), "reloaded") {
 		t.Errorf("screen %s, cursor %d, said %q", m.Screen(), m.Cursor(), m.Status())
+	}
+}
+
+func TestAReloadAskedForTwiceKeepsTheSelectionThroughBothAnswers(t *testing.T) {
+	artist, album := library()[0], library()[0].Albums[0]
+	m := send(t, loaded(t), ArtistLoaded(artist), AlbumLoaded(album))
+	m, _ = press(t, m, "j")
+	m = send(t, m, Reload{}, Reload{}, Reloaded{Loaded: AlbumLoaded(album)}, Reloaded{Loaded: AlbumLoaded(album)})
+	if m.Screen() != ScreenTracks || m.Cursor() != 1 || m.loading {
+		t.Errorf("tracks: screen %s, cursor %d, loading %v", m.Screen(), m.Cursor(), m.loading)
+	}
+
+	m, _ = press(t, m, "h")
+	m, _ = press(t, m, "j")
+	m = send(t, m, Reload{}, Reload{}, Reloaded{Loaded: ArtistLoaded(artist)}, Reloaded{Loaded: ArtistLoaded(artist)})
+	if m.Screen() != ScreenAlbums || m.Cursor() != 1 {
+		t.Errorf("albums: screen %s, cursor %d", m.Screen(), m.Cursor())
+	}
+
+	m = send(t, onArtists(t, m), keyOf("j"), Reload{}, Reload{},
+		Reloaded{Loaded: ArtistsLoaded(library())}, Reloaded{Loaded: ArtistsLoaded(library())})
+	if m.Cursor() != 1 {
+		t.Errorf("artists: cursor %d", m.Cursor())
+	}
+}
+
+func TestAReloadOfSomethingNoLongerHeldIsDropped(t *testing.T) {
+	artist := library()[0]
+	m := send(t, loaded(t), ArtistLoaded(artist), AlbumLoaded(artist.Albums[0]))
+	m = send(t, m, Reloaded{Loaded: AlbumLoaded(artist.Albums[1])}, Reloaded{Loaded: ArtistLoaded(library()[1])})
+	if m.Screen() != ScreenTracks || m.Album().ID != "al-1" || m.Artist().ID != "ar-1" {
+		t.Errorf("screen %s, album %q, artist %q", m.Screen(), m.Album().ID, m.Artist().ID)
 	}
 }
 
@@ -251,47 +279,132 @@ func TestAPlaylistRefreshedAfterItsScreenWasLeftIsKeptWithoutGoingBackToIt(t *te
 		t.Fatalf("back from the playlist went to %s", m.Screen())
 	}
 
-	m = send(t, m, PlaylistLoaded(eveningOf(2)))
+	m = send(t, m, PlaylistChanged(eveningOf(2)))
 	if m.Screen() != ScreenPlaylists {
 		t.Fatalf("the answer to a change made before leaving went back to %s", m.Screen())
 	}
-	if len(m.Playlist().Songs) != 2 {
-		t.Errorf("the playlist as the server now has it was not kept")
+	if len(m.Playlist().Songs) != 2 || m.playlists[0].SongCount != 2 {
+		t.Errorf("the playlist as the server now has it was not kept: %d tracks held, %d listed",
+			len(m.Playlist().Songs), m.playlists[0].SongCount)
+	}
+}
+
+func TestAChangeToOnePlaylistDoesNotTakeTheScreenFromAnother(t *testing.T) {
+	morning := subsonic.Playlist{ID: "pl-2", Name: "Morning", Songs: eveningOf(1).Songs}
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
+	m := send(t, loaded(t), PlaylistsLoaded(lists), PlaylistLoaded(eveningOf(3)))
+	m, removed := press(t, m, "r")
+	if _, ok := removed.(EditPlaylist); !ok {
+		t.Fatalf("r emitted %#v", removed)
+	}
+	m, _ = press(t, m, "h")
+	m, _ = press(t, m, "j")
+	m, ask := opened(t, m)
+
+	m = send(t, m, Opened{Ask: ask, Loaded: PlaylistLoaded(morning)}, PlaylistChanged(eveningOf(2)))
+	if m.Screen() != ScreenPlaylist || m.Playlist().ID != "pl-2" {
+		t.Errorf("Evening's answer took the screen: %s showing %q", m.Screen(), m.Playlist().ID)
+	}
+	if m.playlists[0].SongCount != 2 {
+		t.Errorf("the list still counts %d tracks in Evening", m.playlists[0].SongCount)
+	}
+}
+
+func TestATrackAddedWhileEditingDoesNotTakeTheScreenToThePlaylist(t *testing.T) {
+	a := library()[0]
+	m := send(t, loaded(t), EditingPlaylist(eveningOf(1)), ArtistLoaded(a), AlbumLoaded(a.Albums[0]))
+	m, _ = press(t, m, "j")
+	m, added := press(t, m, "a")
+	if _, ok := added.(EditPlaylist); !ok {
+		t.Fatalf("a emitted %#v", added)
+	}
+
+	stillEditing := send(t, m, PlaylistChanged(eveningOf(2)))
+	if stillEditing.Screen() != ScreenTracks || !stillEditing.inPlaylist["tr-2"] {
+		t.Errorf("while editing: screen %s, marked %v", stillEditing.Screen(), stillEditing.inPlaylist)
+	}
+
+	m, _ = press(t, m, "e")
+	m = send(t, m, PlaylistChanged(eveningOf(2)))
+	if m.Screen() != ScreenTracks {
+		t.Errorf("after leaving the edit, the add's answer went to %s", m.Screen())
+	}
+}
+
+func TestAnOpenTriedAgainAfterItFailedDoesNotLoseTheNextChange(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}}
+	m := onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists)))
+	m, first := opened(t, m)
+	m = send(t, m, Failed{Message: "the server did not answer", Ask: first})
+	if m.loading || m.waiting != 0 {
+		t.Fatalf("the failed open is still waited for: loading %v, waiting %d", m.loading, m.waiting)
+	}
+	m, second := opened(t, m)
+	m = send(t, m, Opened{Ask: second, Loaded: PlaylistLoaded(eveningOf(3))})
+	m, _ = press(t, m, "r")
+
+	m = send(t, m, PlaylistChanged(eveningOf(2)))
+	if len(m.Playlist().Songs) != 2 || m.Screen() != ScreenPlaylist {
+		t.Errorf("the screen shows %d tracks where the server holds 2", len(m.Playlist().Songs))
+	}
+}
+
+func TestTheAnswerToAnOpenThatWasLeftDoesNotComeBackLater(t *testing.T) {
+	a := library()[0]
+	m, first := opened(t, loaded(t))
+	m, _ = press(t, m, "h")
+	m, second := opened(t, onArtists(t, m))
+	m = send(t, m, Opened{Ask: second, Loaded: ArtistLoaded(a)})
+	m, album := opened(t, m)
+	m = send(t, m, Opened{Ask: album, Loaded: AlbumLoaded(a.Albums[0])}, Opened{Ask: first, Loaded: ArtistLoaded(a)})
+	if m.Screen() != ScreenTracks {
+		t.Errorf("the first answer pulled the screen back to %s", m.Screen())
+	}
+}
+
+func TestTheFailureOfAnOpenThatWasLeftIsKeptToReadAndChangesNothing(t *testing.T) {
+	m, first := opened(t, loaded(t))
+	m, _ = press(t, m, "j")
+	m, second := opened(t, m)
+
+	m = send(t, m, Failed{Message: "the first did not arrive", Ask: first})
+	if !m.loading || m.statusFailed {
+		t.Errorf("the failure of the open left behind stopped the one waited for: loading %v", m.loading)
+	}
+	if len(m.said) == 0 || m.said[len(m.said)-1].text != "the first did not arrive" {
+		t.Error("the failure was not kept to be read")
+	}
+	m = send(t, m, Opened{Ask: second, Loaded: ArtistLoaded(library()[1])})
+	if m.Screen() != ScreenAlbums {
+		t.Errorf("the open waited for was not shown; the screen is %s", m.Screen())
 	}
 }
 
 func TestAFailureAboutSomethingElseDoesNotLetAnAbandonedArtistTakeTheScreen(t *testing.T) {
-	m, _ := press(t, loaded(t), "enter")
+	m, ask := opened(t, loaded(t))
 	m = send(t, m, Failed{Message: "nothing is playing to seek in"})
 	m, _ = press(t, m, "h")
 
-	m = send(t, m, ArtistLoaded(library()[0]))
+	m = send(t, m, Opened{Ask: ask, Loaded: ArtistLoaded(library()[0])})
 	if m.Screen() != ScreenLibrary {
 		t.Errorf("the artist walked away from took the screen to %s", m.Screen())
 	}
 }
 
 func TestAnArtistAskedForTwiceIsNotShownAgainAfterGoingBack(t *testing.T) {
-	m, _ := press(t, loaded(t), "enter")
-	m, _ = press(t, m, "enter")
-	m = send(t, m, ArtistLoaded(library()[0]))
+	m, first := opened(t, loaded(t))
+	m, second := opened(t, m)
+	m = send(t, m, Opened{Ask: first, Loaded: ArtistLoaded(library()[0])})
+	if m.Screen() != ScreenArtists {
+		t.Fatalf("the answer to the first of two opens was shown")
+	}
+	m = send(t, m, Opened{Ask: second, Loaded: ArtistLoaded(library()[0])})
 	m, _ = press(t, m, "h")
 
-	m = send(t, m, ArtistLoaded(library()[0]))
+	m = send(t, m, Opened{Ask: first, Loaded: ArtistLoaded(library()[0])},
+		Opened{Ask: second, Loaded: ArtistLoaded(library()[0])})
 	if m.Screen() != ScreenArtists {
-		t.Errorf("the second answer went to %s after back was pressed", m.Screen())
-	}
-}
-
-func TestTheRequestsRememberedAsAbandonedAreBounded(t *testing.T) {
-	m := loaded(t)
-	for i := range 50 {
-		m = m.opening("opening", fmt.Sprintf("ar-%d", i))
-		m = m.show(ScreenLibrary).show(ScreenArtists)
-	}
-	if len(m.strayed) > requestsKept || len(m.flying) > requestsKept {
-		t.Errorf("%d abandoned and %d in flight are remembered, want at most %d of each",
-			len(m.strayed), len(m.flying), requestsKept)
+		t.Errorf("an answer already used went to %s after back was pressed", m.Screen())
 	}
 }
 
@@ -301,17 +414,14 @@ func TestASearchOrAnEditArrivingAbandonsWhatWasBeingOpened(t *testing.T) {
 		"edit":   EditingPlaylist(eveningOf(3)),
 	} {
 		m := onStarred(t, send(t, loaded(t), starredChanged()))
-		m, msg := press(t, m, "enter")
-		if msg != (OpenArtist{ID: "ar-1"}) {
-			t.Fatalf("%s: enter on the starred artist emitted %#v", name, msg)
-		}
+		m, ask := opened(t, m)
 		m = send(t, m, arrives)
 		was := m.Screen()
 		if was == ScreenStarred {
 			t.Fatalf("%s: the screen did not change", name)
 		}
 
-		m = send(t, m, ArtistLoaded(library()[0]))
+		m = send(t, m, Opened{Ask: ask, Loaded: ArtistLoaded(library()[0])})
 		if m.Screen() != was {
 			t.Errorf("%s: the artist asked for before it took the screen to %s", name, m.Screen())
 		}
@@ -402,114 +512,6 @@ func TestAFilterBeingTypedEndsWhenTheScreenChanges(t *testing.T) {
 	}
 }
 
-// randomMessage is a key or a message the program could plausibly receive.
-func randomMessage(r *rand.Rand) tea.Msg {
-	keys := []string{"j", "k", "g", "g", "l", "a", "b", "p", "q", "s", "v", "enter", "esc", "h",
-		"end", "home", "pgup", "pgdown", "/", ":", "x", "w", "r", "e", "S", "*", "A", "J", "K", "?",
-		"5", "%", " ", "n", "y", "backspace", "tab", "G"}
-	artists := library()
-	ids := []string{"ar-1", "ar-2", "al-1", "al-2", "pl-1", "pl-2", "zz"}
-	id := ids[r.IntN(len(ids))]
-	starred := starredChanged()
-	starred.Results.Albums = starred.Results.Albums[:r.IntN(2)]
-	starred.Results.Songs = starred.Results.Songs[:r.IntN(2)]
-	found := results()
-	found.Albums = found.Albums[:r.IntN(3)]
-	found.Songs = found.Songs[:r.IntN(3)]
-	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
-
-	switch r.IntN(26) {
-	case 0:
-		return ArtistsLoaded(artists[:r.IntN(len(artists)+1)])
-	case 1:
-		a := subsonic.Artist{ID: id, Name: "Aoi", Albums: artists[0].Albums[:r.IntN(3)]}
-		return ArtistLoaded(a)
-	case 2:
-		return AlbumsLoaded(everyAlbum()[:r.IntN(4)])
-	case 3:
-		a := tenTracks()
-		a.ID, a.Songs = id, a.Songs[:r.IntN(len(a.Songs)+1)]
-		return AlbumLoaded(a)
-	case 4:
-		return QueueChanged{Tracks: queued()[:r.IntN(4)], At: r.IntN(4)}
-	case 5:
-		return SearchLoaded{Query: "water", Results: found}
-	case 6:
-		return starred
-	case 7:
-		return PlaylistsLoaded(lists[:r.IntN(3)])
-	case 8:
-		p := eveningOf(r.IntN(4))
-		p.ID = id
-		return PlaylistLoaded(p)
-	case 9:
-		return Failed{Message: "the server did not answer"}
-	case 10:
-		return Notice("playing Ballast next")
-	case 11:
-		return Reload{}
-	case 12:
-		return FullArt{"a picture filling the screen"}
-	case 13:
-		return ShowVisualiser{}
-	case 14:
-		return ShowWiki{}
-	case 15:
-		return ShowMessages{}
-	case 16:
-		return EditingPlaylist(eveningOf(r.IntN(4)))
-	case 17:
-		return tea.WindowSizeMsg{Width: 20 + r.IntN(80), Height: 4 + r.IntN(30)}
-	case 18:
-		return Confirm{Question: "delete it?", Do: Notice("deleted")}
-	case 19:
-		return tea.KeyMsg{Type: tea.KeyCtrlC}
-	}
-	key := keys[r.IntN(len(keys))]
-	if named, ok := namedKeys[key]; ok {
-		return tea.KeyMsg{Type: named}
-	}
-	if key == " " {
-		return tea.KeyMsg{Type: tea.KeySpace}
-	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
-}
-
-// TestNoRunOfKeysAndMessagesLeavesTheCursorOffItsList drives the interface with
-// keys and messages drawn from a seeded generator. After each one the frame is
-// drawn and the cursor of the screen showing is checked against its rows.
-func TestNoRunOfKeysAndMessagesLeavesTheCursorOffItsList(t *testing.T) {
-	for seed := uint64(1); seed <= 6; seed++ {
-		r := rand.New(rand.NewPCG(seed, 7))
-		m := sized(New())
-		var last tea.Msg
-		func() {
-			defer func() {
-				if p := recover(); p != nil {
-					t.Fatalf("seed %d: %v after %#v on the %s screen", seed, p, last, m.Screen())
-				}
-			}()
-			for step := range 300 {
-				last = randomMessage(r)
-				next, _ := m.Update(last)
-				m = next.(Model)
-				if !m.ShowingSky() {
-					_ = m.View()
-				}
-				rows, at := m.rows(), m.Cursor()
-				if at < 0 || (rows > 0 && at >= rows) {
-					t.Fatalf("seed %d, step %d: the cursor is on row %d of %d on the %s screen after %#v",
-						seed, step, at, rows, m.Screen(), last)
-				}
-				if m.isGrouped() && rows > 0 && !m.matchedResults()[at].selectable() {
-					t.Fatalf("seed %d, step %d: the cursor is on a heading of the %s screen after %#v",
-						seed, step, m.Screen(), last)
-				}
-			}
-		}()
-	}
-}
-
 func TestStartingAndAbandoningAFilterOnASearchLeavesTheCursorOffTheHeadings(t *testing.T) {
 	m, _ := press(t, searched(t), "/")
 	if !m.found[m.Cursor()].selectable() {
@@ -524,4 +526,106 @@ func TestStartingAndAbandoningAFilterOnASearchLeavesTheCursorOffTheHeadings(t *t
 	if !m.found[m.Cursor()].selectable() {
 		t.Error("abandoning the filter put the cursor on a heading")
 	}
+}
+
+func TestAWikiPageThatReflowsToFewerRowsLeavesTheCursorOnOne(t *testing.T) {
+	next, _ := New().Update(tea.WindowSizeMsg{Width: 30, Height: 12})
+	m := send(t, next.(Model), ShowWiki{})
+	for commands[m.Cursor()].name != "search" {
+		m, _ = press(t, m, "j")
+	}
+	m, _ = press(t, m, "enter")
+	m, _ = press(t, m, "G")
+	narrow := m.rows()
+
+	m = send(t, m, tea.WindowSizeMsg{Width: 200, Height: 12})
+	if m.rows() >= narrow {
+		t.Fatalf("the page did not reflow to fewer rows: %d then %d", narrow, m.rows())
+	}
+	if m.Cursor() >= m.rows() {
+		t.Fatalf("the cursor is on row %d of %d", m.Cursor(), m.rows())
+	}
+	_, _ = press(t, m, "*")
+	_, _ = press(t, m, "enter")
+	_ = m.View()
+}
+
+func TestLeavingAGroupedListWithAFilterThatMatchesNothingLeavesTheCursorOffAHeading(t *testing.T) {
+	m := onStarred(t, send(t, loaded(t), starredChanged()))
+	m, _ = press(t, m, "j")
+	m, ask := opened(t, m)
+	m, _ = press(t, m, "/")
+	m = typed(t, m, "bzzz")
+	if m.rows() != 0 {
+		t.Fatalf("the filter still matches %d rows", m.rows())
+	}
+
+	m = send(t, m, AlbumLoaded(library()[0].Albums[0]))
+	m, _ = press(t, m, "h")
+	if m.Screen() != ScreenStarred || !m.starredRows[m.Cursor()].selectable() {
+		t.Errorf("back on %s the cursor is on row %d, a heading", m.Screen(), m.Cursor())
+	}
+	_ = ask
+}
+
+func TestAScreenThatHasItsListIsNotDrawnAsLoadingBecauseAnotherIsStillArriving(t *testing.T) {
+	m, _ := press(t, loaded(t), "g")
+	m, _ = press(t, m, "p")
+	if !m.loading {
+		t.Fatal("playlists not fetched yet are not drawn as loading")
+	}
+	m, _ = press(t, m, "esc")
+	m = onQueue(t, m)
+	if m.loading || strings.Contains(m.View(), "loading") {
+		t.Errorf("the queue says it is loading while the playlists arrive:\n%s", m.View())
+	}
+
+	m = onPlaylists(t, m)
+	if !m.loading {
+		t.Error("going back to playlists that have not arrived does not say they are loading")
+	}
+}
+
+func TestThePlaylistCommandWithNoNameShowsTheListAndAsksForIt(t *testing.T) {
+	m, msg := typeCommand(t, loaded(t), "playlist")
+	if msg != (FetchPlaylists{}) {
+		t.Errorf(":playlist emitted %#v, want FetchPlaylists", msg)
+	}
+	if m.Screen() != ScreenPlaylists {
+		t.Errorf(":playlist went to %s", m.Screen())
+	}
+}
+
+func TestBackUnderACoverLeavesItBeforeItDiscardsAnArrangement(t *testing.T) {
+	m := reordering(t, evening3(t))
+	m, _ = press(t, m, "J")
+	m = send(t, m, FullArt{"a picture filling the screen"})
+
+	m, _ = press(t, m, "esc")
+	if m.ShowingArt() {
+		t.Fatal("esc left the cover up")
+	}
+	if !m.Reordering() || m.order[1].ID != "tr-1" {
+		t.Error("esc discarded the arrangement instead of taking the cover away")
+	}
+}
+
+// cursorsWithinTheirLists reports the first screen whose cursor is past the
+// end of its list or on a heading. Every screen is checked, not only the one
+// showing.
+func cursorsWithinTheirLists(m Model) error {
+	for _, s := range Screens {
+		on := m
+		if s != m.screen {
+			on.screen, on.filter = s, ""
+		}
+		rows, at := on.rows(), on.cursor[s]
+		if at < 0 || (rows > 0 && at >= rows) {
+			return fmt.Errorf("the %s cursor is on row %d of %d", s, at, rows)
+		}
+		if on.isGrouped() && rows > 0 && !on.matchedResults()[at].selectable() {
+			return fmt.Errorf("the %s cursor is on a heading", s)
+		}
+	}
+	return nil
 }

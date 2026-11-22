@@ -241,7 +241,7 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tui.OpenArtist:
-		return a, a.fetchArtist(msg.ID)
+		return a, opened(msg.Ask, a.fetchArtist(msg.ID))
 	case tea.WindowSizeMsg:
 		a.size = msg
 		next, cmd := a.forward(msg)
@@ -259,34 +259,40 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.AutoVolume:
 		return a.setAutoVolume(msg.On)
 	case tui.OpenAlbum:
-		return a, a.fetchAlbum(msg.ID)
+		return a, opened(msg.Ask, a.fetchAlbum(msg.ID))
 	case tui.AlbumLoaded:
 		// The album is shown at once and its cover follows, because a picture
 		// is worth none of the wait before a track list appears.
 		next, cmd := a.forward(msg)
 		return next, tea.Batch(cmd, a.fetchArt(subsonic.Album(msg)))
+	case tui.Opened:
+		next, cmd := a.forward(msg)
+		if album, ok := msg.Loaded.(tui.AlbumLoaded); ok {
+			return next, tea.Batch(cmd, a.fetchArt(subsonic.Album(album)))
+		}
+		return next, cmd
+	case tui.Reloaded:
+		// What is starred is kept here as well as drawn.
+		if found, ok := msg.Loaded.(starredLoaded); ok {
+			a.starred = found.ids
+			msg.Loaded = tui.StarredChanged{Results: found.results, IDs: found.ids}
+		}
+		return a.forward(msg)
 	case tui.Search:
 		return a, a.search(string(msg))
 	case tui.Resume:
 		return a, a.resumeSaved()
-	case tui.ShowPlaylists:
-		return a.forwardAnd(msg, a.fetchPlaylists())
-	case tui.ShowEveryAlbum:
-		// Asked for once. The list does not change while shanty is open
-		// unless the server is rescanned, and :reload asks again.
-		if len(a.ui.Albums()) > 0 {
-			return a.forward(msg)
-		}
-		return a.forwardAnd(msg, a.fetchAlbums())
 	case tui.FetchPlaylists:
 		return a, a.fetchPlaylists()
 	case tui.FetchEveryAlbum:
+		// Asked for once. The list does not change while shanty is open
+		// unless the server is rescanned, and :reload asks again.
 		if len(a.ui.Albums()) > 0 {
 			return a, nil
 		}
 		return a, a.fetchAlbums()
 	case tui.OpenPlaylist:
-		return a, a.fetchPlaylist(msg.ID)
+		return a, opened(msg.Ask, a.fetchPlaylist(msg.ID))
 	case tui.Playlist:
 		return a, a.playlistCommand(msg)
 	case tui.RenamePlaylist:
@@ -647,6 +653,37 @@ func (a app) flushBacklog() tea.Msg {
 	return scrobbled{}
 }
 
+// opened runs the fetch for an open and returns its answer carrying the
+// number the open was asked with. An open with no number is answered bare.
+func opened(ask int, fetch tea.Cmd) tea.Cmd {
+	if ask == 0 {
+		return fetch
+	}
+	return func() tea.Msg {
+		switch msg := fetch().(type) {
+		case nil:
+			return nil
+		case tui.Failed:
+			msg.Ask = ask
+			return msg
+		default:
+			return tui.Opened{Ask: ask, Loaded: msg}
+		}
+	}
+}
+
+// reloaded runs a fetch for a reload and marks its answer as one.
+func reloaded(fetch tea.Cmd) tea.Cmd {
+	return func() tea.Msg {
+		switch msg := fetch().(type) {
+		case nil, tui.Failed:
+			return msg
+		default:
+			return tui.Reloaded{Loaded: msg}
+		}
+	}
+}
+
 func (a app) fetchArtists() tea.Cmd {
 	client := a.client
 	return func() tea.Msg {
@@ -900,19 +937,19 @@ func (a app) reload() tea.Cmd {
 		// asks for those again. Albums only if they have been fetched once:
 		// the screen is reachable without ever having opened them.
 		if len(a.ui.Albums()) > 0 {
-			return tea.Batch(a.fetchArtists(), a.fetchAlbums())
+			return tea.Batch(reloaded(a.fetchArtists()), reloaded(a.fetchAlbums()))
 		}
-		return a.fetchArtists()
+		return reloaded(a.fetchArtists())
 	case tui.ScreenArtists:
-		return a.fetchArtists()
+		return reloaded(a.fetchArtists())
 	case tui.ScreenAlbums:
-		return a.fetchArtist(a.ui.Artist().ID)
+		return reloaded(a.fetchArtist(a.ui.Artist().ID))
 	case tui.ScreenEveryAlbum:
-		return a.fetchAlbums()
+		return reloaded(a.fetchAlbums())
 	case tui.ScreenTracks:
-		return a.fetchAlbum(a.ui.Album().ID)
+		return reloaded(a.fetchAlbum(a.ui.Album().ID))
 	case tui.ScreenStarred:
-		return a.fetchStarred()
+		return reloaded(a.fetchStarred())
 	}
 	return emit(tui.Failed{Message: "there is nothing here to fetch again"})
 }
@@ -1151,7 +1188,7 @@ func (a app) reorderPlaylist(msg tui.ReorderPlaylist) tea.Cmd {
 		if err != nil {
 			return tui.Failed{Message: err.Error()}
 		}
-		return tui.PlaylistLoaded(full)
+		return tui.PlaylistChanged(full)
 	}
 }
 
@@ -1189,7 +1226,7 @@ func (a app) renamePlaylist(msg tui.RenamePlaylist) tea.Cmd {
 		if err != nil {
 			return tui.Failed{Message: err.Error()}
 		}
-		return tui.PlaylistLoaded(found)
+		return tui.PlaylistChanged(found)
 	}
 }
 
@@ -1264,7 +1301,7 @@ func (a app) editPlaylist(msg tui.EditPlaylist) tea.Cmd {
 		if err != nil {
 			return tui.Failed{Message: err.Error()}
 		}
-		return tui.PlaylistLoaded(full)
+		return tui.PlaylistChanged(full)
 	}
 }
 

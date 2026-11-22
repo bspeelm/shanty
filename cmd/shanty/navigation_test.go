@@ -160,3 +160,107 @@ func TestAFinishedScanAsksForTheLibraryOnce(t *testing.T) {
 		t.Errorf("the cursor is on row %d and the last row says %q", a.ui.Cursor(), a.ui.Status())
 	}
 }
+
+func TestReloadingTwiceMakesTwoRequestsAndKeepsTheSelection(t *testing.T) {
+	a, _, srv := wired(t)
+	a = settle(t, a, tui.OpenArtist{ID: "ar-1"})
+	a = settle(t, a, tui.OpenAlbum{ID: "al-1"})
+	a = settle(t, a, keyRunes("j"))
+	before := len(srv.Requests())
+
+	a, first := step(t, a, tui.Reload{})
+	a, second := step(t, a, tui.Reload{})
+	a = deliver(t, a, first, second)
+
+	if n := requests(srv, before, "getAlbum"); n != 2 {
+		t.Errorf("two reloads asked for the album %d times", n)
+	}
+	if a.ui.Screen() != tui.ScreenTracks || a.ui.Cursor() != 1 {
+		t.Errorf("after two reloads: screen %s, cursor %d", a.ui.Screen(), a.ui.Cursor())
+	}
+}
+
+func TestAReloadAnsweredAfterTheScreenWasLeftDoesNotComeBackToIt(t *testing.T) {
+	a, _, _ := wired(t)
+	a = settle(t, a, tui.OpenArtist{ID: "ar-1"})
+	a = settle(t, a, tui.OpenAlbum{ID: "al-1"})
+
+	a, answer := step(t, a, tui.Reload{})
+	a = settle(t, a, keyRunes("h"))
+	a = deliver(t, a, answer)
+	if a.ui.Screen() != tui.ScreenAlbums {
+		t.Errorf("the reload's answer took the screen back to %s", a.ui.Screen())
+	}
+}
+
+// enter is the key that opens a row.
+var enter = tea.KeyMsg{Type: tea.KeyEnter}
+
+func TestAnOpenIsShownOnlyWhileItsScreenIsStillWaitingForIt(t *testing.T) {
+	a, _, _ := wired(t)
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	a = settle(t, a, a.fetchArtists()())
+
+	// enter, back, and enter again, all before the first answer arrives.
+	a, first := step(t, a, enter)
+	a = settle(t, a, keyRunes("h"))
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	a, second := step(t, a, enter)
+	a = deliver(t, a, second)
+	if a.ui.Screen() != tui.ScreenAlbums {
+		t.Fatalf("the artist opened again is not shown; the screen is %s", a.ui.Screen())
+	}
+	a, album := step(t, a, enter)
+	a = deliver(t, a, album, first)
+	if a.ui.Screen() != tui.ScreenTracks {
+		t.Errorf("the answer to the open that was left took the screen to %s", a.ui.Screen())
+	}
+}
+
+func TestAnOpenThatFailsStopsBeingWaitedForAndCanBeTriedAgain(t *testing.T) {
+	a, srv := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2", "tr-3"}})
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+
+	srv.Refuse("pl-1")
+	a = settle(t, a, enter)
+	if a.ui.Screen() != tui.ScreenPlaylists || strings.Contains(a.ui.View(), "loading") {
+		t.Fatalf("after a failed open: screen %s\n%s", a.ui.Screen(), a.ui.View())
+	}
+	if a.ui.Status() == "" {
+		t.Error("the failed open said nothing")
+	}
+}
+
+func TestRemovingFromOnePlaylistAndOpeningAnotherShowsTheOther(t *testing.T) {
+	a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2", "tr-3"}, "Morning": {"tr-4"}})
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+	first := a.ui.View()
+	a = settle(t, a, enter)
+	opened := a.ui.Playlist()
+
+	// r, back, down and enter, with the removal answered last.
+	a, removed := step(t, a, keyRunes("r"))
+	a = settle(t, a, keyRunes("h"))
+	a = settle(t, a, keyRunes("j"))
+	a, other := step(t, a, enter)
+	a = deliver(t, a, other, removed)
+
+	if a.ui.Screen() != tui.ScreenPlaylist || a.ui.Playlist().ID == opened.ID {
+		t.Errorf("the removal's answer took the screen: %s showing %q\n%s",
+			a.ui.Screen(), a.ui.Playlist().Name, first)
+	}
+}
+
+func TestAddingToAPlaylistFromAnAlbumStaysOnTheAlbum(t *testing.T) {
+	a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-4"}})
+	a = settle(t, a, tui.Playlist{Verb: "edit", Name: "Evening"})
+	a = settle(t, a, tui.OpenArtist{ID: "ar-1"})
+	a = settle(t, a, tui.OpenAlbum{ID: "al-1"})
+
+	a, added := step(t, a, keyRunes("a"))
+	a = settle(t, a, keyRunes("e"))
+	a = deliver(t, a, added)
+	if a.ui.Screen() != tui.ScreenTracks {
+		t.Errorf("the add's answer took the screen to %s", a.ui.Screen())
+	}
+}

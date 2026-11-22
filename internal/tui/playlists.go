@@ -27,7 +27,7 @@ var playlistVerbs = map[string]bool{
 func playlistCommand(arg string) (any, error) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		return ShowPlaylists{}, nil
+		return listPlaylists{}, nil
 	}
 	verb, name, _ := strings.Cut(arg, " ")
 	name = strings.TrimSpace(name)
@@ -57,3 +57,7 @@ func verbList() string {
 func playlistSummary() string {
 	return fmt.Sprintf("list them, or %s one", verbList())
 }
+
+// listPlaylists is what the playlist command with no argument resolves to. It
+// is handled where the command is run and never leaves the interface.
+type listPlaylists struct{}
