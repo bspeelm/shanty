@@ -223,22 +223,15 @@ func TestMovingByPagesAndToTheEndsWorksWhileAFilterIsBeingTyped(t *testing.T) {
 	}
 }
 
-func TestEnterOnAFilterThatLeavesOneRowOpensIt(t *testing.T) {
+func TestEnterKeepsAFilterThatLeavesOneRowAndOpensNothing(t *testing.T) {
 	m, _ := press(t, loaded(t), "/")
 	m = typed(t, m, "bilge")
 	m, msg := press(t, m, "enter")
-	if open, ok := msg.(OpenArtist); !ok || open.ID != "ar-2" {
-		t.Fatalf("enter with one row left emitted %#v, want that artist opened", msg)
+	if msg != nil || m.Filtering() || m.Filter() != "bilge" || m.rows() != 1 || m.Screen() != ScreenArtists {
+		t.Fatalf("enter with one row left emitted %#v; typing %v, filter %q", msg, m.Filtering(), m.Filter())
 	}
-	if m.Filtering() || m.Filter() != "bilge" {
-		t.Errorf("the filter was not kept: typing %v, %q", m.Filtering(), m.Filter())
-	}
-
-	m, _ = press(t, send(t, loaded(t), keyOf("g"), keyOf("b"), AlbumsLoaded(everyAlbum())), "/")
-	m = typed(t, m, "a")
-	m, msg = press(t, m, "enter")
-	if msg != nil || m.Filtering() || m.Filter() != "a" || m.rows() < 2 {
-		t.Errorf("enter with %d rows left emitted %#v", m.rows(), msg)
+	if _, msg = press(t, m, "enter"); msg.(OpenArtist).ID != "ar-2" {
+		t.Errorf("the next enter emitted %#v, want that row opened", msg)
 	}
 }
 

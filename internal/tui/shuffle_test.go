@@ -97,18 +97,11 @@ func TestShuffleWhereThereIsNothingToShuffleSaysWherePressingItWorks(t *testing.
 	}
 }
 
-// narrowed types a filter and keeps it. Where one row is left, enter would
-// open it, so the list is left as it is after opening that row and coming
-// back: narrowed, and no longer being typed into.
+// narrowed types a filter and keeps it.
 func narrowed(t *testing.T, m Model, by string) Model {
 	t.Helper()
 	m, _ = press(t, m, "/")
-	m = typed(t, m, by)
-	if m.rows() == 1 {
-		m.mode = modeNormal
-		return m
-	}
-	m, _ = press(t, m, "enter")
+	m, _ = press(t, typed(t, m, by), "enter")
 	return m
 }
 
