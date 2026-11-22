@@ -166,8 +166,10 @@ func TestTurningAPaletteKeepsItsLightness(t *testing.T) {
 		for _, by := range []float64{-turnMost, -20, 35, turnMost} {
 			before, after := was.ramp(), was.turned(by).ramp()
 			for i := range before {
-				if d := math.Abs(lchOf(before[i]).l - lchOf(after[i]).l); d > 0.01 {
-					t.Errorf("turning %+v by %v degrees moved the lightness of step %d by %.3f", c, by, i, d)
+				// A step keeps its brightness: the lightness of the grey that
+				// is as bright as it.
+				if d := math.Abs(math.Cbrt(relLum(before[i])) - math.Cbrt(relLum(after[i]))); d > 0.01 {
+					t.Errorf("turning %+v by %v degrees moved the brightness of step %d by %.3f", c, by, i, d)
 				}
 			}
 		}

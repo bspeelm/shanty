@@ -170,25 +170,29 @@ func (s *style) param(rng *rand.Rand) param {
 // degrees.
 const (
 	// Calm is keyed from blue to blue-violet, and its hue moves calmArc from
-	// the dark end of a ramp to the bright end. Its ramps rise to a
-	// lightness of calmLight and end at calmTop.
-	calmFrom, calmTo, calmArc = 200.0, 280.0, 30.0
-	calmLight, calmTop        = 0.87, 0.90
+	// the dark end of a ramp to the bright end. Its ramps rise to the
+	// brightness of a grey of lightness calmLight and end at that of
+	// calmTop, and their darkest step has calmDark of the first. These three
+	// are set for each kind of music so that a ramp is as bright, step for
+	// step, as the ramps drawn before palettes were made.
+	calmFrom, calmTo, calmArc    = 200.0, 280.0, 30.0
+	calmLight, calmTop, calmDark = 0.86, 0.904, 0.2
 	// Drive is keyed anywhere in the cool family, with the widest arc.
 	driveArc, driveArcMost = 40.0, 60.0
-	driveLight, driveTop   = 0.77, 0.85
+	driveLight, driveTop   = 0.75, 0.854
+	driveDark              = 0.24
 	// Grit is keyed anywhere in the ember family. Its two brightest steps
 	// are a yellow of hue gritHot, at gritAccent of its peak chroma, and its
 	// peak chroma is gritStrength of what its saturation gives.
 	gritArc, gritHot, gritAccent = 30.0, 90.0, 0.5
-	gritLight, gritTop           = 0.72, 0.9
+	gritLight, gritTop, gritDark = 0.66, 0.813, 0.29
 	gritStrength                 = 1.15
 	// Flow is keyed anywhere in the gold family. Its second member has
 	// flowMate of the chroma of its first.
-	flowArc            = 40.0
-	flowLight, flowTop = 0.67, 0.84
-	flowStrength       = 1.1
-	flowMate           = 0.45
+	flowArc                      = 40.0
+	flowLight, flowTop, flowDark = 0.62, 0.822, 0.27
+	flowStrength                 = 1.1
+	flowMate                     = 0.45
 	// greyShare of the palettes for driving and for heavy music have greys
 	// for one member: for driving music, half of those for the first member
 	// and half for the second.
@@ -218,11 +222,11 @@ func (s *style) tones(rng *rand.Rand, c Character) tones {
 	switch pick(rng, axes[:]) {
 	case 0:
 		keyed(cool, calmFrom, calmTo, rng.Float64())
-		t.arc, t.light, t.top = calmArc, calmLight, calmTop
+		t.arc, t.light, t.top, t.dark = calmArc, calmLight, calmTop, calmDark
 	case 1:
 		v, u := rng.Float64(), rng.Float64()
 		keyed(cool, cool.keyFrom, cool.keyTo, v)
-		t.arc, t.light, t.top = driveArc+(driveArcMost-driveArc)*u, driveLight, driveTop
+		t.arc, t.light, t.top, t.dark = driveArc+(driveArcMost-driveArc)*u, driveLight, driveTop, driveDark
 		switch grey := part(v); {
 		case grey < greyShare/2:
 			t.mate, t.key, t.peak = t.key-greyKey, greyKey, greyPeak
@@ -235,7 +239,7 @@ func (s *style) tones(rng *rand.Rand, c Character) tones {
 		v := rng.Float64()
 		t.peak *= gritStrength
 		keyed(ember, ember.keyFrom, ember.keyTo, v)
-		t.arc, t.light, t.top = gritArc, gritLight, gritTop
+		t.arc, t.light, t.top, t.dark = gritArc, gritLight, gritTop, gritDark
 		t.accentSteps, t.accentTurn, t.accent = 2, gritHot-(t.key+gritArc/2), gritAccent*t.peak
 		if part(v) < greyShare {
 			t.matePeak = greyPeak
@@ -244,7 +248,7 @@ func (s *style) tones(rng *rand.Rand, c Character) tones {
 		v := rng.Float64()
 		t.peak *= flowStrength
 		keyed(gold, gold.keyFrom, gold.keyTo, v)
-		t.arc, t.light, t.top = flowArc, flowLight, flowTop
+		t.arc, t.light, t.top, t.dark = flowArc, flowLight, flowTop, flowDark
 		t.matePeak = flowMate * t.peak
 	}
 	t.arc = t.fam.leaning(t.key, t.arc)
