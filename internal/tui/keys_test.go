@@ -254,7 +254,7 @@ func TestEveryRowOfTheKeysScreenSaysWhatItIsWithoutItsHeading(t *testing.T) {
 		seenRows[row] = true
 		moded := strings.Contains(under, "typing") || strings.Contains(under, "question") ||
 			strings.Contains(under, "reordering") || strings.Contains(under, "adding") || strings.Contains(under, "visualiser")
-		if moded && !strings.HasPrefix(r.detail, under+": ") {
+		if moded && !strings.HasSuffix(r.detail, ", "+under) {
 			t.Errorf("the row %q under %q does not say which mode it is about", row, under)
 		}
 	}
@@ -428,5 +428,20 @@ func TestAnActionLeftWithNoKeyIsStillListed(t *testing.T) {
 	text := loaded(t).WithKeys(keys).rowsText()
 	if !strings.Contains(text, "(no key)  pause, or resume if already paused") {
 		t.Errorf("pause has no key and the keys screen does not list it as such:\n%s", text)
+	}
+}
+
+// TestEveryRowOfTheKeysScreenShowsWhatItsKeyDoesAtSixtyFourColumns holds each
+// row, as drawn in a narrow terminal, to the first words of what it says.
+func TestEveryRowOfTheKeysScreenShowsWhatItsKeyDoesAtSixtyFourColumns(t *testing.T) {
+	m := send(t, loaded(t), tea.WindowSizeMsg{Width: 64, Height: 12}, ShowWiki{})
+	for i, r := range m.keyRows() {
+		if r.kind != kindKey {
+			continue
+		}
+		start := strings.Join(strings.Fields(r.detail)[:2], " ")
+		if frame := stripSGR(m.selecting(ScreenWiki, i).View()); !strings.Contains(frame, start) {
+			t.Errorf("the row for %q does not show %q at 64 columns", r.name, start)
+		}
 	}
 }

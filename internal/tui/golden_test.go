@@ -244,6 +244,7 @@ func TestGoldenScreens(t *testing.T) {
 		{"confirming", send(t, artists, Confirm{Question: `delete "Evening" and its 12 tracks?`})},
 		{"wiki", send(t, artists, ShowWiki{})},
 		{"wiki-commands", onCommand(t, send(t, artists, ShowWiki{}), "playlist")},
+		{"wiki-modes", onKeyRow(t, send(t, artists, ShowWiki{}), "ctrl+c", "typing a filter")},
 		{"wiki-topic", send(t, onCommand(t, send(t, artists, ShowWiki{}), "playlist"), tea.KeyMsg{Type: tea.KeyEnter})},
 		{"messages", onMessages(t, spoken(t, artists))},
 		{"messages-nothing", onMessages(t, artists)},
@@ -385,4 +386,17 @@ func TestAMultiLineMessageIsJoinedRatherThanConcatenated(t *testing.T) {
 	if !strings.Contains(frame, "the server refused · check credentials.toml") {
 		t.Errorf("the message is not on one row:\n%s", frame)
 	}
+}
+
+// onKeyRow puts the cursor of the keys screen on the row for a key whose text
+// holds some words.
+func onKeyRow(t *testing.T, m Model, keys, holds string) Model {
+	t.Helper()
+	for i, r := range m.keyRows() {
+		if r.kind == kindKey && r.name == keys && strings.Contains(r.detail, holds) {
+			return m.selecting(ScreenWiki, i)
+		}
+	}
+	t.Fatalf("the keys screen has no row for %s that says %q", keys, holds)
+	return m
 }

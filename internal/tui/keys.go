@@ -232,7 +232,7 @@ func (m Model) keyRows() []result {
 		in = ""
 		rows = append(rows, result{kind: kindHeading, name: strings.ToUpper(name)})
 	}
-	add := func(keys, what string) { rows = append(rows, result{kind: kindKey, name: keys, detail: in + what}) }
+	add := func(keys, what string) { rows = append(rows, result{kind: kindKey, name: keys, detail: what + in}) }
 	keys := func(action string) string {
 		if bound := m.keysFor(action); len(bound) > 0 {
 			return strings.Join(bound, " ")
@@ -265,7 +265,7 @@ func (m Model) keyRows() []result {
 		name string
 	}{{modeFilter, "typing a filter"}, {modeCommand, "typing a command"}, {modeConfirm, "a yes or no question"}} {
 		head(mode.name)
-		in = mode.name + ": "
+		in = ", " + mode.name
 		for _, k := range modeKeys() {
 			if k.mode == mode.mode {
 				add(spell(k.key), k.what)
@@ -274,17 +274,17 @@ func (m Model) keyRows() []result {
 	}
 	add("any other key", "answer no")
 	head("reordering a playlist")
-	in = "reordering a playlist: "
+	in = ", reordering a playlist"
 	add(keys("playlist-move-up")+" "+keys("playlist-move-down"), "move the selected track up or down")
 	add(keys("open"), "save the arrangement")
 	add(keys("back"), "discard it")
 	head("adding to a playlist")
-	in = "adding to a playlist: "
+	in = ", adding to a playlist"
 	add(keys("queue-append"), "add the selected track")
 	add(keys("playlist-remove"), "take it out")
 	add(keys("playlist-edit"), "stop adding")
 	head("under the visualiser or a cover")
-	in = "under the visualiser or a cover: "
+	in = ", under the visualiser or a cover"
 	for _, a := range Actions() {
 		if overCover[a.Name] {
 			add(keys(a.Name), a.Summary)

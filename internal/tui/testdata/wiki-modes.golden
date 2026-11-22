@@ -1,0 +1,12 @@
+[1mshanty · wiki · every key, and 14 commands[0m
+[2m────────────────────────────────────────────────────────────────[0m
+    pgdown                 move down by one screenful, typing a…
+    home                   jump to the first row, typing a filt…
+    end                    jump to the last row, typing a filter
+[7m>   ctrl+c                 quit shanty, typing a filter         [0m
+  [2mTYPING A COMMAND[0m                                              
+    esc                    abandon the line, typing a command   
+[2m────────────────────────────────────────────────────────────────[0m
+[2mnothing playing[0m
+[1m[0m[2m────────────────────────────────────────────────────────────────[0m
+[2m↑↓ move · enter read · esc back · / filter · … · ? keys[0m
