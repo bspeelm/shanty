@@ -366,13 +366,15 @@ func (m Model) hintLine(w int) string {
 	if keys := m.keysFor("keys"); len(keys) > 0 {
 		last = keys[0] + " keys"
 	}
-	line := ""
-	for i, item := range items {
-		next := line + item + " · "
-		if lipgloss.Width(next+"… · "+last) > w && i < len(items) {
-			return line + "… · " + last
-		}
-		line = next
+	if whole := strings.Join(append(items, last), " · "); lipgloss.Width(whole) <= w {
+		return whole
 	}
-	return line + last
+	line := ""
+	for _, item := range items {
+		if lipgloss.Width(line+item+" · … · "+last) > w {
+			break
+		}
+		line += item + " · "
+	}
+	return line + "… · " + last
 }
