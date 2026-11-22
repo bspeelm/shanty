@@ -1354,6 +1354,8 @@ func (a app) shuffleRest() (tea.Model, tea.Cmd) {
 	switch after := a.queue.Len() - a.queue.At() - 1; {
 	case a.queue.Empty():
 		return a.forward(tui.Failed{Message: "the queue is empty, so there is nothing to shuffle\nenter on a track plays it"})
+	case a.queue.Done():
+		return a.forward(tui.Failed{Message: "nothing is playing, so there is nothing after it to shuffle\nenter on a track plays it"})
 	case after < 2:
 		return a.forward(tui.Failed{Message: "fewer than two tracks follow the one playing, so there is nothing to shuffle\na on a track adds it to the queue"})
 	}

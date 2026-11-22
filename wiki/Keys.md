@@ -306,10 +306,10 @@ a tool such as rsgain, and a scheduled job afterwards keeps new music covered.
 
 `S` shuffles the artist, album or playlist under the cursor. On a track it is
 the album or playlist holding it, or every track a search or the starred screen
-lists. On the queue it is what follows the track playing. On the library it is
-everything, everything starred or the queue, by row. `:shuffle` is everything,
-`:playlist shuffle Evening` is one playlist, and `shanty shuffle` does it to a
-detached session. It shuffles once, into the queue `gq` shows; it is not a mode.
+lists. On the queue, or the library's Queue row, it is the tracks after the one
+playing, and needs two. The Starred row is everything starred; the library's
+other rows say where to press it. `:shuffle` is everything, `:playlist shuffle
+Evening` one playlist, `shanty shuffle` a detached session. It is not a mode.
 
 ## Starred
 
