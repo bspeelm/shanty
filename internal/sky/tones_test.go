@@ -169,6 +169,14 @@ func TestEveryMadePaletteKeepsTheRulesAndSoDoesEveryTurnAndEveryMorph(t *testing
 			// as their family sets, never opposed, and both keyed inside it.
 			// Greys have no hue to be apart by.
 			apart := func(what string, t2 tones) {
+				// A second member borrowed from another family is keyed
+				// inside that family.
+				if g := t2.guest; t2.borrows() {
+					if g == t2.fam || t2.mate < g.keyFrom-0.01 || t2.mate > g.keyTo+0.01 {
+						t.Errorf("%+v seed %d, %s: the borrowed member is keyed at %.0f in %+v", c, seed, what, t2.mate, g)
+					}
+					return
+				}
 				second := t2.key + t2.mate
 				coloured := t2.peak > greyPeak && t2.matePeak > greyPeak
 				f := t2.fam
