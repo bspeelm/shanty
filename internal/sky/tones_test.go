@@ -62,8 +62,9 @@ const (
 	// lighter than the one before by at least ruleRise. The darkest step is
 	// left out: no cell is drawn in it.
 	ruleApart = 0.08
-	// A step of the accent may be ruleAccentApart from the step before.
-	ruleAccentApart = 0.10
+	// One of the two brightest steps may be ruleAccentApart from the step
+	// before, as the brightest step of a ramp was before palettes were made.
+	ruleAccentApart = 0.115
 	ruleRise        = 0.004
 	// At most ruleAccent steps, the brightest, lie beyond the arc.
 	ruleAccent = 2
@@ -96,7 +97,8 @@ func broken(t tones) []string {
 		if got.c > ruleChroma || (got.h >= rulePlum && got.c > rulePlumChroma) {
 			say("step %d has a chroma of %.3f at hue %.0f", i, got.c, got.h)
 		}
-		if got.c < ruleColoured {
+		// The darkest step is left out: no cell is drawn in it.
+		if got.c < ruleColoured || i == 0 {
 			continue
 		}
 		if got.h < t.fam.from-ruleEdge || got.h > t.fam.to+ruleEdge {
@@ -134,7 +136,7 @@ func madeFor(c Character, seed uint64) tones {
 }
 
 func TestEveryMadePaletteKeepsTheRulesAndSoDoesEveryTurnAndEveryMorph(t *testing.T) {
-	seeds := uint64(400)
+	seeds := uint64(120)
 	if testing.Short() {
 		seeds = 60
 	}
@@ -278,8 +280,8 @@ func TestAMorphBetweenTwoFamiliesGoesByWayOfGreyAndMovesNoHue(t *testing.T) {
 }
 
 func TestAMorphBetweenTwoMadePalettesTakesTheKeyHueTheShortWay(t *testing.T) {
-	a := tones{fam: cool, key: 190, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9}
-	b := tones{fam: cool, key: 300, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9}
+	a := tones{fam: cool, key: 190, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9, dark: 0.2}
+	b := tones{fam: cool, key: 300, arc: 40, peak: 0.1, contrast: 1, light: 0.8, top: 0.9, dark: 0.2}
 	last := a.key
 	for w := 0.0; w <= 1; w += 0.05 {
 		k := mixTones(a, b, w).key

@@ -117,7 +117,7 @@ var (
 	// gold runs from a warm brown through amber to gold. Its key hues are
 	// too close for two members to differ by hue, so its second member is
 	// told apart by its chroma.
-	gold = family{from: 40, to: 94, keyFrom: 60, keyTo: 74, accentFrom: 40, dark: 40, mateLeast: 7, mateMost: 14, gamut: 0.9, crest: 1.2}
+	gold = family{from: 40, to: 94, keyFrom: 60, keyTo: 72, accentFrom: 40, dark: 40, mateLeast: 6, mateMost: 12, gamut: 0.9, crest: 1.2}
 )
 
 // The measures of a made palette. Hues are in degrees.
@@ -170,6 +170,8 @@ type tones struct {
 	// step, which the last few steps rise to.
 	contrast   float64
 	light, top float64
+	// dark is the lightness of the darkest step as a share of light.
+	dark float64
 	// The top accentSteps steps turn accentTurn degrees beyond the bright
 	// end of the arc, at a chroma of accent.
 	accentSteps        int
@@ -188,13 +190,8 @@ type tones struct {
 // made reports whether the palette is made from numbers.
 func (t tones) made() bool { return t.light > 0 }
 
-// The lightness of the darkest step of a made ramp as a share of the
-// lightness its rise reaches, and the chroma of its ends as a share of its
-// peak.
-const (
-	rampDark = 0.2
-	rampEnds = 0.3
-)
+// rampEnds is the chroma of the ends of a made ramp as a share of its peak.
+const rampEnds = 0.3
 
 // leaning returns arc with the sign that takes the dark end of a ramp
 // through key towards the hue its family's darks lean to, by the shorter
@@ -210,7 +207,7 @@ func (f family) leaning(key, arc float64) float64 {
 // step returns the colour at a place along a made ramp, from 0 at its dark
 // end to 1 at its bright end. top is set for a step that carries the accent.
 func (t tones) step(at float64, top bool) lch {
-	c := lch{l: t.light*(rampDark+(1-rampDark)*math.Pow(at, t.contrast)) + (t.top-t.light)*math.Pow(at, 4),
+	c := lch{l: t.light*(t.dark+(1-t.dark)*math.Pow(at, t.contrast)) + (t.top-t.light)*math.Pow(at, 6),
 		h: t.key + t.arc*(at-0.5)}
 	bell := rampEnds + (1-rampEnds)*math.Sin(math.Pi*math.Pow(at, t.fam.crest))
 	c.c = t.peak * bell * (1 - 0.8*math.Pow(at, 6))
@@ -219,6 +216,17 @@ func (t tones) step(at float64, top bool) lch {
 		c.h, c.c = h, t.accent
 	}
 	c.h = math.Min(math.Max(c.h, t.fam.from), t.fam.to)
+	// The lightness so far is that of the grey the step is as bright as.
+	// The step is given the lightness at which its own colour is as bright
+	// as that grey, which for a strong colour is a little less.
+	want := c.l * c.l * c.l
+	for range 3 {
+		c.c = math.Min(c.c, t.fam.ceiling(c.l, c.h))
+		col, _ := c.shown()
+		if y := 0.2126*toLinear(col.R) + 0.7152*toLinear(col.G) + 0.0722*toLinear(col.B); y > 0 {
+			c.l = clamp01(c.l * math.Cbrt(want/y))
+		}
+	}
 	c.c = math.Min(c.c, t.fam.ceiling(c.l, c.h))
 	return c
 }
@@ -270,6 +278,7 @@ func mixTones(a, b tones, w float64) tones {
 		}
 		out.peak, out.matePeak, out.accent = out.peak*left, out.matePeak*left, out.accent*left
 		out.contrast, out.light, out.top = mix(a.contrast, b.contrast), mix(a.light, b.light), mix(a.top, b.top)
+		out.dark = mix(a.dark, b.dark)
 		out.land = mix(a.land, b.land)
 		if len(out.stops) == 0 {
 			out.stops = append(a.stops, b.stops...)
@@ -286,6 +295,7 @@ func mixTones(a, b tones, w float64) tones {
 		matePeak: mix(a.matePeak, b.matePeak),
 		light:    mix(a.light, b.light),
 		top:      mix(a.top, b.top),
+		dark:     mix(a.dark, b.dark),
 		land:     mix(a.land, b.land),
 	}
 	// Tones without an accent count as having one that is not turned and

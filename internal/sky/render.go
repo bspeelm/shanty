@@ -105,7 +105,6 @@ type look struct {
 	levels int
 	place  func(x, y float64) float64
 	// toned is how far a pixel's tone moves it along its ramp, from 0 to 1.
-	// As far as it does not, the pixel is placed as one of middling tone.
 	toned float64
 }
 
@@ -139,8 +138,12 @@ func render(value, tone []float64, fw, fh, w, h int, k look) [][]Run {
 	sample := func(sx, sy float64) (float64, float64) {
 		px := min(int(sx*float64(fw)), fw-1)
 		py := min(int(sy*float64(fh)), fh-1)
-		t := clamp01(tone[py*fw+px] + k.shift)
-		return value[py*fw+px], 0.5 + (t-0.5)*k.toned
+		// As far as a pixel's tone does not place it, it is placed as a
+		// pixel of its value usually is: by a middling tone where it is
+		// bright, and by less the darker it is.
+		v := value[py*fw+px]
+		usual := 0.4 * clamp01(2*v)
+		return v, usual + (clamp01(tone[py*fw+px]+k.shift)-usual)*k.toned
 	}
 	lines := make([][]Run, h)
 	for r := range h {
