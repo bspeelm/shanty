@@ -270,7 +270,10 @@ func stopped(colours, tint []RGB) []RGB {
 // inside the family, and every other number goes straight. Between two
 // families the hues do not move: the first half of the way the colours are
 // a's, fading to grey, and the second half they are b's, rising from it.
-// Lightness, contrast and a landscape's share go straight either way.
+// Two palettes of one family whose second members are borrowed from
+// different families, or only one of them borrowed, move their first member
+// as within a family and their second by way of grey. Lightness, contrast
+// and a landscape's share go straight either way.
 func mixTones(a, b tones, w float64) tones {
 	w = clamp01(w)
 	mix := func(x, y float64) float64 { return x + (y-x)*w }
