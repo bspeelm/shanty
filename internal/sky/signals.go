@@ -92,9 +92,14 @@ func (s Signals) source(i int, clock float64) float64 {
 	case srcBusy:
 		return s.Busy
 	case srcPhase:
-		return s.onBeat(1 - s.Phase)
+		return s.easedBeat(s.pulse(1))
 	case srcBar:
-		return s.onBeat((float64(s.Beat%4) + s.Phase) / 4)
+		bar := (float64(s.Beat%4) + s.Phase) / 4
+		if s.Beat%4 == 0 {
+			// The fall at the start of a bar takes as long as a pulse's rise.
+			bar = math.Max(bar, 1-s.attack())
+		}
+		return s.easedBeat(bar)
 	case srcSlow:
 		return 0.5 + 0.5*math.Sin(clock*2*math.Pi/37)
 	case srcSlower:
@@ -128,6 +133,36 @@ func (s Signals) blendBeat(v, other float64) float64 {
 // onBeat blends v, a value that follows the beat, towards the breath by how
 // little the tempo is trusted.
 func (s Signals) onBeat(v float64) float64 { return s.blendBeat(v, s.Breath) }
+
+// eased returns how far something set off on every beat moves the picture
+// when share of it is given up to steadiness: 1 for music that is not
+// steady, down to 1-share for music that is.
+func (s Signals) eased(share float64) float64 { return 1 - share*s.Steady }
+
+// easedBeat blends v, a value that follows the beat, towards the breath by
+// how little the tempo is trusted and by how steady the music is.
+func (s Signals) easedBeat(v float64) float64 {
+	w := s.beatWeight() * s.eased(steadyPhase)
+	return w*v + (1-w)*s.Breath
+}
+
+// attack returns how far a pulse set off on the beat has risen, from above
+// 0 on the frame the beat begins to 1. For music that is not steady it is 1
+// from that frame. For steady music it takes pulseAttack frames.
+func (s Signals) attack() float64 {
+	frames := 1 + (pulseAttack-1)*s.Steady
+	if s.Tempo <= 0 || frames <= 1 {
+		return 1
+	}
+	frame := s.Tempo / 60 * pulseFrame
+	return math.Min((s.Phase+frame)/(frames*frame), 1)
+}
+
+// pulse returns a pulse set off on each beat: it rises as attack does and
+// falls to 0 by the next beat, as 1-Phase to the given power.
+func (s Signals) pulse(power float64) float64 {
+	return s.attack() * math.Pow(1-s.Phase, power)
+}
 
 // beatTrust is the beat weight from which what steps on the beat follows it.
 const beatTrust = 0.5

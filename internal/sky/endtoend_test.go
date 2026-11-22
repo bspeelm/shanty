@@ -16,6 +16,12 @@ import (
 // planOf measures a file with the analysing mpv and returns its plan.
 func planOf(t *testing.T, path string) *Plan {
 	t.Helper()
+	return NewPlan(blocksOf(t, path))
+}
+
+// blocksOf measures a file with the analysing mpv and returns its blocks.
+func blocksOf(t *testing.T, path string) []Block {
+	t.Helper()
 	blocks, err := mpv.Analyse(context.Background(), mpv.Options{Socket: filepath.Join(t.TempDir(), "s")}, path)
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +34,7 @@ func planOf(t *testing.T, path string) *Plan {
 		}
 		out[i] = Block{At: b.At.Seconds(), Samples: b.Samples, Channels: ch, Bands: b.Bands, Punch: b.Punch, Side: b.Side, Rate: b.Rate, Scale: b.Scale}
 	}
-	return NewPlan(out)
+	return out
 }
 
 // playWhole plays a file's live readings through a visualiser that is given
