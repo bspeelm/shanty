@@ -341,7 +341,10 @@ func (r *run) check(was Model, msg tea.Msg) {
 		}
 	case Reloaded:
 		r.kinds["a reload's answer"]++
-		if after.screen != before.screen {
+		// The one move a reload's answer makes is off a playlist that the
+		// server turns out no longer to list.
+		gone := was.screen == ScreenPlaylist && !r.m.lists(was.playlist.ID)
+		if after.screen != before.screen && !gone {
 			r.failf(msg, "a reload's answer moved the screen from %s", before.screen)
 		}
 	case PlaylistChanged:

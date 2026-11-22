@@ -425,3 +425,23 @@ func TestAScanFinishingOnAScreenWithNothingToReloadSaysItFinished(t *testing.T) 
 		t.Errorf("%d requests were made for a screen with nothing to reload", n)
 	}
 }
+
+func TestDeletingThePlaylistOnScreenLeavesItAndTakesItOffTheList(t *testing.T) {
+	a, srv := withPlaylists(t, map[string][]string{"Evening": {"tr-1"}, "Morning": {"tr-2"}})
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+	a = settle(t, a, enter)
+	name := a.ui.Playlist().Name
+
+	a = typeLine(t, a, "playlist delete")
+	a = settle(t, a, keyRunes("y"))
+
+	if len(srv.Playlists()) != 1 {
+		t.Fatalf("the server still holds %d playlists", len(srv.Playlists()))
+	}
+	if a.ui.Screen() != tui.ScreenPlaylists || strings.Contains(a.ui.View(), "  "+name) {
+		t.Errorf("after deleting %s the screen is %s:\n%s", name, a.ui.Screen(), a.ui.View())
+	}
+	if !strings.Contains(a.ui.Status(), "deleted "+name) {
+		t.Errorf("the last row says %q", a.ui.Status())
+	}
+}

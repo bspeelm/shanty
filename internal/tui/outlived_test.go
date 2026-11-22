@@ -1023,3 +1023,18 @@ func TestANewSearchEndsTheWaitForARowOpenedFromTheOldResults(t *testing.T) {
 		t.Errorf("the open asked for from the old results took the screen to %s", m.Screen())
 	}
 }
+
+func TestThePlaylistOnScreenIsLeftWhenTheServerNoLongerListsIt(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
+	m := send(t, onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists))), PlaylistLoaded(eveningOf(3)))
+
+	m = send(t, m, PlaylistsLoaded(lists[1:]))
+	if m.Screen() != ScreenPlaylists || m.rows() != 1 || strings.Contains(m.View(), "Evening") {
+		t.Errorf("with the playlist gone the screen is %s:\n%s", m.Screen(), m.View())
+	}
+
+	still := send(t, send(t, m, PlaylistLoaded(subsonic.Playlist{ID: "pl-2", Name: "Morning"})), PlaylistsLoaded(lists[1:]))
+	if still.Screen() != ScreenPlaylist {
+		t.Errorf("a playlist the server still lists was left for %s", still.Screen())
+	}
+}
