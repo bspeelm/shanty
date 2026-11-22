@@ -272,8 +272,14 @@ func (m Model) Status() string {
 	return m.arriving()
 }
 
-// Reloading is the number of the reload being waited for.
+// Reloading is the number of the reload being waited for, and ReloadAsked is
+// that reload as the caller is asked for it.
 func (m Model) Reloading() int { return m.keepAsk }
+
+func (m Model) ReloadAsked() Reload {
+	id := map[Screen]string{ScreenAlbums: m.artist.ID, ScreenTracks: m.album.ID, ScreenPlaylist: m.playlist.ID}
+	return Reload{Ask: m.keepAsk, Screen: m.screen, ID: id[m.screen]}
+}
 
 // Editing is the playlist the library lists are adding to, if any.
 func (m Model) Editing() subsonic.Playlist { return m.editing }

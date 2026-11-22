@@ -52,7 +52,19 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.waiting = 0
 		return m.update(msg.Loaded)
 	case Reloaded:
-		return m.refetched(msg.Loaded), nil
+		own := msg.Ask != 0 && msg.Ask == m.keepAsk
+		status, failed := m.status, m.statusFailed
+		m = m.refetched(msg.More, false).refetched(msg.Loaded, own)
+		if !own {
+			// An answer that ends no wait leaves the last row as it was.
+			m.status, m.statusFailed = status, failed
+		}
+		return m, nil
+	case Saved:
+		if msg.Ask == m.saving {
+			m.saving, m.savingID = 0, ""
+		}
+		return m.update(PlaylistChanged(msg.Playlist))
 	case ArtistLoaded:
 		m = m.show(ScreenAlbums)
 		m.artist = subsonic.Artist(msg)
@@ -147,9 +159,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return p, true
 		})
-		if loaded.ID == m.savingID {
-			m.saving, m.savingID = 0, ""
-		}
 		if loaded.ID != m.playlist.ID {
 			return m, nil
 		}
@@ -320,7 +329,7 @@ func (m Model) runCommand() (tea.Model, tea.Cmd) {
 	}
 	if _, ok := intent.(Reload); ok {
 		m = m.reloading()
-		return m, emit(Reload{Ask: m.keepAsk})
+		return m, emit(m.ReloadAsked())
 	}
 	if p, ok := intent.(Playlist); ok && p.Verb == "reorder" {
 		if m.screen != ScreenPlaylist || m.playlist.ID == "" {
@@ -1009,51 +1018,62 @@ func (m Model) arriving() string {
 }
 
 // refetched takes what a reload fetched in place of what is held. One artist
-// or album is taken only if it is the one held. Where the reload was asked
-// for from the screen showing, the cursor goes back to what was selected and
-// the last row says what came back.
-func (m Model) refetched(loaded tea.Msg) Model {
+// or album is taken only if it is the one held, and is written to every place
+// there is a way back to. Where own says the answer is to the reload waited
+// for, the cursor goes back to what was selected and the last row says what
+// came back.
+func (m Model) refetched(loaded tea.Msg, own bool) Model {
+	screen, what := m.screen, ""
 	switch loaded := loaded.(type) {
 	case ArtistsLoaded:
-		next, _ := m.update(loaded)
-		m = next.(Model)
-		if m.screen == ScreenLibrary && m.keep != "" {
-			m.keep, m.keepAsk = "", 0
-			return m.say("reloaded: " + plural(len(loaded), "artist"))
+		screen, what = ScreenArtists, plural(len(loaded), "artist")
+		if m.screen == ScreenLibrary {
+			screen = ScreenLibrary
 		}
-		return m.reloaded(ScreenArtists, plural(len(loaded), "artist"))
 	case AlbumsLoaded:
-		next, _ := m.update(loaded)
-		return next.(Model).reloaded(ScreenEveryAlbum, plural(len(loaded), "album"))
+		screen, what = ScreenEveryAlbum, plural(len(loaded), "album")
+	case PlaylistsLoaded:
+		screen, what = ScreenPlaylists, plural(len(loaded), "playlist")
 	case StarredChanged:
-		next, _ := m.update(loaded)
-		return next.(Model).reloaded(ScreenStarred, plural(len(loaded.IDs), "starred thing")).settled(ScreenStarred)
+		screen, what = ScreenStarred, plural(len(loaded.IDs), "starred thing")
+	case PlaylistLoaded:
+		screen, what = ScreenPlaylist, plural(len(loaded.Songs), "track")
+		next, _ := m.update(PlaylistChanged(loaded))
+		m = next.(Model)
 	case ArtistLoaded:
+		screen, what = ScreenAlbums, plural(len(loaded.Albums), "album")
 		m = m.remembering(func(p place) (place, bool) {
 			if p.artist.ID == loaded.ID {
 				p.artist = subsonic.Artist(loaded)
 			}
 			return p, true
 		})
-		if loaded.ID != m.artist.ID {
-			return m
+		if loaded.ID == m.artist.ID {
+			m.artist = subsonic.Artist(loaded)
 		}
-		m.artist = subsonic.Artist(loaded)
-		return m.reloaded(ScreenAlbums, plural(len(loaded.Albums), "album")).settled(ScreenAlbums)
 	case AlbumLoaded:
+		screen, what = ScreenTracks, plural(len(loaded.Songs), "track")
 		m = m.remembering(func(p place) (place, bool) {
 			if p.album.ID == loaded.ID {
 				p.album = subsonic.Album(loaded)
 			}
 			return p, true
 		})
-		if loaded.ID != m.album.ID {
-			return m
+		if loaded.ID == m.album.ID {
+			m.album = subsonic.Album(loaded)
 		}
-		m.album = subsonic.Album(loaded)
-		return m.reloaded(ScreenTracks, plural(len(loaded.Songs), "track")).settled(ScreenTracks)
+	default:
+		return m
 	}
-	return m
+	switch loaded.(type) {
+	case ArtistsLoaded, AlbumsLoaded, PlaylistsLoaded, StarredChanged:
+		next, _ := m.update(loaded)
+		m = next.(Model)
+	}
+	if own {
+		m = m.reloaded(screen, what)
+	}
+	return m.settled(screen)
 }
 
 // refreshed takes a playlist as the server now has it in place of the one
@@ -1066,9 +1086,6 @@ func (m Model) refreshed(loaded subsonic.Playlist) Model {
 		if m.screen == ScreenPlaylist {
 			m = m.say(Sanitise(loaded.Name) + " changed on the server, so the arrangement was dropped")
 		}
-	}
-	if m.screen == ScreenPlaylist {
-		m = m.reloaded(ScreenPlaylist, plural(len(loaded.Songs), "track"))
 	}
 	return m.settled(ScreenPlaylist)
 }

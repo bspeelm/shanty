@@ -105,11 +105,16 @@ type (
 	Search string
 	// Resume asks for the queue the server is holding to be taken up.
 	Resume struct{}
-	// Reload asks for what is on screen to be fetched from the server again.
-	// Ask numbers the reload when the interface asks for it, and comes back
-	// in the Failed that answers it. Sent to the interface with no number,
-	// it begins a reload the caller is making.
-	Reload struct{ Ask int }
+	// Reload asks for a screen to be fetched from the server again. Ask
+	// numbers the reload, and comes back in the Reloaded or the Failed that
+	// answers it. Screen is the screen to fetch, and ID the artist, album or
+	// playlist it shows. Sent to the interface with no number, it begins a
+	// reload the caller is making.
+	Reload struct {
+		Ask    int
+		Screen Screen
+		ID     string
+	}
 	// Scan asks the server to look at its music folder again.
 	Scan struct{}
 	// FetchPlaylists and FetchEveryAlbum ask for what a screen the interface
@@ -241,9 +246,21 @@ type (
 		Ask    int
 		Loaded tea.Msg
 	}
-	// Reloaded answers a reload with what was fetched again. It replaces what
-	// is held and never moves the screen.
-	Reloaded struct{ Loaded tea.Msg }
+	// Reloaded answers the reload numbered Ask with what was fetched again,
+	// and with More where two lists were fetched. Both replace what is held
+	// and never move the screen. Only the answer whose number is waited for
+	// ends the wait and puts the cursor back.
+	Reloaded struct {
+		Ask    int
+		Loaded tea.Msg
+		More   tea.Msg
+	}
+	// Saved answers the order numbered Ask that was written to a playlist,
+	// with the playlist as the server now has it.
+	Saved struct {
+		Ask      int
+		Playlist subsonic.Playlist
+	}
 	// PlaylistChanged is a playlist as the server has it after a rename, a
 	// new order, or a track added or removed. It replaces the copy held and
 	// the edit marks, and never moves the screen.

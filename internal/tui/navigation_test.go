@@ -469,7 +469,8 @@ func TestReloadingEveryAlbumKeepsTheSelection(t *testing.T) {
 	was := m.albums[m.Cursor()].ID
 
 	grown := append([]subsonic.Album{{ID: "al-0", Name: "A New Arrival", Artist: "Aoi"}}, everyAlbum()...)
-	m = send(t, m, Reload{}, Reloaded{Loaded: AlbumsLoaded(grown)})
+	m = send(t, m, Reload{})
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: AlbumsLoaded(grown)})
 	if got := m.albums[m.Cursor()].ID; got != was {
 		t.Errorf("the cursor moved to %q, want it to stay on %q", got, was)
 	}
@@ -490,7 +491,8 @@ func TestReloadingTheStarredListKeepsTheSelection(t *testing.T) {
 	grown := starredChanged()
 	grown.Results.Artists = append([]subsonic.Artist{{ID: "ar-3", Name: "坂本龍一"}}, grown.Results.Artists...)
 	grown.IDs["ar-3"] = true
-	m = send(t, m, Reload{}, Reloaded{Loaded: grown})
+	m = send(t, m, Reload{})
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: grown})
 
 	if m.loading() {
 		t.Error("the reload never finished")

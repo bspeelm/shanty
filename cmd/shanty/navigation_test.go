@@ -349,3 +349,79 @@ func TestASavedOrderTheServerRefusesIsAnsweredToTheSaveThatAskedForIt(t *testing
 	}
 	_ = a
 }
+
+// typeLine types a command line and runs it, with everything that follows.
+func typeLine(t *testing.T, a app, line string) app {
+	t.Helper()
+	for _, key := range ":" + line {
+		a = settle(t, a, keyRunes(string(key)))
+	}
+	return settle(t, a, enter)
+}
+
+func TestAReloadTheServerFailsEndsTheWaitAndShowsTheFailure(t *testing.T) {
+	a, _, srv := wired(t)
+	a = settle(t, a, tui.OpenArtist{ID: "ar-1"})
+	srv.Refuse("ar-1")
+
+	a = typeLine(t, a, "reload")
+
+	if a.ui.Reloading() != 0 || strings.Contains(a.ui.View(), "asking the server again") {
+		t.Errorf("the reload that failed is still waited for:\n%s", a.ui.View())
+	}
+	if !strings.Contains(a.ui.Status(), "could not read") {
+		t.Errorf("the failure is not on the last row: %q", a.ui.Status())
+	}
+}
+
+func TestALibraryReloadShowsTheFailureOfTheAlbumsAndFetchesBothListsOtherwise(t *testing.T) {
+	a, _, srv := wired(t)
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("b"))
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("l"))
+	before := len(srv.Requests())
+
+	a = typeLine(t, a, "reload")
+	if requests(srv, before, "getArtists") != 1 || requests(srv, before, "getAlbumList2") != 1 ||
+		!strings.Contains(a.ui.Status(), "reloaded: 2 artists") {
+		t.Fatalf("a library reload made %d and %d requests and said %q",
+			requests(srv, before, "getArtists"), requests(srv, before, "getAlbumList2"), a.ui.Status())
+	}
+
+	srv.Refuse("getAlbumList2")
+	a = typeLine(t, a, "reload")
+	if a.ui.Reloading() != 0 || !strings.Contains(a.ui.Status(), "could not read") {
+		t.Errorf("with the albums refused the last row says %q and reload %d is waited for", a.ui.Status(), a.ui.Reloading())
+	}
+}
+
+func TestReloadWorksOnThePlaylistsAndOnAnOpenPlaylist(t *testing.T) {
+	a, srv := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2"}})
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+	before := len(srv.Requests())
+
+	a = typeLine(t, a, "reload")
+	if requests(srv, before, "getPlaylists") != 1 || !strings.Contains(a.ui.Status(), "reloaded: 1 playlist") {
+		t.Errorf("reloading the playlists made %d requests and said %q", requests(srv, before, "getPlaylists"), a.ui.Status())
+	}
+
+	a = settle(t, a, enter)
+	a = typeLine(t, a, "reload")
+	if a.ui.Screen() != tui.ScreenPlaylist || !strings.Contains(a.ui.Status(), "reloaded: 2 tracks") {
+		t.Errorf("reloading a playlist left %s saying %q", a.ui.Screen(), a.ui.Status())
+	}
+}
+
+func TestAScanFinishingOnAScreenWithNothingToReloadSaysItFinished(t *testing.T) {
+	a, _, srv := wired(t)
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("q"))
+	before := len(srv.Requests())
+
+	a = settle(t, a, scanning{status: subsonic.Scan{Count: 4}})
+
+	if !strings.Contains(a.ui.Status(), "the scan finished: 4 tracks") || a.ui.Reloading() != 0 {
+		t.Errorf("on the queue a finished scan said %q", a.ui.Status())
+	}
+	if n := len(srv.Requests()) - before; n != 0 {
+		t.Errorf("%d requests were made for a screen with nothing to reload", n)
+	}
+}

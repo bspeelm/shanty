@@ -187,7 +187,8 @@ func TestReloadingTheLibraryWithFewerArtistsThanItHasRows(t *testing.T) {
 	m := send(t, sized(New()), ArtistsLoaded(library()))
 	m, _ = press(t, m, "end")
 
-	m = send(t, m, Reload{}, Reloaded{Loaded: ArtistsLoaded(library())})
+	m = send(t, m, Reload{})
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: ArtistsLoaded(library())})
 	if m.Screen() != ScreenLibrary || m.loading() {
 		t.Fatalf("the library is on %s, loading %v", m.Screen(), m.loading())
 	}
@@ -240,7 +241,8 @@ func TestAReloadAnsweredOnItsScreenStillKeepsTheSelection(t *testing.T) {
 	artist, album := library()[0], library()[0].Albums[0]
 	m := send(t, loaded(t), ArtistLoaded(artist), AlbumLoaded(album))
 	m, _ = press(t, m, "j")
-	m = send(t, m, Reload{}, Reloaded{Loaded: AlbumLoaded(album)})
+	m = send(t, m, Reload{})
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: AlbumLoaded(album)})
 	if m.Screen() != ScreenTracks || m.Cursor() != 1 || !strings.Contains(m.Status(), "reloaded") {
 		t.Errorf("screen %s, cursor %d, said %q", m.Screen(), m.Cursor(), m.Status())
 	}
@@ -250,20 +252,32 @@ func TestAReloadAskedForTwiceKeepsTheSelectionThroughBothAnswers(t *testing.T) {
 	artist, album := library()[0], library()[0].Albums[0]
 	m := send(t, loaded(t), ArtistLoaded(artist), AlbumLoaded(album))
 	m, _ = press(t, m, "j")
-	m = send(t, m, Reload{}, Reload{}, Reloaded{Loaded: AlbumLoaded(album)}, Reloaded{Loaded: AlbumLoaded(album)})
+	m = send(t, m, Reload{})
+	first := m.Reloading()
+	m = send(t, m, Reload{})
+	m = send(t, m, Reloaded{Ask: first, Loaded: AlbumLoaded(album)})
+	if !m.loading() || strings.Contains(m.Status(), "reloaded") {
+		t.Fatalf("the answer to the first reload ended the wait for the second: loading %v, %q", m.loading(), m.Status())
+	}
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: AlbumLoaded(album)})
 	if m.Screen() != ScreenTracks || m.Cursor() != 1 || m.loading() {
 		t.Errorf("tracks: screen %s, cursor %d, loading %v", m.Screen(), m.Cursor(), m.loading())
 	}
 
 	m, _ = press(t, m, "h")
 	m, _ = press(t, m, "j")
-	m = send(t, m, Reload{}, Reload{}, Reloaded{Loaded: ArtistLoaded(artist)}, Reloaded{Loaded: ArtistLoaded(artist)})
+	m = send(t, m, Reload{})
+	first = m.Reloading()
+	m = send(t, m, Reload{})
+	m = send(t, m, Reloaded{Ask: first, Loaded: ArtistLoaded(artist)}, Reloaded{Ask: m.Reloading(), Loaded: ArtistLoaded(artist)})
 	if m.Screen() != ScreenAlbums || m.Cursor() != 1 {
 		t.Errorf("albums: screen %s, cursor %d", m.Screen(), m.Cursor())
 	}
 
-	m = send(t, onArtists(t, m), keyOf("j"), Reload{}, Reload{},
-		Reloaded{Loaded: ArtistsLoaded(library())}, Reloaded{Loaded: ArtistsLoaded(library())})
+	m = send(t, onArtists(t, m), keyOf("j"), Reload{})
+	first = m.Reloading()
+	m = send(t, m, Reload{})
+	m = send(t, m, Reloaded{Ask: first, Loaded: ArtistsLoaded(library())}, Reloaded{Ask: m.Reloading(), Loaded: ArtistsLoaded(library())})
 	if m.Cursor() != 1 {
 		t.Errorf("artists: cursor %d", m.Cursor())
 	}
@@ -742,7 +756,7 @@ func TestAnOrderJustSavedIsNotReorderedAgainUntilItIsAnswered(t *testing.T) {
 	if !same(idsOf(now.Songs), order.Songs) {
 		t.Fatalf("the fixture is not the order that was saved: %v", order.Songs)
 	}
-	m = send(t, m, PlaylistChanged(now))
+	m = send(t, m, Saved{Ask: order.Ask, Playlist: now})
 	if strings.Contains(m.Status(), "changed on the server") {
 		t.Errorf("the order just saved was reported as someone else's change: %q", m.Status())
 	}
@@ -786,7 +800,7 @@ func TestOnlyItsOwnAnswerEndsTheWaitForAReload(t *testing.T) {
 	if !m.loading() || !strings.Contains(m.Status(), "asking the server again") {
 		t.Fatalf("a failure about something else ended the reload: loading %v, %q", m.loading(), m.Status())
 	}
-	m = send(t, m, Reloaded{Loaded: ArtistsLoaded(library())})
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: ArtistsLoaded(library())})
 	if m.loading() || !strings.Contains(m.Status(), "reloaded: 3 artists") || m.Cursor() != 1 {
 		t.Errorf("the reload's answer left loading %v, %q, row %d", m.loading(), m.Status(), m.Cursor())
 	}
@@ -821,7 +835,15 @@ func TestOnlyItsOwnAnswerLetsAnOrderJustSavedBeReorderedAgain(t *testing.T) {
 	if refused(send(t, m, Failed{Message: "it changed on the server", Ask: order.Ask})) {
 		t.Error("the save's own failure did not end the wait")
 	}
-	if refused(send(t, left, PlaylistChanged(eveningOf(3)))) {
+	renamed := eveningOf(3)
+	renamed.Name = "Dusk"
+	if !refused(send(t, m, PlaylistChanged(renamed))) {
+		t.Error("the playlist renamed from elsewhere let the order be reordered before it was answered")
+	}
+	if !refused(send(t, m, Saved{Ask: order.Ask + 1, Playlist: eveningOf(3)})) {
+		t.Error("the answer to another save ended the wait")
+	}
+	if refused(send(t, left, Saved{Ask: order.Ask, Playlist: eveningOf(3)})) {
 		t.Error("the save's answer did not end the wait")
 	}
 }
@@ -882,5 +904,81 @@ func TestTheQueueKeyOnAnEmptyQueueDoesNotSayATrackIsAlreadyInIt(t *testing.T) {
 	m, msg := press(t, onQueue(t, loaded(t)), "a")
 	if msg != nil || strings.Contains(m.Status(), "already") || m.Status() == "" {
 		t.Errorf("a on an empty queue emitted %#v and said %q", msg, m.Status())
+	}
+}
+
+func TestTheAnswerToAnEarlierReloadDoesNotEndTheWaitForALaterOne(t *testing.T) {
+	m, _ := press(t, loaded(t), "j")
+	m = send(t, m, Reload{})
+	first := m.Reloading()
+	m = send(t, m, Reload{})
+
+	grown := append([]subsonic.Artist{{ID: "ar-0", Name: "A New Arrival"}}, library()...)
+	m = send(t, m, Reloaded{Ask: first, Loaded: ArtistsLoaded(grown)})
+	if !m.loading() || strings.Contains(m.Status(), "reloaded") || len(m.artists) != 4 {
+		t.Fatalf("the first answer: loading %v, %q, %d artists held", m.loading(), m.Status(), len(m.artists))
+	}
+	m = send(t, m, Failed{Message: "the first reload failed late", Ask: first})
+	if !m.loading() || m.statusFailed {
+		t.Fatalf("the failure of the first reload ended the wait for the second: loading %v, %q", m.loading(), m.Status())
+	}
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: ArtistsLoaded(grown)})
+	if m.loading() || !strings.Contains(m.Status(), "reloaded: 4 artists") {
+		t.Errorf("the second answer: loading %v, %q", m.loading(), m.Status())
+	}
+}
+
+func TestAReloadCarriesTheScreenAndWhatItShows(t *testing.T) {
+	aoi := library()[0]
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}}
+	for name, tc := range map[string]struct {
+		m    Model
+		want Reload
+	}{
+		"an artist's albums": {send(t, loaded(t), ArtistLoaded(aoi)), Reload{Screen: ScreenAlbums, ID: "ar-1"}},
+		"an album's tracks":  {deepIn(t), Reload{Screen: ScreenTracks, ID: "al-1"}},
+		"the playlists":      {onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists))), Reload{Screen: ScreenPlaylists}},
+		"a playlist":         {evening3(t), Reload{Screen: ScreenPlaylist, ID: "pl-1"}},
+		"the library":        {sized(New()), Reload{Screen: ScreenLibrary}},
+	} {
+		m, msg := typeCommand(t, tc.m, "reload")
+		tc.want.Ask = m.Reloading()
+		if msg != tc.want || tc.want.Ask == 0 {
+			t.Errorf("%s: :reload emitted %#v, want %#v", name, msg, tc.want)
+		}
+	}
+}
+
+func TestReloadingThePlaylistsAndAPlaylistKeepsTheSelection(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
+	m, _ := press(t, onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists))), "j")
+	m = send(t, m, Reload{})
+	more := append([]subsonic.Playlist{{ID: "pl-0", Name: "Dawn"}}, lists...)
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: PlaylistsLoaded(more)})
+	if m.loading() || m.under().id != "pl-2" || !strings.Contains(m.Status(), "reloaded: 3 playlists") {
+		t.Errorf("the playlists: loading %v, on %q, %q", m.loading(), m.under().id, m.Status())
+	}
+
+	m, _ = press(t, evening3(t), "j")
+	m = send(t, m, Reload{})
+	longer := eveningOf(3)
+	longer.Songs = append([]subsonic.Song{{ID: "tr-0", Title: "Dawn"}}, longer.Songs...)
+	m = send(t, m, Reloaded{Ask: m.Reloading(), Loaded: PlaylistLoaded(longer)})
+	if m.Screen() != ScreenPlaylist || m.under().id != "tr-2" || !strings.Contains(m.Status(), "reloaded: 4 tracks") {
+		t.Errorf("a playlist: on %s at %q, %q", m.Screen(), m.under().id, m.Status())
+	}
+}
+
+func TestALibraryReloadWhoseSecondListFailsShowsTheFailure(t *testing.T) {
+	m := send(t, sized(New()), ArtistsLoaded(library()), Reload{})
+	m = send(t, m, Failed{Message: "the albums could not be read", Ask: m.Reloading()})
+	if m.loading() || !m.statusFailed || !strings.Contains(m.Status(), "albums could not be read") {
+		t.Errorf("a reload that failed: loading %v, failed %v, %q", m.loading(), m.statusFailed, m.Status())
+	}
+
+	m = send(t, sized(New()), ArtistsLoaded(library()), Reload{})
+	m = send(t, m, Reloaded{Ask: m.Reloading(), More: AlbumsLoaded(everyAlbum()), Loaded: ArtistsLoaded(library())})
+	if m.loading() || len(m.albums) != 3 || !strings.Contains(m.Status(), "reloaded: 3 artists") {
+		t.Errorf("a reload of both lists: loading %v, %d albums, %q", m.loading(), len(m.albums), m.Status())
 	}
 }

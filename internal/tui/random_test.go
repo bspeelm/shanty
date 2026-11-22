@@ -141,26 +141,31 @@ func (a *actor) opened(ask int, loaded tea.Msg) {
 }
 
 // reload holds the answer to a reload of the screen showing.
-func (a *actor) reload(m Model, ask int) {
+func (a *actor) reload(asked Reload) {
 	var loaded tea.Msg
-	switch m.Screen() {
+	ask := asked.Ask
+	switch asked.Screen {
 	case ScreenLibrary, ScreenArtists:
 		loaded = ArtistsLoaded(library()[:a.r.IntN(4)])
 	case ScreenAlbums:
-		loaded = a.artist(m.artist.ID)
+		loaded = a.artist(asked.ID)
 	case ScreenEveryAlbum:
 		loaded = AlbumsLoaded(everyAlbum()[:a.r.IntN(4)])
 	case ScreenTracks:
-		loaded = a.album(m.album.ID)
+		loaded = a.album(asked.ID)
 	case ScreenStarred:
 		loaded = a.starred()
+	case ScreenPlaylists:
+		loaded = PlaylistsLoaded(twoLists[:min(2, a.r.IntN(6))])
+	case ScreenPlaylist:
+		loaded = PlaylistLoaded(a.playlist(asked.ID))
 	default:
 		a.waiting = append(a.waiting, Failed{Message: "there is nothing here to fetch again", Ask: ask})
 		return
 	}
-	a.waiting = append(a.waiting, Reloaded{Loaded: loaded})
+	a.waiting = append(a.waiting, Reloaded{Ask: ask, Loaded: loaded})
 	if a.r.IntN(4) == 0 {
-		a.waiting = append(a.waiting, Reloaded{Loaded: loaded})
+		a.waiting = append(a.waiting, Reloaded{Ask: ask, Loaded: loaded})
 	}
 }
 
@@ -179,7 +184,7 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 	case FetchEveryAlbum:
 		a.waiting = append(a.waiting, AlbumsLoaded(everyAlbum()[:a.r.IntN(4)]))
 	case Reload:
-		a.reload(m, intent.Ask)
+		a.reload(intent)
 	case Search:
 		a.waiting = append(a.waiting, a.found(string(intent)))
 	case EditPlaylist:
@@ -190,7 +195,7 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 		if a.r.IntN(3) == 0 {
 			a.waiting = append(a.waiting, Failed{Message: "it changed on the server; nothing was moved", Ask: intent.Ask})
 		} else {
-			a.waiting = append(a.waiting, PlaylistChanged(a.playlist(intent.ID)))
+			a.waiting = append(a.waiting, Saved{Ask: intent.Ask, Playlist: a.playlist(intent.ID)})
 		}
 	case DeletePlaylist:
 		return Confirm{Question: "delete it?", Do: Notice("deleted")}

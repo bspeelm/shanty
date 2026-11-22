@@ -68,7 +68,8 @@ shanty asks the server for a list once and then keeps it, so an album copied
 onto the server after you started shanty is not there.
 
 `:reload` asks again for whatever screen you are on: the library, the artists,
-one artist's albums, every album, one album's tracks, or the starred list. It
+one artist's albums, every album, one album's tracks, the starred list, the
+playlists, or one playlist. It
 says what came
 back, because a reload that returns the same thing looks exactly like one that
 did nothing.
@@ -80,8 +81,8 @@ when you next open them.
 
 If you have just copied files onto the server, it has not looked at them yet
 and reloading will not find them. `:scan` asks it to look. The last row reports
-how many tracks it has got through, and the library is reloaded by itself when
-the scan finishes, so there is no second command to remember.
+how many tracks it has got through, and the screen you are on is reloaded by
+itself when the scan finishes, so there is no second command to remember.
 
 A scan takes minutes on a large library. The music keeps playing throughout and
 you can carry on browsing; shanty asks the server how it is going every couple
