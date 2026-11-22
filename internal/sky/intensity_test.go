@@ -735,12 +735,37 @@ func floorCase(t *testing.T, bpm float64) (*Plan, groove, []Reading, []float64) 
 // kicks come back: sixteen bars before the end at the slowest tempo.
 const floorSecs, floorBack = 76, 40
 
+// The limits a planned dance track is held to. Each is what the track
+// measured when the limit was set, at the tempo that measured most, with
+// about a third added, or for a count of flashes the next whole number or
+// two.
+const (
+	// No region of the guard's grid flashes more than flashLimit times in a
+	// second, and none of the finer grid more than fineFlashLimit: the
+	// most measured was 0.5 and 1.5.
+	fineFlashLimit = 3
+	// Over the stretches with kicks, the mean change of a cell's light is
+	// at most danceChange, the mean churn danceChurn and the mean throw
+	// danceThrow: the most measured was 0.0154, 0.175 and 0.0361.
+	danceChange, danceChurn, danceThrow = 0.020, 0.23, 0.047
+	// The change of light in the two bars after the kicks come back is at
+	// least danceLift of what it is in bars nine to sixteen: the least
+	// measured was 1.24.
+	danceLift = 1.1
+	// The kicks from 4 s to 22 s are answered within a frame of their
+	// beat: the latest measured was 16 ms.
+	danceLag = 34.0
+	// A cell's colour turns back at most danceReversals times a second, and
+	// no region's colour flashes more than danceTint times in a second on
+	// the guard's grid or danceFineTint on the finer one, counting changes
+	// of twice tintTurn: the most measured was 3.79, 1.5 and 2.5.
+	danceReversals, danceTint, danceFineTint = 5.0, 3.0, 4.0
+)
+
 // A planned four-on-the-floor track at each dance tempo is played through a
-// stop and a return of its kicks, and what its frames look like is logged.
-// The figures are a record and carry no limit. The test holds only that the
-// run is what it is described as: the plan's kicks were set off on its beats,
-// and the return of the kicks was cut to.
-func TestAPlannedDanceTrackIsMeasuredAtEachTempo(t *testing.T) {
+// stop and a return of its kicks, with the return marked as a hard boundary,
+// and held to the limits above. What its frames look like is logged.
+func TestAPlannedDanceTrackStaysWithinItsLimitsAtEachTempo(t *testing.T) {
 	if testing.Short() {
 		t.Skip("measures three planned tracks")
 	}
@@ -753,21 +778,61 @@ func TestAPlannedDanceTrackIsMeasuredAtEachTempo(t *testing.T) {
 			}
 			d, m := watchRun(New(3), readings, p, -1, 60, 20, nil)
 			share, lag, _ := d.onBeats(between(g.kicks, 4, 22), 4, 22)
+			kicked := func(f seen) bool { return f.at < 24 || f.at >= floorBack }
 			t.Logf("%.0f BPM: plan tempo %.1f, cues to cut to %.1f, cuts at %.1f, kicks answered %.0f%% %+.0f ms",
 				bpm, p.Tempo, due, d.cuts, 100*share, lag)
 			t.Log(m.flashLine())
 			t.Log(m.tintLine())
 			t.Log(m.colourLine("whole", nil))
-			t.Log(m.colourLine("kicked", func(f seen) bool { return f.at < 24 || f.at >= floorBack }))
+			t.Log(m.colourLine("kicked", kicked))
 			t.Log(m.report("whole", nil))
-			t.Log(m.report("kicked", func(f seen) bool { return f.at < 24 || f.at >= floorBack }))
+			t.Log(m.report("kicked", kicked))
 			t.Log(m.report("break", func(f seen) bool { return f.at >= 24 && f.at < floorBack }))
 			t.Log("lift " + m.lifts(floorBack, 60/bpm))
-			if share < 0.9 {
-				t.Errorf("%.0f%% of the kicks from 4 s to 22 s were answered, want at least 90%%", 100*share)
+
+			if share < 0.9 || lag > danceLag {
+				t.Errorf("%.0f%% of the kicks from 4 s to 22 s were answered, %.0f ms after the beat, want at least 90%% within %.0f ms", 100*share, lag, danceLag)
 			}
 			if len(d.cuts) == 0 {
 				t.Errorf("no cut was made; the kicks come back at 40 s and the cues are %.1f", due)
+			}
+			secs := m.frames[len(m.frames)-1].at - m.frames[0].at
+			if worst, _, _ := flashes(m.coarse, secs); worst > flashLimit {
+				t.Errorf("a region flashed %.1f times in a second, want at most %d", worst, flashLimit)
+			}
+			if worst, _, _ := flashes(m.fine, secs); worst > fineFlashLimit {
+				t.Errorf("a region of the finer grid flashed %.1f times in a second, want at most %d", worst, fineFlashLimit)
+			}
+			if worst, _, _ := flashes(m.tinted[2].meters, secs); worst > danceTint {
+				t.Errorf("a region's colour flashed %.1f times in a second, want at most %v", worst, danceTint)
+			}
+			if worst, _, _ := flashes(m.tinted[3].meters, secs); worst > danceFineTint {
+				t.Errorf("the colour of a region of the finer grid flashed %.1f times in a second, want at most %v", worst, danceFineTint)
+			}
+			mean := func(pick func(seen) float64, keep func(seen) bool) float64 { return m.spreadOf(pick, keep).mean }
+			for _, limit := range []struct {
+				what string
+				got  float64
+				most float64
+			}{
+				{"change of light", mean(func(f seen) float64 { return f.change }, kicked), danceChange},
+				{"churn", mean(func(f seen) float64 { return f.churn }, kicked), danceChurn},
+				{"throw", mean(func(f seen) float64 { return f.throw }, kicked), danceThrow},
+				{"colour reversals a second", 30 * mean(func(f seen) float64 { return f.reversals }, nil), danceReversals},
+			} {
+				if limit.got > limit.most {
+					t.Errorf("the mean %s was %.4f, want at most %v", limit.what, limit.got, limit.most)
+				}
+			}
+			if lift := m.lift(func(f seen) float64 { return f.change }, floorBack, 60/bpm); lift < danceLift {
+				t.Errorf("the two bars after the kicks came back changed %.2f times as much as bars nine to sixteen, want at least %v", lift, danceLift)
+			}
+			// No frame has strong pink or magenta, or anything green, olive
+			// or yellow-green.
+			for _, f := range m.frames {
+				if f.pink > 0 || f.clash > 0 || f.green > 0 {
+					t.Fatalf("at %.2f s %.3f of the picture was strong pink and %.3f green", f.at, f.pink, f.green)
+				}
 			}
 		})
 	}

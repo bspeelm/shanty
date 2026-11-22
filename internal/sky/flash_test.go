@@ -1,6 +1,7 @@
 package sky
 
 import (
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"runtime"
@@ -273,6 +274,38 @@ func TestNoRegionFlashesMoreThanTwiceASecond(t *testing.T) {
 		seeds, secs = 2, 12
 	}
 	sweepFlashes(t, seeds, secs, 60, 20)
+}
+
+// A track played to a plan sets its kicks off on the beat and cuts to its
+// sections, which a track only heard does not. A planned dance track, with a
+// stop, a cut and a hard cut in it, is held to the same limit, and on a grid
+// of regions a quarter of the size to fineFlashLimit.
+func TestNoRegionOfAPlannedTrackFlashesMoreThanItsLimit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("plays planned tracks")
+	}
+	for _, bpm := range []float64{128, 174} {
+		for _, seed := range []uint64{1, 2} {
+			t.Run(fmt.Sprintf("%.0f BPM seed %d", bpm, seed), func(t *testing.T) {
+				t.Parallel()
+				p, _, readings, _ := floorCase(t, bpm)
+				d, m := watchRun(New(seed), readings, p, -1, 60, 20, nil)
+				if len(d.cuts) == 0 {
+					t.Fatal("no cut was made")
+				}
+				secs := m.frames[len(m.frames)-1].at - m.frames[0].at
+				coarse, _, _ := flashes(m.coarse, secs)
+				fine, _, _ := flashes(m.fine, secs)
+				t.Logf("worst %.1f flashes a second in a region, %.1f in a region of the finer grid", coarse, fine)
+				if coarse > flashLimit {
+					t.Errorf("a region flashed %.1f times in a second, want at most %d", coarse, flashLimit)
+				}
+				if fine > fineFlashLimit {
+					t.Errorf("a region of the finer grid flashed %.1f times in a second, want at most %d", fine, fineFlashLimit)
+				}
+			})
+		}
+	}
 }
 
 // guarded returns a guard for a picture w by h whose value and tone are both
