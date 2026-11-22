@@ -131,6 +131,15 @@ type seen struct {
 	// sure is the confidence in the tempo the frame was drawn with, and
 	// steady the steadiness.
 	sure, steady float64
+	// hued is how the frame's colours differ from the last frame's, between
+	// says a cut or a crossfade was under way and moving that the scene's
+	// palette was on its way to another, and tints is how many of the finer
+	// regions turned in colour on the frame.
+	hued
+	between, moving bool
+	tints           int
+	// runs is how many runs of one colour the frame is drawn in.
+	runs float64
 }
 
 // A turn of the light in one of the guard's regions is counted under each
@@ -172,14 +181,21 @@ type watcher struct {
 	// in the half second before every turn.
 	drawn                    [][]float64
 	swungDrawn, swungGuarded float64
-	warps                    map[*warp][2]float64
-	layers                   map[*layer]float64
-	shake                    [2]float64
+	// colours holds the colour of each cell of the last frame, and tinted
+	// the meters of colour: the guard's grid and the finer one, each at
+	// tintTurn and at twice that.
+	colours []tinted
+	tinted  [4]*tintMeter
+	warps   map[*warp][2]float64
+	layers  map[*layer]float64
+	shake   [2]float64
 }
 
 func newWatcher(w, h int) *watcher {
 	return &watcher{w: w, h: h, coarse: make([]flashMeter, meterCols*meterRows),
-		fine: make([]flashMeter, fineCols*fineRows), warps: map[*warp][2]float64{}, layers: map[*layer]float64{}}
+		fine: make([]flashMeter, fineCols*fineRows), warps: map[*warp][2]float64{}, layers: map[*layer]float64{},
+		tinted: [4]*tintMeter{newTintMeter(meterCols, meterRows, tintTurn), newTintMeter(fineCols, fineRows, tintTurn),
+			newTintMeter(meterCols, meterRows, 2*tintTurn), newTintMeter(fineCols, fineRows, 2*tintTurn)}}
 }
 
 // look measures the frame s has just drawn, dt seconds after the last.
@@ -195,7 +211,22 @@ func (m *watcher) look(s *State, dt float64) {
 	if len(m.guarded) > 15 {
 		m.guarded = m.guarded[1:]
 	}
-	cells := cellsOf(s.Render(true), m.w, m.h)
+	picture := s.Render(true)
+	cells := cellsOf(picture, m.w, m.h)
+	colours := tintsOf(picture, m.w, m.h)
+	f.hued = huesOf(colours, m.colours, cells, m.w)
+	f.between, f.moving = s.next != nil, s.cur.toPalette != nil
+	m.colours = colours
+	for i, meter := range m.tinted {
+		if turns := meter.add(colours, m.w, m.h, f.at); i == 1 {
+			f.tints = turns
+		}
+	}
+	runs := 0
+	for _, line := range picture.Lines {
+		runs += len(line)
+	}
+	f.runs = float64(runs)
 	if m.cells != nil {
 		var ma, mb float64
 		for i, c := range cells {
@@ -408,6 +439,47 @@ func (m *watcher) report(name string, keep func(seen) bool) string {
 		get(func(f seen) float64 { return f.speed }), stepOut, stepIn)
 }
 
+// colourLine is the colour figures for the frames keep allows, under a
+// name. Frames drawn during a cut or a crossfade are left out of every
+// figure but the count of them.
+func (m *watcher) colourLine(name string, keep func(seen) bool) string {
+	steady := func(f seen) bool { return !f.between && (keep == nil || keep(f)) }
+	get := func(pick func(seen) float64) figures { return m.spreadOf(pick, steady) }
+	n, between, tints := 0, 0, 0
+	for _, f := range m.frames {
+		if keep != nil && !keep(f) {
+			continue
+		}
+		if f.between {
+			between++
+			continue
+		}
+		n++
+		tints += f.tints
+	}
+	// Thirty frames a second, two turns to a flash, and two coordinates.
+	flick := float64(tints) / 2 / float64(fineCols*fineRows) / (float64(max(n, 1)) / 30)
+	moving := m.spreadOf(func(f seen) float64 { return f.hue }, func(f seen) bool { return steady(f) && f.moving }).mean
+	still := m.spreadOf(func(f seen) float64 { return f.hue }, func(f seen) bool { return steady(f) && !f.moving }).mean
+	mean := func(pick func(seen) float64) float64 { return get(pick).mean }
+	return fmt.Sprintf("colour %-15s frames %6d between scenes %5d | tint %s | hue %s | steps %s | colour flick %.3f | chroma %.4f hues %.3f | hue while the palette moves %.4f and while it does not %.4f | vivid %.3f pink %.3f opposed %.3f clash %.3f gap %.0f | rough light %.4f hue %.4f | runs %.0f",
+		name, n, between,
+		get(func(f seen) float64 { return f.tint }), get(func(f seen) float64 { return f.hue }),
+		get(func(f seen) float64 { return f.steps }), flick,
+		mean(func(f seen) float64 { return f.chroma }), mean(func(f seen) float64 { return f.hues }), moving, still,
+		mean(func(f seen) float64 { return f.vivid }), mean(func(f seen) float64 { return f.pink }),
+		mean(func(f seen) float64 { return f.opposed }), mean(func(f seen) float64 { return f.clash }),
+		mean(func(f seen) float64 { return f.gap }),
+		mean(func(f seen) float64 { return f.roughLight }), mean(func(f seen) float64 { return f.roughHue }),
+		mean(func(f seen) float64 { return f.runs }))
+}
+
+// tintLine is the flashing of colour on both grids at both thresholds.
+func (m *watcher) tintLine() string {
+	return fmt.Sprintf("colour flashes a second, worst second / worst ten / whole: %s | %s | %s | %s",
+		m.tinted[0], m.tinted[1], m.tinted[2], m.tinted[3])
+}
+
 // flashLine is the flashing on the guard's grid and on the finer one.
 func (m *watcher) flashLine() string {
 	secs := 0.0
@@ -450,8 +522,8 @@ func (m *watcher) lifts(at, beat float64) string {
 		m.lift(func(f seen) float64 { return f.throw }, at, beat))
 }
 
-// A tweak changes a visualiser before each frame, to measure a run without
-// one of the things that move it.
+// A tweak changes a visualiser before each frame is drawn and again after,
+// to measure a run without one of the things that move it.
 type tweak func(*State)
 
 // each applies do to the scene on screen and the one fading in.
@@ -508,6 +580,15 @@ var tweaks = map[string]tweak{
 	// Turning does not step on the beat.
 	"no lock": func(s *State) { each(s, func(sc *scene) { sc.lock = 0 }) },
 	"no grid": func(s *State) { each(s, func(sc *scene) { without(sc, "grid") }) },
+	// The palette is not shifted by the treble and the bass.
+	"shift held": func(s *State) { s.shift = 0 },
+	// Every pixel has the same tone, so only its value places it on the
+	// palette.
+	"tone level": func(s *State) {
+		for i := range s.tone {
+			s.tone[i] = 0.5
+		}
+	},
 	"no sparks or rings": func(s *State) {
 		each(s, func(sc *scene) { without(sc, "sparks", "rings") })
 	},
@@ -547,6 +628,9 @@ func watchRun(s *State, readings []Reading, p *Plan, from float64, w, h int, tw 
 		out.pos, out.kick, out.heavy = append(out.pos, s.lis.ear.now), append(out.kick, sig.Kick), append(out.heavy, sig.Heavy)
 		if s.next != nil && s.next != was && s.cutting {
 			out.cuts = append(out.cuts, s.lis.ear.now)
+		}
+		if tw != nil {
+			tw(s)
 		}
 		m.look(s, dt)
 	}
@@ -642,6 +726,9 @@ func TestAPlannedDanceTrackIsMeasuredAtEachTempo(t *testing.T) {
 			t.Logf("%.0f BPM: plan tempo %.1f, cues to cut to %.1f, cuts at %.1f, kicks answered %.0f%% %+.0f ms",
 				bpm, p.Tempo, due, d.cuts, 100*share, lag)
 			t.Log(m.flashLine())
+			t.Log(m.tintLine())
+			t.Log(m.colourLine("whole", nil))
+			t.Log(m.colourLine("kicked", func(f seen) bool { return f.at < 24 || f.at >= floorBack }))
 			t.Log(m.report("whole", nil))
 			t.Log(m.report("kicked", func(f seen) bool { return f.at < 24 || f.at >= floorBack }))
 			t.Log(m.report("break", func(f seen) bool { return f.at >= 24 && f.at < floorBack }))
@@ -680,9 +767,31 @@ func tweaksNamed(t *testing.T, list string) []string {
 	}
 	names := strings.Split(list, ",")
 	for _, n := range names {
-		if _, ok := tweaks[n]; !ok {
-			t.Fatalf("%q is not a run; the runs are %q", n, tweakNames())
+		if _, ok := tweakOf(n); !ok {
+			t.Fatalf("%q is not a run; the runs are %q, and two joined by a plus sign are both made", n, tweakNames())
 		}
 	}
 	return names
+}
+
+// tweakOf returns the tweak of a name. Two names joined by a plus sign give
+// both tweaks, the first before the second.
+func tweakOf(name string) (tweak, bool) {
+	if tw, ok := tweaks[name]; ok {
+		return tw, true
+	}
+	first, second, joined := strings.Cut(name, "+")
+	a, okA := tweaks[first]
+	b, okB := tweaks[second]
+	if !joined || !okA || !okB {
+		return nil, false
+	}
+	return func(s *State) {
+		if a != nil {
+			a(s)
+		}
+		if b != nil {
+			b(s)
+		}
+	}, true
 }

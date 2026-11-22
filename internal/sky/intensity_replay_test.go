@@ -103,7 +103,8 @@ func TestReplayIntensity(t *testing.T) {
 			wg.Go(func() {
 				slots <- struct{}{}
 				defer func() { <-slots }()
-				d, look := watchRun(New(j.seed), liveReadings(m, 0.27, j.seed), p, 2, w, h, tweaks[j.run])
+				tw, _ := tweakOf(j.run)
+				d, look := watchRun(New(j.seed), liveReadings(m, 0.27, j.seed), p, 2, w, h, tw)
 				share, lag, spread := d.onBeats(kicked, 0, math.Inf(1))
 				off, n := 0.0, 0
 				for _, cue := range cues {
@@ -116,6 +117,10 @@ func TestReplayIntensity(t *testing.T) {
 				fmt.Fprintf(&b, "   timing: %d kicked beats answered %.1f%%, %+.1f ms after the beat (spread %.1f); %d cuts for %d cues, %d within a second, mean %.0f ms from the cue\n",
 					len(kicked), 100*share, lag, spread, len(d.cuts), len(cues), n, 1000*off/math.Max(float64(n), 1))
 				fmt.Fprintf(&b, "   %s\n", look.flashLine())
+				fmt.Fprintf(&b, "   %s\n", look.tintLine())
+				fmt.Fprintf(&b, "   %s\n", look.colourLine("whole", nil))
+				fmt.Fprintf(&b, "   %s\n", look.colourLine("drummed", on))
+				fmt.Fprintf(&b, "   %s\n", look.colourLine("not drummed", func(f seen) bool { return !on(f) }))
 				if p.Tempo > 0 {
 					for _, cue := range cues {
 						fmt.Fprintf(&b, "   lift %s\n", look.lifts(cue, 60/p.Tempo))
