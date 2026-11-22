@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -26,9 +27,12 @@ type actor struct {
 	// was pressed, and broke is the first thing found wrong with an edit.
 	q        queue.Queue
 	selected string
+	named    []string
 	broke    string
-	// did names an edit of the queue just made, to be counted.
-	did string
+	// did names an edit of the queue just made, to be counted, and took says
+	// more than one track was taken out at once.
+	did  string
+	took bool
 }
 
 // queued is the queue as the interface is sent it.
@@ -163,6 +167,10 @@ func (a *actor) reload(asked Reload) {
 		a.waiting = append(a.waiting, Failed{Message: "there is nothing here to fetch again", Ask: ask})
 		return
 	}
+	if a.r.IntN(5) == 0 {
+		a.waiting = append(a.waiting, Failed{Message: "the server did not answer the reload", Ask: ask})
+		return
+	}
 	a.waiting = append(a.waiting, Reloaded{Ask: ask, Loaded: loaded})
 	if a.r.IntN(4) == 0 {
 		a.waiting = append(a.waiting, Reloaded{Ask: ask, Loaded: loaded})
@@ -222,6 +230,16 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 		}
 		return a.queued()
 	case RemoveQueued:
+		var got []string
+		for _, t := range intent.Tracks {
+			got = append(got, t.ID)
+		}
+		if a.named != nil && !reflect.DeepEqual(got, a.named) && a.broke == "" {
+			a.broke = fmt.Sprintf("the tracks named to take out are %v, and the rows shown from the cursor down were %v", got, a.named)
+		}
+		if len(got) > 1 {
+			a.took = true
+		}
 		for i := len(intent.Tracks) - 1; i >= 0; i-- {
 			t := intent.Tracks[i]
 			a.did = "a track taken out of the queue"
@@ -274,12 +292,21 @@ type held struct {
 	cursor                  map[Screen]int
 	artist, album, playlist string
 	albums, songs, tracks   int
-	waiting                 int
+	waiting, keepAsk        int
+	keep                    string
+	saving                  int
 }
 
 func holding2(m Model) held {
-	return held{m.screen, m.cursor, m.artist.ID, m.album.ID, m.playlist.ID,
-		len(m.artist.Albums), len(m.album.Songs), len(m.playlist.Songs), m.waiting}
+	// The messages are left out: anything said moves their selection.
+	cursor := map[Screen]int{}
+	for s, at := range m.cursor {
+		if s != ScreenMessages {
+			cursor[s] = at
+		}
+	}
+	return held{m.screen, cursor, m.artist.ID, m.album.ID, m.playlist.ID,
+		len(m.artist.Albums), len(m.album.Songs), len(m.playlist.Songs), m.waiting, m.keepAsk, m.keep, m.saving}
 }
 
 // run is one seeded run of the interface with the actor answering it.
@@ -294,6 +321,10 @@ type run struct {
 	// no line being typed. kinds counts what was delivered and done, by name.
 	keys  map[Screen]int
 	kinds map[string]int
+	// left is each list as it was when it was last left: its filter, what
+	// was selected, and what it listed.
+	left map[Screen][3]string
+	gen  map[Screen]int
 }
 
 // failf stops the run, saying where it had reached.
@@ -339,8 +370,47 @@ func (r *run) check(was Model, msg tea.Msg) {
 			r.failf(msg, "the open waited for left the screen on %s, loading %v, waiting for %d",
 				after.screen, r.m.loading(), after.waiting)
 		}
+	case Saved:
+		if msg.Ask != was.saving {
+			r.kinds["the answer to a save not waited for"]++
+			if after.saving != before.saving {
+				r.failf(msg, "the answer to save %d ended the wait for save %d", msg.Ask, before.saving)
+			}
+		}
+		r.refreshed(msg, msg.Playlist)
+	case PlaylistsLoaded:
+		if was.screen == ScreenPlaylist && !r.m.lists(was.playlist.ID) {
+			r.kinds["a playlist dropped while it was showing"]++
+			if r.m.screen == ScreenPlaylist {
+				r.failf(msg, "the playlist %q is still on screen after the server stopped listing it", was.playlist.ID)
+			}
+		}
 	case Reloaded:
 		r.kinds["a reload's answer"]++
+		if msg.Ask != was.keepAsk {
+			r.kinds["a reload's answer that was not waited for"]++
+			if after.keepAsk != before.keepAsk || after.keep != before.keep || r.m.status != was.status {
+				r.failf(msg, "the answer to reload %d ended or spoke for the wait for reload %d", msg.Ask, before.keepAsk)
+			}
+		}
+		switch loaded := msg.Loaded.(type) {
+		case PlaylistLoaded:
+			r.refreshed(msg, subsonic.Playlist(loaded))
+		case ArtistLoaded:
+			each(r.places(), func(p place) (place, bool) {
+				if p.artist.ID == loaded.ID && len(p.artist.Albums) != len(loaded.Albums) {
+					r.failf(msg, "a place remembered holds %d albums of %q, and %d were reloaded", len(p.artist.Albums), loaded.ID, len(loaded.Albums))
+				}
+				return p, true
+			})
+		case AlbumLoaded:
+			each(r.places(), func(p place) (place, bool) {
+				if p.album.ID == loaded.ID && len(p.album.Songs) != len(loaded.Songs) {
+					r.failf(msg, "a place remembered holds %d tracks of %q, and %d were reloaded", len(p.album.Songs), loaded.ID, len(loaded.Songs))
+				}
+				return p, true
+			})
+		}
 		// The one move a reload's answer makes is off a playlist that the
 		// server turns out no longer to list.
 		gone := was.screen == ScreenPlaylist && !r.m.lists(was.playlist.ID)
@@ -358,6 +428,7 @@ func (r *run) check(was Model, msg tea.Msg) {
 		if after.screen != before.screen {
 			r.failf(msg, "a changed playlist moved the screen from %s", before.screen)
 		}
+		r.refreshed(msg, subsonic.Playlist(msg))
 	case Failed:
 		switch {
 		case msg.Ask == 0:
@@ -372,6 +443,16 @@ func (r *run) check(was Model, msg tea.Msg) {
 			r.kinds["the failure of the open waited for"]++
 			if after.waiting != 0 {
 				r.failf(msg, "the open that failed is still waited for")
+			}
+		case msg.Ask == before.keepAsk:
+			r.kinds["the failure of the reload waited for"]++
+			if after.keep != "" || r.m.loading() && after.waiting == 0 {
+				r.failf(msg, "the reload that failed is still waited for")
+			}
+		case msg.Ask == before.saving:
+			r.kinds["the failure of the save waited for"]++
+			if after.saving != 0 {
+				r.failf(msg, "the save that failed is still waited for")
 			}
 		default:
 			r.kinds["the failure of an open not waited for"]++
@@ -412,6 +493,10 @@ func (r *run) send(msg tea.Msg) {
 		msg = nil
 		if cmd != nil && (was.ShowingSky() || !r.m.ShowingSky()) {
 			msg = r.app.answer(r.m, cmd())
+			if r.app.took {
+				r.kinds["several tracks taken out of the queue at once"]++
+				r.app.took = false
+			}
 			if r.app.did != "" {
 				r.kinds[r.app.did]++
 				if r.app.did == "the playing track taken out of the queue" {
@@ -424,6 +509,43 @@ func (r *run) send(msg tea.Msg) {
 			}
 		}
 	}
+}
+
+// places is every place there is a way back to.
+func (r *run) places() []place {
+	return append(append([]place{}, r.m.trail...), r.m.up...)
+}
+
+// refreshed checks that every place remembered that holds a playlist holds it
+// as it was just sent.
+func (r *run) refreshed(msg tea.Msg, now subsonic.Playlist) {
+	r.t.Helper()
+	each(r.places(), func(p place) (place, bool) {
+		if p.playlist.ID == now.ID && (len(p.playlist.Songs) != len(now.Songs) || p.playlist.Name != now.Name) {
+			r.failf(msg, "a place remembered holds %q with %d tracks, and it now has %d", p.playlist.ID, len(p.playlist.Songs), len(now.Songs))
+		}
+		return p, true
+	})
+}
+
+// chosen names what is selected on the screen showing, and listing names
+// everything the screen lists, so that two visits to a list can be compared.
+func chosen(m Model) string {
+	if m.rows() == 0 {
+		return ""
+	}
+	if id := m.under().id; id != "" {
+		return id
+	}
+	return fmt.Sprint("row ", m.at())
+}
+
+func listing(m Model) string {
+	out := fmt.Sprint(m.query, len(m.found), " ")
+	for i := range m.allRows() {
+		out += m.idAt(i) + ","
+	}
+	return out
 }
 
 // held checks what must hold after any message: a wait for an open does not
@@ -449,6 +571,29 @@ func (r *run) held(was Model, msg tea.Msg) {
 		}
 		return p, true
 	})
+	if was.screen == ScreenWiki && !was.reading() && r.m.reading() && r.m.filter != "" {
+		r.failf(msg, "a page was opened narrowed by the filter %q that was on the list", r.m.filter)
+	}
+	// A list that is replaced is a different list to come back to.
+	replaced := msg
+	if answer, ok := msg.(Reloaded); ok {
+		replaced = answer.Loaded
+	}
+	switch replaced.(type) {
+	case ArtistsLoaded:
+		r.gen[ScreenArtists]++
+	case AlbumsLoaded:
+		r.gen[ScreenEveryAlbum]++
+	case PlaylistsLoaded, PlaylistChanged, PlaylistLoaded, Saved:
+		r.gen[ScreenPlaylists]++
+	case StarredChanged:
+		r.gen[ScreenStarred]++
+	case SearchLoaded:
+		r.gen[ScreenSearch]++
+	}
+	if was.screen != r.m.screen {
+		r.left[was.screen] = [3]string{was.filter, chosen(was), fmt.Sprint(r.gen[was.screen], listing(was))}
+	}
 	path := r.m.path(1000)
 	switch {
 	case !deep(r.m.screen) && (len(r.m.up) > 0 || strings.Contains(path, "›")):
@@ -509,13 +654,21 @@ func (r *run) press(keys ...string) {
 		}
 		plain := !typing && !r.m.Confirming() && !r.m.ShowingSky() && !r.m.ShowingArt()
 		r.app.selected = ""
+		r.app.named = nil
 		if plain && r.m.screen == ScreenQueue && r.m.editing.ID == "" {
 			r.app.selected = r.m.under().id
+			// r takes out the rows shown from the cursor down, as many as
+			// the number typed before it.
+			if n, rows := max(1, atoi(r.m.count)), r.m.matches(); key == "r" && len(rows) > 0 {
+				for _, at := range rows[r.m.shown():min(len(rows), r.m.shown()+n)] {
+					r.app.named = append(r.app.named, r.m.queued[at].ID)
+				}
+			}
 		}
 		// Back with nothing else for it to leave returns to the place that
 		// was left last, holding what it held.
 		was, goesBack := r.m, plain && (key == "esc" || key == "h") && !r.m.reordering &&
-			r.m.filter == "" && r.m.topic == "" && len(r.m.trail)+len(r.m.up) > 0
+			r.m.filter == "" && !r.m.reading() && len(r.m.trail)+len(r.m.up) > 0
 		switch key {
 		case " ":
 			r.send(tea.KeyMsg{Type: tea.KeySpace})
@@ -528,9 +681,29 @@ func (r *run) press(keys ...string) {
 		default:
 			r.send(keyOf(key))
 		}
+		// A list reached again by a jump, listing what it listed when it was
+		// left, has the same filter on it and the same thing selected. Back
+		// is held to the place it returns to, below.
+		if as, been := r.left[r.m.screen]; plain && !goesBack && been && r.m.screen != was.screen && !deep(r.m.screen) &&
+			r.m.screen != ScreenQueue && r.m.screen != ScreenWiki && r.m.screen != ScreenMessages &&
+			as[2] == fmt.Sprint(r.gen[r.m.screen], listing(r.m)) {
+			r.kinds["a list reached again as it was left"]++
+			if r.m.filter != "" {
+				r.kinds["a narrowed list reached again as it was left"]++
+			}
+			if r.m.filter != as[0] || chosen(r.m) != as[1] {
+				r.failf(keyOf(key), "the %s list came back narrowed by %q on %q, and was left narrowed by %q on %q",
+					r.m.screen, r.m.filter, chosen(r.m), as[0], as[1])
+			}
+		}
 		if goesBack {
 			r.kinds["a back to a place that was left"]++
 			p := append(append([]place{}, was.trail...), was.up...)[len(was.trail)+len(was.up)-1]
+			if want := r.m.selecting(p.screen, p.cursor).settled(p.screen); r.m.screen == p.screen &&
+				(r.m.filter != p.filter || r.m.cursor[p.screen] != want.cursor[p.screen]) {
+				r.failf(keyOf(key), "back shows the %s narrowed by %q on place %d, and it was left narrowed by %q on place %d",
+					p.screen, r.m.filter, r.m.cursor[p.screen], p.filter, p.cursor)
+			}
 			switch {
 			case r.m.screen != p.screen:
 				r.failf(keyOf(key), "back went to %s, want %s", r.m.screen, p.screen)
@@ -626,7 +799,18 @@ func (r *run) step() {
 	}
 	// A row of the keys screen is opened to be read.
 	if r.m.screen == ScreenWiki && !r.m.reading() && r.m.mode == modeNormal && r.r.IntN(6) == 0 {
+		// Sometimes from a list narrowed first.
+		if r.m.filter == "" && r.r.IntN(2) == 0 {
+			r.press("/", pick(r.r, "s", "e"), "enter")
+		}
 		r.press(pick(r.r, "j", "G", "pgdown"), "enter")
+		return
+	}
+	// Results under headings are narrowed, left by a jump and jumped back to.
+	if (r.m.screen == ScreenStarred || r.m.screen == ScreenSearch) && r.m.mode == modeNormal &&
+		r.m.filter == "" && r.m.rows() > 2 && r.r.IntN(3) == 0 {
+		back := map[Screen]string{ScreenStarred: "s", ScreenSearch: "/"}[r.m.screen]
+		r.press("/", "a", "enter", pick(r.r, "j", "k"), "g", "a", "g", back)
 		return
 	}
 	// A page of the wiki is read to its end and the window is resized.
@@ -657,6 +841,49 @@ func (r *run) step() {
 		}
 		return
 	}
+	// The server stops listing the playlist that is on screen.
+	if r.m.screen == ScreenPlaylist && r.r.IntN(10) == 0 {
+		var rest []subsonic.Playlist
+		for _, list := range twoLists {
+			if list.ID != r.m.playlist.ID {
+				rest = append(rest, list)
+			}
+		}
+		r.send(PlaylistsLoaded(rest))
+		return
+	}
+	// A playlist is opened, the server stops listing it before it arrives,
+	// and it is left by a jump.
+	if r.m.screen == ScreenPlaylists && r.m.mode == modeNormal && r.m.filter == "" && r.m.rows() > 0 &&
+		len(r.app.waiting) == 0 && r.r.IntN(8) == 0 {
+		id := r.m.under().id
+		r.press("enter")
+		var rest []subsonic.Playlist
+		for _, list := range twoLists {
+			if list.ID != id {
+				rest = append(rest, list)
+			}
+		}
+		r.send(PlaylistsLoaded(rest))
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		if r.m.screen == ScreenPlaylist {
+			r.kinds["an unlisted playlist left by a jump"]++
+			r.press("g", "a")
+		}
+		return
+	}
+	// A screen is reloaded twice before either answer arrives.
+	if r.m.mode == modeNormal && !r.m.reading() && r.m.keep == "" && len(r.app.waiting) == 0 && r.r.IntN(25) == 0 {
+		r.kinds["a reload asked for twice"]++
+		r.command("reload")
+		r.command("reload")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		return
+	}
 	// A list is narrowed and the filter kept.
 	if r.m.mode == modeNormal && r.m.filter == "" && !r.m.reading() && r.r.IntN(14) == 0 {
 		r.press("/", pick(r.r, "a", "o", "w", "e", "t"), "enter")
@@ -668,6 +895,20 @@ func (r *run) step() {
 	// An artist, and then one of their albums, is opened and waited for.
 	if (r.m.screen == ScreenArtists || r.m.screen == ScreenAlbums) && r.r.IntN(4) == 0 {
 		r.press(pick(r.r, "j", "k"), "enter")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		return
+	}
+	// An artist's albums are left by a jump, opened again and reloaded, with
+	// the way back still holding them as they were.
+	if r.m.screen == ScreenAlbums && r.m.mode == modeNormal && r.r.IntN(3) == 0 {
+		r.kinds["an artist reloaded with a way back to them"]++
+		r.press("g", "a", "enter")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		r.command("reload")
 		for len(r.app.waiting) > 0 {
 			r.deliver()
 		}
@@ -694,11 +935,22 @@ func (r *run) step() {
 			r.send(r.app.queued())
 		}
 		// A move is often of the track beside the one playing, across it.
-		switch r.r.IntN(6) {
+		switch r.r.IntN(8) {
+		case 7:
+			// Two rows are taken from a queue narrowed to tracks that are
+			// not next to each other.
+			r.app.q = queue.New(queued()...).Jump(r.r.IntN(3))
+			r.send(r.app.queued())
+			if r.m.filter == "" {
+				r.press("/", "w", "enter")
+			}
+			r.press("home", "2", "r")
 		case 0:
 			r.press("g", "q", "k", "J")
 		case 1:
 			r.press("g", "q", "j", "K")
+		case 2:
+			r.press(pick(r.r, "2", "3"), "r")
 		default:
 			r.press(pick(r.r, "r", "r", "K", "J", "j", "k"))
 		}
@@ -792,6 +1044,14 @@ var kindsWanted = []string{
 	"a changed playlist while adding to it",
 	"a reorder entered",
 	"a filter kept",
+	"an unlisted playlist left by a jump",
+	"an artist reloaded with a way back to them",
+	"a list reached again as it was left",
+	"a narrowed list reached again as it was left",
+	"a reload's answer that was not waited for",
+	"a reload asked for twice",
+	"several tracks taken out of the queue at once",
+	"a playlist dropped while it was showing",
 	"a new search after leaving narrowed results",
 	"an open walked away from",
 	"a back to a place that was left",
@@ -811,8 +1071,8 @@ var kindsWanted = []string{
 // randomRuns is how many seeded runs the test makes and how many messages
 // each one sends.
 const (
-	randomSeeds    = 6
-	randomMessages = 500
+	randomSeeds    = 8
+	randomMessages = 600
 )
 
 // TestNoRunOfKeysAndAnswersBreaksWhatEachMessageMayDo drives the interface
@@ -823,7 +1083,8 @@ const (
 func TestNoRunOfKeysAndAnswersBreaksWhatEachMessageMayDo(t *testing.T) {
 	keys, kinds := map[Screen]int{}, map[string]int{}
 	for seed := uint64(1); seed <= randomSeeds; seed++ {
-		r := &run{t: t, seed: seed, r: rand.New(rand.NewPCG(seed, 11)), keys: keys, kinds: kinds}
+		r := &run{t: t, seed: seed, r: rand.New(rand.NewPCG(seed, 11)), keys: keys, kinds: kinds,
+			left: map[Screen][3]string{}, gen: map[Screen]int{}}
 		r.app.r = r.r
 		r.m = sized(New())
 		func() {
@@ -864,4 +1125,10 @@ func TestNoRunOfKeysAndAnswersBreaksWhatEachMessageMayDo(t *testing.T) {
 			t.Errorf("%d runs never reached: %s", randomSeeds, name)
 		}
 	}
+}
+
+// atoi is the number typed, or nothing where none was.
+func atoi(typed string) int {
+	n, _ := strconv.Atoi(typed)
+	return n
 }
