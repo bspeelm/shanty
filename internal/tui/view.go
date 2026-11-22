@@ -402,7 +402,8 @@ func (m Model) list(w, visible int) string {
 		return pad(faint().Render(fit("  "+body, w)), visible)
 	}
 
-	start := window(m.cursor[m.screen], rows, visible)
+	on := m.shown()
+	start := window(on, rows, visible)
 	var b strings.Builder
 	for i := start; i < min(rows, start+visible); i++ {
 		left, right := m.row(i)
@@ -412,8 +413,8 @@ func (m Model) list(w, visible int) string {
 			b.WriteString(fit(left, w) + "\n")
 			continue
 		}
-		line := fit(gutter(i == m.cursor[m.screen])+columns(left, right, w-2), w)
-		if i == m.cursor[m.screen] {
+		line := fit(gutter(i == on)+columns(left, right, w-2), w)
+		if i == on {
 			line = selectedStyle.Render(line)
 		}
 		b.WriteString(line + "\n")

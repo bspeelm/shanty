@@ -424,3 +424,68 @@ func TestAPlaylistTheServerDroppedWhileItWasShowingIsNotGoneBackTo(t *testing.T)
 		t.Errorf("back from the queue shows %q, which the server no longer has", frameHead(m))
 	}
 }
+
+// TestAScreenComesBackWithTheSameThingSelectedAndTheSameFilter leaves each
+// list by a jump and returns to it by the jump and by back, with and without
+// a filter kept on it, and holds it to the same thing selected, by its
+// identifier, and the same filter.
+func TestAScreenComesBackWithTheSameThingSelectedAndTheSameFilter(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}, {ID: "pl-3", Name: "Noon"}}
+	base := send(t, loaded(t), PlaylistsLoaded(lists), starredChanged(), AlbumsLoaded(everyAlbum()),
+		SearchLoaded{Query: "water", Results: results()}, keyOf("g"), keyOf("l"))
+	for _, tc := range []struct {
+		name, key, away, filter string
+	}{
+		{"artists", "a", "s", "i"},
+		{"every album", "b", "a", "a"},
+		{"playlists", "p", "a", "n"},
+		{"starred", "s", "a", "a"},
+		{"search", "/", "a", "a"},
+	} {
+		for _, filter := range []string{"", tc.filter} {
+			m := send(t, base, keyOf("g"), keyOf(tc.key))
+			if filter != "" {
+				m = narrowed(t, m, filter)
+			}
+			m, _ = press(t, m, "j")
+			if m.rows() < 2 || m.Cursor() == 0 {
+				t.Fatalf("%s narrowed by %q has %d rows with the cursor on row %d", tc.name, filter, m.rows(), m.Cursor())
+			}
+			screen, id := m.Screen(), m.under().id
+			same := func(how string, got Model) {
+				t.Helper()
+				if got.Screen() != screen || got.under().id != id || got.Filter() != filter {
+					t.Errorf("%s narrowed by %q, %s: on %s with %q selected and the filter %q, want %q selected",
+						tc.name, filter, how, got.Screen(), got.under().id, got.Filter(), id)
+				}
+			}
+
+			away := send(t, m, keyOf("g"), keyOf(tc.away))
+			if away.Screen() == screen {
+				t.Fatalf("%s: g%s did not leave it", tc.name, tc.away)
+			}
+			same("by the jump", send(t, away, keyOf("g"), keyOf(tc.key)))
+			back, _ := press(t, away, "esc")
+			same("by back", back)
+			twice := send(t, away, keyOf("g"), keyOf("q"), keyOf("g"), keyOf(tc.key))
+			same("by the jump from a third screen", twice)
+		}
+	}
+}
+
+func TestAnArtistsAlbumsComeBackNarrowedOnTheAlbumThatWasOpened(t *testing.T) {
+	aoi := library()[0]
+	m := narrowed(t, send(t, loaded(t), ArtistLoaded(aoi)), "water")
+	if m.rows() != 1 || m.under().id != "al-2" {
+		t.Fatalf("the filter leaves %d rows on %q", m.rows(), m.under().id)
+	}
+	m = send(t, m, AlbumLoaded(aoi.Albums[1]))
+	m, _ = press(t, m, "esc")
+	if m.Screen() != ScreenAlbums || m.Filter() != "water" || m.under().id != "al-2" {
+		t.Errorf("back shows %s narrowed by %q on %q", m.Screen(), m.Filter(), m.under().id)
+	}
+	m, _ = press(t, m, "esc")
+	if m.Filter() != "" || m.under().id != "al-2" || m.rows() != 2 {
+		t.Errorf("with the filter dropped the selection is %q of %d rows", m.under().id, m.rows())
+	}
+}

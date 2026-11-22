@@ -626,21 +626,29 @@ func TestBackUnderACoverLeavesItBeforeItDiscardsAnArrangement(t *testing.T) {
 	}
 }
 
-// cursorsWithinTheirLists reports the first screen whose cursor is past the
-// end of its list or on a heading. Every screen is checked, not only the one
-// showing.
+// cursorsWithinTheirLists reports the first screen whose selection is past
+// the end of its list, or is on something its filter hides or on a heading
+// while the filter shows a row that could be selected. Every screen is
+// checked, not only the one showing.
 func cursorsWithinTheirLists(m Model) error {
 	for _, s := range Screens {
 		on := m
 		if s != m.screen {
-			on.screen, on.filter = s, ""
+			on.screen, on.filter = s, m.kept[s]
 		}
-		rows, at := on.rows(), on.cursor[s]
-		if at < 0 || (rows > 0 && at >= rows) {
-			return fmt.Errorf("the %s cursor is on row %d of %d", s, at, rows)
+		all, at := on.allRows(), on.cursor[s]
+		if at < 0 || (all > 0 && at >= all) {
+			return fmt.Errorf("the %s selection is place %d of %d", s, at, all)
 		}
-		if on.isGrouped() && rows > 0 && !on.matchedResults()[at].selectable() {
-			return fmt.Errorf("the %s cursor is on a heading", s)
+		rows := on.matches()
+		if len(rows) == 0 {
+			continue
+		}
+		if on.at() != at {
+			return fmt.Errorf("the %s selection is place %d, which the filter %q hides", s, at, on.filter)
+		}
+		if on.isGrouped() && !on.grouped()[at].selectable() {
+			return fmt.Errorf("the %s selection is on a heading", s)
 		}
 	}
 	return nil
