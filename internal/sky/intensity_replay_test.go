@@ -24,7 +24,9 @@ import (
 // seconds. SKY_RUNS names runs, separated by commas, in which one of the
 // things that move the picture is taken away, or "all"; they are made with
 // the first SKY_RUNS_SEEDS seeds, one unless set, for the files whose name
-// contains SKY_RUNS_FOR. Measures are cached in SKY_CACHE.
+// contains SKY_RUNS_FOR. With SKY_KICKS set to "every", each plan is first
+// given a kick on every beat it is sure of. Measures are cached in
+// SKY_CACHE.
 func TestReplayIntensity(t *testing.T) {
 	files := os.Getenv("SKY_CORPUS")
 	if files == "" {
@@ -55,6 +57,9 @@ func TestReplayIntensity(t *testing.T) {
 	for _, path := range strings.Split(files, ",") {
 		name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 		p := planOf(t, path)
+		if os.Getenv("SKY_KICKS") == "every" {
+			fmt.Printf("\n%s: %d kicks added, one on every beat without\n", name, kickEveryBeat(p))
+		}
 		m := measureFile(t, path, cache)
 		// A second is drummed when at least drummedFrom of the beats in the
 		// eight seconds around it carry a kick.

@@ -27,7 +27,7 @@ const (
 	steadyLate = 1.75
 	// steadyRise and steadyFall are how long the steadiness takes to follow
 	// the events up and down.
-	steadyRise = 6.0
+	steadyRise = 4.0
 	steadyFall = 1.0
 	// steadyKick is the least kick that counts as an event, and steadyEdge
 	// how far it must rise in one frame.
@@ -36,6 +36,13 @@ const (
 	// steadyFresh is the rise of the release in one frame that starts the
 	// steadiness again.
 	steadyFresh = 0.3
+	// steadyPhase is the share of the beat's hold on a parameter that is
+	// given up, to the breath, for music that is steady in full.
+	steadyPhase = 0.8
+	// pulseAttack is how many frames a pulse on the beat takes to rise for
+	// music that is steady in full, and pulseFrame the length of a frame.
+	pulseAttack = 3
+	pulseFrame  = 1.0 / 30
 )
 
 // run is a run of events of one kind: whether it has begun, the time since
