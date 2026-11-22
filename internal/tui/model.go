@@ -204,8 +204,9 @@ type Model struct {
 	// list of them.
 	topic string
 	// keys is what each key does. It is nil until something replaces the
-	// default bindings.
-	keys map[string]Action
+	// default bindings. keyList is the rows of the screen that lists them.
+	keys    map[string]Action
+	keyList []result
 	// now reads the clock. It is a field so that a test can pin what a
 	// message is stamped with.
 	now func() time.Time
@@ -223,13 +224,15 @@ const remembered = 200
 
 // New returns a model with nothing loaded.
 func New() Model {
-	return Model{
+	m := Model{
 		cursor:   map[Screen]int{},
 		volume:   100,
 		starting: true,
 		status:   "loading the library",
 		now:      time.Now,
 	}
+	m.keyList = m.keyRows()
+	return m
 }
 
 func (m Model) Init() tea.Cmd { return nil }
@@ -291,18 +294,30 @@ func (m Model) matches() []int {
 	n := m.allRows()
 	out := make([]int, 0, n)
 	needle := strings.ToLower(m.filter)
+	var grouped []result
+	if needle != "" && m.isGrouped() {
+		grouped = m.grouped()
+	}
 	for i := range n {
 		if needle == "" {
 			out = append(out, i)
 			continue
 		}
-		// A search heading names a group rather than a thing in the library,
-		// so narrowing the list drops it. Otherwise typing "tracks" would
-		// leave a screen holding nothing but the word TRACKS.
-		if m.isGrouped() && !m.grouped()[i].selectable() {
+		name := ""
+		switch {
+		case grouped == nil:
+			name = m.rowName(i)
+		case !grouped[i].selectable():
+			// A heading names a group rather than a thing in the list, so
+			// narrowing the list drops it. Otherwise typing "tracks" would
+			// leave a screen holding nothing but the word TRACKS.
 			continue
+		case m.screen == ScreenWiki:
+			name = grouped[i].name + " " + grouped[i].detail
+		default:
+			name = grouped[i].name
 		}
-		if strings.Contains(strings.ToLower(m.rowName(i)), needle) {
+		if strings.Contains(strings.ToLower(name), needle) {
 			out = append(out, i)
 		}
 	}
@@ -357,7 +372,7 @@ func (m Model) allRows() int {
 		if m.topic != "" {
 			return len(helpLines(m.topic, m.viewWidth()))
 		}
-		return len(commands)
+		return len(m.grouped())
 	}
 	return 0
 }
@@ -390,7 +405,7 @@ func (m Model) rowName(i int) string {
 		if m.topic != "" {
 			return helpLines(m.topic, m.viewWidth())[i]
 		}
-		return commands[i].name + " " + commands[i].summary
+		return m.grouped()[i].name
 	}
 	return ""
 }

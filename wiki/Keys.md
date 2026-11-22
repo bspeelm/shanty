@@ -26,7 +26,7 @@ them is a list.
 | `enter`, `l` or `→` | Open the selected artist or album, or play the selected track |
 | `esc`, `h`, `←` or `backspace` | Go back to the previous screen |
 | `/` | Filter the list you are looking at |
-| `?` | Show the list of commands and what each one does |
+| `?` | Show every key and every command, and what each one does |
 | `a` | Add the selected track, album, artist or playlist to the end of the queue |
 | `A` | Play the selected track, album, artist or playlist after the one playing |
 | `e` | Add to the playlist you are looking at, or leave the one you are adding to |
@@ -35,20 +35,40 @@ them is a list.
 | `J` | Move the selected track down one place, in the queue or while reordering a playlist |
 | `*` | Star the selected artist, album or track, or unstar it |
 
-Pressing back on the artist list goes up to the library, and pressing it on the
-library does nothing, because there is nothing above that. No number of presses
-of back will close the player.
+Back returns to the screen you were on before this one, with the row you had
+selected and the filter you had kept. If a filter is kept on the screen showing,
+back drops the filter first. On the library, with nowhere left to go back to,
+it does nothing. No number of presses of back will close the player.
 
-Each screen remembers which row you had selected. If you open an album and then
-go back, the album you opened is still highlighted.
+The title bar shows how you got to an album or a playlist, as in
+`artists › Aoi › Harbour`, and any filter kept, as in `/bilge`.
+
+## Going to a screen
+
+`g` and a second key go to a screen from anywhere. Each screen is shown with
+the row you had selected there.
+
+| Keys | Where they go |
+|---|---|
+| `gl` | The library |
+| `ga` | The artists |
+| `gb` | Every album |
+| `gp` | The playlists |
+| `gq` | The queue, on the track playing |
+| `gs` | What is starred |
+| `g/` | The last search |
+| `gv` | The visualiser |
+
+`?` lists every key, with the keys you have bound, and every command.
 
 ## Seeing music you have just added
 
 shanty asks the server for a list once and then keeps it, so an album copied
 onto the server after you started shanty is not there.
 
-`:reload` asks again for whatever screen you are on: the artist list, one
-artist's albums, one album's tracks, or the starred list. It says what came
+`:reload` asks again for whatever screen you are on: the library, the artists,
+one artist's albums, every album, one album's tracks, or the starred list. It
+says what came
 back, because a reload that returns the same thing looks exactly like one that
 did nothing.
 
@@ -118,8 +138,8 @@ opened is not there to be filtered.
 
 `:search slipway` asks the server instead. The results are artists, albums and
 tracks together, grouped under headings, with the count in the title bar.
-`enter` opens an artist or an album, or plays a track. `esc` returns to the
-artist list.
+`enter` opens an artist or an album, or plays a track from the tracks found.
+`esc` goes back to where you were, and `g/` returns to the results.
 
 The headings are not rows: moving passes over them, and filtering the results
 with `/` drops them.
@@ -171,16 +191,15 @@ the library asks for the lists its counts are drawn from.
 
 ## The visualiser
 
-`gv` or `:visualizer` fills the screen with a slowly turning pattern: a
-three-armed spiral in a star field, with a ripple running outward through it.
-`esc` puts it away. The row above the keys still says what is playing and how
-far through it is, so the visualiser is somewhere you can leave the screen
-rather than somewhere you have to come back from.
+`gv` or `:visualizer` fills the screen with a picture that moves with the
+music. It follows how loud the track is and where its beats and kicks fall, and
+changes scene as the track moves from one part to the next. `esc` puts it away,
+and pausing holds it still. The row above the keys still says what is playing.
 
-**It does not read the music.** It is drawn from the clock and the size of your
-window. shanty hands every track to mpv, and mpv reports no levels back, so a
-pattern that moved with the sound would mean putting an audio filter in the way
-of the audio. Pausing holds the pattern where it is.
+While it is open, the player keys and `:` work and the list underneath does
+not. It limits how fast large parts of the picture change brightness, to at
+most about two flashes a second, measured for a dark terminal background in
+full colour.
 
 ## Cover art
 
@@ -236,7 +255,7 @@ looking at.
 
 **`r` works there too.** A playlist on screen is a list of what is in it, so
 `r` takes the track under the cursor out without entering edit mode first. It
-asks before it does, and `y` answers yes. If the playlist changed since the
+asks before it does, and `y` or `Y` answers yes. If the playlist changed since the
 screen was drawn, the removal is refused.
 
 While you are editing, `a` and `r` are about the playlist. Everywhere else `a`
@@ -376,12 +395,12 @@ what the screen shows, then the server, then the program itself.
 |---|---|
 | `:search <words>` | find artists, albums and tracks on the server |
 | `:playlist <verb name>` | list them, or create, delete, edit, rename, reorder or shuffle one |
-| `:visualizer` | fill the screen with a turning pattern drawn from the clock |
+| `:visualizer` | fill the screen with a picture that moves with the music |
 | `:shuffle` | play everything on the server in a random order |
 | `:resume` | carry on from the queue saved on the server |
 | `:art` | show the cover of the album you are looking at, filling the screen |
 | `:auto-vol <on\|off>` | level quiet and loud records against each other |
-| `:wiki` | explain the commands |
+| `:wiki` | list every key and every command |
 | `:messages` | show what shanty has said this session |
 | `:scan` | ask the server to look for new music |
 | `:reload` | ask the server for what is on screen again |
@@ -446,9 +465,9 @@ should do it:
 
 ```toml
 [keys]
-next = ["l"]
-previous = ["h"]
-volume-up = ["+", "=", "]"]
+next = ["n", "."]
+previous = ["p", ","]
+volume-up = ["+", "="]
 ```
 
 An action you name takes those keys instead of the ones it came with. An action

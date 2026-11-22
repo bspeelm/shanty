@@ -544,10 +544,7 @@ func TestStartingAndAbandoningAFilterOnASearchLeavesTheCursorOffTheHeadings(t *t
 
 func TestAWikiPageThatReflowsToFewerRowsLeavesTheCursorOnOne(t *testing.T) {
 	next, _ := New().Update(tea.WindowSizeMsg{Width: 30, Height: 12})
-	m := send(t, next.(Model), ShowWiki{})
-	for commands[m.Cursor()].name != "search" {
-		m, _ = press(t, m, "j")
-	}
+	m := onCommand(t, send(t, next.(Model), ShowWiki{}), "search")
 	m, _ = press(t, m, "enter")
 	m, _ = press(t, m, "G")
 	narrow := m.rows()

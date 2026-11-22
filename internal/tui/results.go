@@ -18,6 +18,10 @@ const (
 	kindAlbum
 	kindSong
 	kindPlaylist
+	// kindKey is a key and what it does, and kindCommand a command whose
+	// page can be opened.
+	kindKey
+	kindCommand
 )
 
 // result is one row of a search result.
@@ -114,13 +118,18 @@ func (m Model) grouped() []result {
 		return m.found
 	case ScreenStarred:
 		return m.starredRows
+	case ScreenWiki:
+		if m.keyList != nil {
+			return m.keyList
+		}
+		return m.keyRows()
 	}
 	return nil
 }
 
 // isGrouped reports whether the screen showing has headings in it.
 func (m Model) isGrouped() bool {
-	return m.screen == ScreenSearch || m.screen == ScreenStarred
+	return m.screen == ScreenSearch || m.screen == ScreenStarred || m.screen == ScreenWiki && m.topic == ""
 }
 
 // selectable is how many of those rows the cursor may rest on.

@@ -11,12 +11,6 @@ import (
 // backticked is every `thing` written in the wiki page.
 var backticked = regexp.MustCompile("`([^`]+)`")
 
-// spelling is how the page writes a key that shanty names differently. The
-// page is for reading, so it uses the symbol on the keyboard.
-var spelling = map[string]string{
-	"up": "↑", "down": "↓", "left": "←", "right": "→", " ": "space",
-}
-
 // keysPage is the wiki page that tells somebody what the keys do.
 func keysPage(t *testing.T) string {
 	t.Helper()
@@ -59,8 +53,25 @@ func TestEveryKeyIsDocumentedAndEveryDocumentedKeyIsBound(t *testing.T) {
 		}
 	}
 
+	// The jumps and the keys inside the modes are held the same way.
+	isJump := map[string]bool{}
+	for _, j := range jumps() {
+		isJump["g"+j.key] = true
+		if !strings.Contains(page, "`g"+j.key+"`") {
+			t.Errorf("`g%s` is a jump and the page does not mention it", j.key)
+		}
+	}
+	inAMode := map[string]bool{}
+	for _, k := range modeKeys() {
+		inAMode[spell(k.key)] = true
+		if !strings.Contains(page, "`"+spell(k.key)+"`") {
+			t.Errorf("`%s` acts while something is being typed and the page does not mention it", spell(k.key))
+		}
+	}
+
 	// The other way round: everything the page writes as a key, and which
-	// looks like one rather than a command or a two-key jump, is bound.
+	// looks like one rather than a command, is bound, is a jump, or acts
+	// inside a mode.
 	asWritten := map[string]string{}
 	for key := range bound {
 		written := key
@@ -74,8 +85,6 @@ func TestEveryKeyIsDocumentedAndEveryDocumentedKeyIsBound(t *testing.T) {
 	notAKey := map[string]string{
 		"3j":     "an example of a count before a movement",
 		"50%":    "an example of a count before %",
-		"y":      "answers the question a deletion asks, which is its own mode",
-		"tab":    "completes a command, which is its own mode",
 		"★":      "the mark on something starred",
 		"(A)":    "the mark on a track already in a playlist",
 		"shanty": "the program",
@@ -94,9 +103,17 @@ func TestEveryKeyIsDocumentedAndEveryDocumentedKeyIsBound(t *testing.T) {
 			strings.ToUpper(written) == written && len(written) > 1 || // a tag name
 			strings.HasPrefix(written, ":") || // a command
 			strings.Contains(written, " ") || // a phrase, or a command with an argument
-			strings.HasPrefix(written, "g") || // the two-key jumps
 			strings.Contains(written, ".") || // a path or a file
-			strings.Contains(written, "/") { // a path
+			strings.Contains(written, "/") && !isJump[written] { // a path
+			continue
+		}
+		if strings.HasPrefix(written, "g") && len(written) == 2 {
+			if !isJump[written] {
+				t.Errorf("the page writes `%s` as a jump and there is none", written)
+			}
+			continue
+		}
+		if inAMode[written] {
 			continue
 		}
 		if _, ok := asWritten[written]; !ok {
@@ -323,4 +340,30 @@ func TestTheWikiTableIsWrittenFromTheCommands(t *testing.T) {
 	}
 	t.Errorf("the wiki table is not what the commands say.\nRun: go test ./internal/tui/ -update\n\nwant:\n%s\n\ngot:\n%s",
 		want, page[from:to])
+}
+
+// TestTheBindingsThePageGivesAsAnExampleAreOnesShantyAccepts feeds the
+// [keys] table written on the page through Bind.
+func TestTheBindingsThePageGivesAsAnExampleAreOnesShantyAccepts(t *testing.T) {
+	_, after, found := strings.Cut(keysPage(t), "[keys]\n")
+	if !found {
+		t.Fatal("the page has no [keys] example")
+	}
+	block, _, _ := strings.Cut(after, "```")
+	want := map[string][]string{}
+	for _, line := range strings.Split(strings.TrimSpace(block), "\n") {
+		name, list, ok := strings.Cut(line, " = ")
+		if !ok {
+			t.Fatalf("the example has a line that is not a binding: %q", line)
+		}
+		for _, key := range strings.Split(strings.Trim(list, "[]"), ", ") {
+			want[name] = append(want[name], strings.Trim(key, `"`))
+		}
+	}
+	if len(want) == 0 {
+		t.Fatal("the example binds nothing")
+	}
+	if _, wrong := Bind(want); len(wrong) > 0 {
+		t.Errorf("the example on the page is refused: %v", wrong)
+	}
 }

@@ -106,7 +106,7 @@ func Actions() []Action {
 			Keys: []string{"r"}, do: modelCmd((Model).removeSelected)},
 		{
 			Name:    "keys",
-			Summary: "show the list of commands and what each one does",
+			Summary: "show every key and every command, and what each one does",
 			Keys:    []string{"?"},
 			do:      sends(func(int) tea.Msg { return ShowWiki{} }),
 		},
@@ -270,5 +270,6 @@ func sortedActions(m map[string]Action) []string {
 // WithKeys returns a model using the given bindings.
 func (m Model) WithKeys(keys map[string]Action) Model {
 	m.keys = keys
+	m.keyList = m.keyRows()
 	return m
 }

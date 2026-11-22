@@ -33,16 +33,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC && (m.mode == modeFilter || m.mode == modeCommand) {
-			return m, emit(Quit{})
-		}
-		switch m.mode {
-		case modeFilter:
-			return m.filterKey(msg)
-		case modeCommand:
-			return m.commandKey(msg)
-		case modeConfirm:
-			return m.confirmKey(msg.String())
+		if m.mode != modeNormal {
+			return m.modeKey(msg)
 		}
 		return m.key(msg)
 
@@ -224,7 +216,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ShowWiki:
 		m = m.show(ScreenWiki)
 		m.topic = ""
-		return m.selecting(ScreenWiki, 0), nil
+		return m.selecting(ScreenWiki, 0).ontoARow(), nil
 	case ShowMessages:
 		return m.show(ScreenMessages).selecting(ScreenMessages, 0), nil
 	case QueueChanged:
@@ -293,80 +285,6 @@ func (m Model) bound() map[string]Action {
 		return m.keys
 	}
 	return binding(Actions())
-}
-
-// filterKey handles a keystroke while the filter is being typed. The list
-// narrows as characters arrive. esc abandons the filter and restores the list.
-// enter keeps it and returns to normal mode, and opens the row when only one
-// is left.
-func (m Model) filterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc:
-		m.mode, m.filter = modeNormal, ""
-		return m.moveTo(0).ontoARow(), nil
-	case tea.KeyEnter:
-		m.mode = modeNormal
-		if m.rows() == 1 {
-			return m.open()
-		}
-		return m, nil
-	case tea.KeyBackspace:
-		if m.filter != "" {
-			m.filter = m.filter[:len(m.filter)-1]
-		}
-		return m.moveTo(0).ontoARow(), nil
-	case tea.KeyRunes, tea.KeySpace:
-		m.filter += string(msg.Runes)
-		if msg.Type == tea.KeySpace {
-			m.filter += " "
-		}
-		return m.moveTo(0).ontoARow(), nil
-	}
-	// Movement still works while typing, so a filter can be narrowed and a row
-	// chosen without leaving the mode.
-	switch msg.String() {
-	case "up":
-		return m.move(-1), nil
-	case "down":
-		return m.move(1), nil
-	case "pgup":
-		return m.move(-m.page()), nil
-	case "pgdown":
-		return m.move(m.page()), nil
-	case "home":
-		return m.moveTo(0).ontoARow(), nil
-	case "end":
-		return m.moveTo(m.rows() - 1), nil
-	}
-	return m, nil
-}
-
-// commandKey handles a keystroke while a command is being typed. The list of
-// matching commands is shown while typing, tab completes as far as the matches
-// agree, enter runs, and esc abandons the line.
-func (m Model) commandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc:
-		m.mode, m.line = modeNormal, ""
-		return m, nil
-	case tea.KeyTab:
-		m.line = complete(m.line)
-		return m, nil
-	case tea.KeyEnter:
-		return m.runCommand()
-	case tea.KeyBackspace:
-		if m.line != "" {
-			m.line = m.line[:len(m.line)-1]
-		}
-		return m, nil
-	case tea.KeyRunes:
-		m.line += string(msg.Runes)
-		return m, nil
-	case tea.KeySpace:
-		m.line += " "
-		return m, nil
-	}
-	return m, nil
 }
 
 // runCommand leaves the mode and acts on the line, reporting a name that is
@@ -518,37 +436,6 @@ func same(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-// goTo handles the key after g. The queue, playlists and starred screens are
-// bound before they exist, so the prefix is whole and says what is missing
-// rather than doing nothing.
-func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
-	switch key {
-	case "g":
-		return m.moveTo(0).ontoARow(), nil
-	case "l":
-		return m.show(ScreenLibrary), nil
-	case "a":
-		return m.show(ScreenArtists), nil
-	case "b":
-		return m.show(ScreenEveryAlbum), emit(FetchEveryAlbum{})
-	case "v":
-		return m.openSky()
-	case "p":
-		return m.show(ScreenPlaylists), emit(FetchPlaylists{})
-	case "q":
-		m = m.show(ScreenQueue)
-		return m.selecting(ScreenQueue, max(0, min(len(m.queued)-1, m.queuedAt))), nil
-	case "s":
-		return m.show(ScreenStarred), nil
-	case "/":
-		if m.query == "" {
-			return m.say("nothing has been searched for yet — type :search <words>"), nil
-		}
-		return m.show(ScreenSearch), nil
-	}
-	return m, nil
 }
 
 // under is what the cursor is on.
@@ -737,7 +624,11 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		if m.topic != "" {
 			return m, nil
 		}
-		m.topic = commands[at].name
+		r := m.grouped()[at]
+		if r.kind != kindCommand {
+			return m.say("that is a key, not a page — press it on the screen it works on"), nil
+		}
+		m.topic = r.id
 		return m.selecting(ScreenWiki, 0), nil
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[at]
@@ -941,7 +832,7 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 	}
 	if m.screen == ScreenWiki && m.topic != "" {
 		m.topic = ""
-		return m.say("").selecting(ScreenWiki, 0), nil
+		return m.say("").selecting(ScreenWiki, 0).ontoARow(), nil
 	}
 	n := len(m.trail)
 	if n == 0 {
@@ -1225,15 +1116,12 @@ func (m Model) idAt(i int) string {
 	return ""
 }
 
-// confirmKey answers a question about something that cannot be undone.
-//
-// Only yes does it. Every other key says no, because a question nobody meant
-// to answer should end with nothing having happened.
-func (m Model) confirmKey(key string) (tea.Model, tea.Cmd) {
+// answer ends a question about something that cannot be undone. Only yes
+// does what was asked about.
+func (m Model) answer(yes bool) (tea.Model, tea.Cmd) {
 	agreed := m.agreed
 	m.mode, m.asking, m.agreed = modeNormal, "", nil
-
-	if key != "y" && key != "Y" {
+	if !yes {
 		return m.say("nothing was changed"), nil
 	}
 	return m.say(""), emit(agreed)

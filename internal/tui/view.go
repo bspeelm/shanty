@@ -171,8 +171,15 @@ func (m Model) footer(w int) string {
 	if m.mode == modeConfirm {
 		return alarm().Render(fit(Sanitise(m.asking)+"  [y/N]", w))
 	}
-	if m.pending != "" || m.count != "" {
-		return statusStyle.Render(fit(m.count+m.pending+" …", w))
+	if m.pending != "" {
+		var to []string
+		for _, j := range jumps() {
+			to = append(to, j.key+" "+j.short)
+		}
+		return statusStyle.Render(fit(m.count+m.pending+" …  "+strings.Join(to, " · "), w))
+	}
+	if m.count != "" {
+		return statusStyle.Render(fit(m.count+" …", w))
 	}
 	if arriving := m.arriving(); m.status == "" && arriving != "" {
 		return statusStyle.Render(fit(arriving, w))
@@ -194,7 +201,7 @@ func (m Model) footer(w int) string {
 		if m.editing.ID != "" {
 			return statusStyle.Render(fit(editingHint(m.editing.Name), w))
 		}
-		return faint().Render(fit(helpLine(w), w))
+		return faint().Render(fit(m.hintLine(w), w))
 	}
 	oneLine := strings.ReplaceAll(m.status, "\n", " · ")
 	if m.statusFailed {
@@ -366,7 +373,7 @@ func (m Model) heading() string {
 		if m.topic != "" {
 			return "wiki · :" + m.topic
 		}
-		return fmt.Sprintf("wiki · %s", plural(len(commands), "command"))
+		return "wiki · every key, and " + plural(len(commands), "command")
 	case ScreenMessages:
 		if len(m.said) == 0 {
 			return "messages · nothing said yet"
@@ -477,12 +484,11 @@ func (m Model) row(i int) (string, string) {
 		if m.topic != "" {
 			return helpLines(m.topic, m.viewWidth())[i], ""
 		}
-		c := commands[i]
-		name := ":" + c.name
-		if c.argument != "" {
-			name += " <" + c.argument + ">"
+		r := m.grouped()[i]
+		if r.kind == kindHeading {
+			return faint().Render(r.name), ""
 		}
-		return name, c.summary
+		return fmt.Sprintf("  %-22s %s", r.name, r.detail), ""
 	case ScreenMessages:
 		said := m.said[m.saidAt(i)]
 		// The message is one row, and some carry the cause on one line and
@@ -621,34 +627,6 @@ func (m Model) viewWidth() int {
 		return m.width
 	}
 	return defaultWidth
-}
-
-// helpItems is the key help, one entry per thing a key does. The footer joins
-// as many as fit, so that a narrow terminal ends on a whole item and says
-// there are more rather than stopping part way through a word.
-var helpItems = []string{
-	"↑↓ move", "gg top", "G end", "enter open", "esc back", "/ filter",
-	": command", "space pause", "n/p skip", "[ ] seek", "+/- volume",
-	"? keys", ":q quit",
-}
-
-// helpLine is as much of the key help as fits in w, with an ellipsis when
-// something had to be left out. The rest is on the wiki screen.
-func helpLine(w int) string {
-	var b strings.Builder
-	for i, item := range helpItems {
-		next := item
-		if i > 0 {
-			next = " · " + item
-		}
-		// Two columns held back for the ellipsis, so that adding it never
-		// pushes the line over the width it was built to.
-		if lipgloss.Width(b.String())+lipgloss.Width(next)+2 > w {
-			return b.String() + " …"
-		}
-		b.WriteString(next)
-	}
-	return b.String()
 }
 
 // window returns the first row to draw, scrolling only enough to keep the
