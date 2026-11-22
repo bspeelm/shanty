@@ -193,6 +193,10 @@ const (
 	flowLight, flowTop, flowDark = 0.62, 0.822, 0.27
 	flowStrength                 = 1.1
 	flowMate                     = 0.45
+	// borrowWide of the palettes of the cool family, and borrowNarrow of
+	// those of the families with less room for two hues, borrow their second
+	// member from another family.
+	borrowWide, borrowNarrow = 0.4, 0.75
 	// greyShare of the palettes for driving and for heavy music have greys
 	// for one member: for driving music, half of those for the first member
 	// and half for the second.
@@ -254,6 +258,30 @@ func (s *style) tones(rng *rand.Rand, c Character) tones {
 	t.arc = t.fam.leaning(t.key, t.arc)
 	if t.peak > greyPeak {
 		t.mate = t.fam.mated(t.key, t.mate)
+	}
+	// Some palettes borrow their second member from another family: the
+	// family of the strongest axis of the character that is not the
+	// palette's own, or for a character of one axis the family across from
+	// its own. It is keyed anywhere in that family, with the chroma the
+	// style gives.
+	lent := []family{cool, cool, ember, gold}
+	share := borrowWide
+	if t.fam != cool {
+		share = borrowNarrow
+	}
+	if seed := part(t.key * 53); seed < share && t.peak > greyPeak && t.matePeak > greyPeak {
+		from, most := gold, 0.0
+		if t.fam != cool {
+			from = cool
+		}
+		for i, w := range axes {
+			if lent[i] != t.fam && w > most {
+				from, most = lent[i], w
+			}
+		}
+		t.guest = from
+		t.mate = from.keyFrom + (from.keyTo-from.keyFrom)*part(t.key*71)
+		t.matePeak = chromaLeast + chromaSpan*s.sat
 	}
 	return t
 }

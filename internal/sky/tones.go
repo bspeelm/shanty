@@ -176,11 +176,14 @@ type tones struct {
 	// end of the arc, at a chroma of accent.
 	accentSteps        int
 	accentTurn, accent float64
-	// A made palette may have a second member, drawn beside the first in
-	// other places on the screen. mate is how far its key hue is from key,
-	// in degrees, and matePeak its peak chroma. A mate of 0 is a palette of
-	// one member.
+	// A made palette may have a second member, drawn in other places on the
+	// screen. In a palette of one family, mate is how far the second
+	// member's key hue is from key, in degrees, and a mate of 0 is a palette
+	// of one member. A second member borrowed from another family has that
+	// family in guest, and mate is its key hue. matePeak is the second
+	// member's peak chroma either way.
 	mate, matePeak float64
+	guest          family
 	// stops are the colours of a landscape, dark to bright, and land how far
 	// the ramp is made of them.
 	stops []RGB
@@ -271,10 +274,20 @@ func stopped(colours, tint []RGB) []RGB {
 func mixTones(a, b tones, w float64) tones {
 	w = clamp01(w)
 	mix := func(x, y float64) float64 { return x + (y-x)*w }
-	if a.fam != b.fam {
+	if a.fam != b.fam || a.guest != b.guest {
 		out, left := a, 1-2*w
 		if w >= 0.5 {
 			out, left = b, 2*w-1
+		}
+		// Two palettes of one family that differ only in the family their
+		// second member is borrowed from keep the hues of their first.
+		if a.fam == b.fam {
+			out.key, out.arc, out.peak = a.key+turnTo(a.key, b.key)*w, mix(a.arc, b.arc), mix(a.peak, b.peak)
+			left = math.Abs(1 - 2*w)
+			out.matePeak = out.matePeak * left
+			out.contrast, out.light, out.top = mix(a.contrast, b.contrast), mix(a.light, b.light), mix(a.top, b.top)
+			out.dark, out.land = mix(a.dark, b.dark), mix(a.land, b.land)
+			return out
 		}
 		out.peak, out.matePeak, out.accent = out.peak*left, out.matePeak*left, out.accent*left
 		out.contrast, out.light, out.top = mix(a.contrast, b.contrast), mix(a.light, b.light), mix(a.top, b.top)
@@ -287,6 +300,7 @@ func mixTones(a, b tones, w float64) tones {
 	}
 	out := tones{
 		fam:      a.fam,
+		guest:    a.guest,
 		key:      a.key + turnTo(a.key, b.key)*w,
 		arc:      mix(a.arc, b.arc),
 		peak:     mix(a.peak, b.peak),
@@ -329,10 +343,15 @@ func mixTones(a, b tones, w float64) tones {
 func (t tones) turned(by float64) tones {
 	t.key = math.Min(math.Max(t.key+by, t.fam.keyFrom), t.fam.keyTo)
 	t.arc = t.fam.leaning(t.key, t.arc)
-	t.mate = t.fam.mated(t.key, t.mate)
+	if !t.borrows() {
+		t.mate = t.fam.mated(t.key, t.mate)
+	}
 	t.land = 0
 	return t
 }
+
+// borrows reports whether the palette's second member is of another family.
+func (t tones) borrows() bool { return t.guest != family{} }
 
 // mated returns how far a second member's key hue is from key, given how
 // far it was meant to be: the same distance, on the other side where that
@@ -358,7 +377,12 @@ func (f family) mated(key, mate float64) float64 {
 func (t tones) member(second bool) tones {
 	one := t
 	one.mate, one.matePeak = 0, 0
-	if second && t.mate != 0 {
+	one.guest = family{}
+	switch {
+	case second && t.borrows():
+		one.fam, one.key, one.peak, one.accentSteps = t.guest, t.mate, t.matePeak, 0
+		one.arc = one.fam.leaning(one.key, t.arc)
+	case second && t.mate != 0:
 		one.key, one.peak, one.accentSteps = t.key+t.mate, t.matePeak, 0
 		one.arc = t.fam.leaning(one.key, t.arc)
 	}
@@ -367,8 +391,11 @@ func (t tones) member(second bool) tones {
 
 // table returns the colours cells are drawn in. A made palette of two
 // members gives setLevels ramps one after another, from the first member's
-// to the second's by way of the palettes between them. Any other palette
-// gives its one ramp.
+// to the second's by way of the palettes between them. Between two members
+// of one family those are the palettes of the hues between. Between a member
+// and one borrowed from another family no hue is passed through: the first
+// member fades to grey over the first half of the ramps and the second rises
+// from it over the rest. Any other palette gives its one ramp.
 func (t tones) table() []RGB {
 	if !t.made() || t.mate == 0 {
 		return t.ramp()

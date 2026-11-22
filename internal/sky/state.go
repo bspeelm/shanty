@@ -44,6 +44,7 @@ type State struct {
 	// second, each pixel is drawn, and weave what works it out.
 	place []float64
 	weave weaver
+	woven bool
 	w, h  int
 	f     frame
 	value []float64
@@ -259,7 +260,7 @@ func (s *State) resize(w, h int) {
 	f.radius = math.Min(float64(f.fw)/2, float64(f.fh)*f.aspect/2)
 	s.value, s.tone = make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)
 	s.held, s.holding = [2][]float64{make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)}, false
-	s.place = make([]float64, f.fw*f.fh)
+	s.place, s.woven = make([]float64, f.fw*f.fh), false
 	s.weave.resize(f.fw, f.fh)
 	s.post.resize(f)
 	s.guard.resize(f.fw, f.fh)
@@ -271,7 +272,12 @@ func (s *State) resize(w, h int) {
 // crossfade or a growing scene arrives after its light. Through a cut, and
 // when a made palette first comes on screen, it is theirs at once.
 func (s *State) tint(dt float64) {
-	s.weave.settle(s.value, s.place)
+	home := 0.0
+	if s.drawing && (s.drawn.borrows() || s.drawn.matePeak <= greyPeak) {
+		home = weaveHome
+	}
+	s.weave.settle(s.value, s.tone, s.place, home, dt, s.cutting || !s.woven)
+	s.woven = true
 	to := s.cur.tones
 	made := to.made()
 	if s.next != nil {
@@ -282,7 +288,7 @@ func (s *State) tint(dt float64) {
 	switch {
 	case !made:
 		s.drawing = false
-	case !s.drawing || s.cutting || s.drawn.fam != to.fam:
+	case !s.drawing || s.cutting || s.drawn.fam != to.fam || s.drawn.guest != to.guest:
 		// Between two families no hue moves: the colours fade to grey and
 		// rise again in the palette the scenes give.
 		s.drawn, s.drawing = to, true
@@ -291,8 +297,12 @@ func (s *State) tint(dt float64) {
 		chase := func(from, towards float64) float64 { return from + math.Max(-step, math.Min(step, towards-from)) }
 		first := chase(s.drawn.key, to.key)
 		second := chase(s.drawn.key+s.drawn.mate, to.key+to.mate)
+		borrowed := chase(s.drawn.mate, to.mate)
 		s.drawn = to
 		s.drawn.key, s.drawn.mate = first, second-first
+		if to.borrows() {
+			s.drawn.mate = borrowed
+		}
 		if to.mate == 0 {
 			s.drawn.matePeak = to.peak
 		}
