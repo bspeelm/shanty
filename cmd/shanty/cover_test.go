@@ -611,3 +611,25 @@ func resize(t *testing.T, a app, w, h int) app {
 	}
 	return a
 }
+
+// TestAnAlbumOpenedWithEnterGetsItsCoverAskedForOnce opens the album with the
+// keys, so its answer carries the number the open was asked with.
+func TestAnAlbumOpenedWithEnterGetsItsCoverAskedForOnce(t *testing.T) {
+	a, srv := withCovers(t)
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	a = settle(t, a, a.fetchArtists()())
+	a = settle(t, a, enter)
+	if a.ui.Screen() != tui.ScreenAlbums {
+		t.Fatalf("the artist did not open; the screen is %s", a.ui.Screen())
+	}
+	before := len(srv.Requests())
+
+	a = settle(t, a, enter)
+
+	if a.ui.Screen() != tui.ScreenTracks {
+		t.Fatalf("the album did not open; the screen is %s", a.ui.Screen())
+	}
+	if n := requests(srv, before, "getCoverArt"); n != 1 {
+		t.Errorf("the cover was asked for %d times, want once", n)
+	}
+}
