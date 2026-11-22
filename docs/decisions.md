@@ -1795,8 +1795,47 @@ the answer to the open being waited for moves the screen; a reload or a
 changed playlist never does. Inferring this from identifiers was built first
 and could not tell a first request from a second.
 
-### The prose budget
-
 The milestones of v0.1 to v0.4 moved from `PLAN.md` §12 to `docs/history/`.
 That freed 34 lines and this record and the next needed more, so the budget
 for live prose is 4,575 lines, from 4,500.
+
+---
+
+## ADR-035 — Steady music is drawn calmly, and colour comes from palettes made to sit together
+
+**Status:** accepted. Builds on ADR-028 to ADR-033. Raises the code budget
+from 16,000 to 16,750 lines. Issue #101 holds what was left.
+
+On dance tracks the picture moved too hard and its colours flashed. A palette
+ran its hue most of the way round the wheel from dark to bright, so a beat
+that brightened a cell recoloured it, and pink sat beside green.
+
+### Steady music
+
+One measure rises over four seconds while beats or kicks arrive evenly and
+often, and falls after a gap. By it the pulse of the beat moves parameters
+less and rises over three frames, a warp turns less on each beat, and a pixel
+rises at once and falls over 0.15 s. Tracks carried by their arrangement are
+left as ADR-033 drew them. No kick, beat or cut moves in time.
+
+### Palettes
+
+A palette is numbers: a key hue, a small arc, a ceiling on chroma. Every step
+is as bright as the step it replaces. Driving and calm music is teal to
+violet or grey, heavy music ember to amber under a hot yellow-white, flowing
+music amber and gold, and the aurora is blue. Nothing is green, olive or
+pink. A palette has two members, the second sometimes from another family
+through grey, and a cell is placed between them by how its value stands
+among its neighbours, so colours follow the forms and a region that pulses
+keeps them.
+
+### Flashing, and what was measured
+
+No part of the picture a quarter the size of a guard region flashes more than
+three times a second, and a cut keeps its step. ADR-032's uncovered cases
+stand. On two dance tracks colour change per cell is 0.16 and 0.21 of what it
+was, luminance change 0.67 and 0.64, and motion 0.62 and 0.82.
+
+Rejected: slowing hue by region, which left the clash; smoothing a cell's
+member across the screen, which floated colour free of the pattern; a guard
+that softened cuts; and a setting, as ADR-026 has it.
