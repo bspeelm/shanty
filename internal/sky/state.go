@@ -34,12 +34,14 @@ type State struct {
 	// bearing is Weight as it glides.
 	cutting bool
 	bearing float64
-	w, h    int
-	f       frame
-	value   []float64
-	tone    []float64
-	post    post
-	guard   flashGuard
+	// habit follows how steadily the picture has been moved on the beat.
+	habit steadiness
+	w, h  int
+	f     frame
+	value []float64
+	tone  []float64
+	post  post
+	guard flashGuard
 	// shift moves every cell along the palette, gliding towards the treble
 	// less the bass.
 	shift  float64
@@ -120,6 +122,16 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	sig.Weight = s.weigh(dt)
 	sig.Kick = math.Max(sig.Kick, sig.Heavy*s.lis.thump)
 	sig.Snap = math.Max(sig.Snap, sig.Heavy*s.lis.crack)
+	// A cut, a new track and a release each start the steadiness again. A
+	// track carried by its arrangement has none: each of its parts already
+	// sets how hard it is drawn.
+	if s.foresight.cut || changed || sig.Release > s.sig.Release+steadyFresh {
+		s.habit.restart()
+	}
+	sig.Steady = s.habit.step(sig, dt)
+	if p := s.trusted(); p != nil && p.arranged {
+		sig.Steady = 0
+	}
 	s.sig = sig
 	// With a plan, the plan's sections replace those heard live.
 	if s.plan() != nil {

@@ -128,7 +128,30 @@ type seen struct {
 	flicks     int
 	// combo names the components on screen.
 	combo string
+	// sure is the confidence in the tempo the frame was drawn with, and
+	// steady the steadiness.
+	sure, steady float64
 }
+
+// A turn of the light in one of the guard's regions is counted under each
+// of the things going on when it happened.
+const (
+	// duringCut and duringFade are a cut and a crossfade between two scenes.
+	duringCut = iota
+	duringFade
+	// duringPalette and duringGlyphs are the scene's palette and its way of
+	// drawing cells moving to another.
+	duringPalette
+	duringGlyphs
+	// duringUnseen is a turn in which the region's light as the guard measures
+	// it moved by less than half of what makes a flash.
+	duringUnseen
+	// duringPlain is a turn with none of the others going on.
+	duringPlain
+	duringCauses
+)
+
+var turnNames = [duringCauses]string{"cut", "crossfade", "palette moving", "glyphs moving", "unseen by the guard", "none of these"}
 
 // watcher measures how hard a run of frames is on the eye.
 type watcher struct {
@@ -139,9 +162,19 @@ type watcher struct {
 	// cutTurns counts the turns of light in a guard region on frames drawn
 	// during a cut.
 	cutTurns int
-	warps    map[*warp][2]float64
-	layers   map[*layer]float64
-	shake    [2]float64
+	// causes counts the turns of light in the guard's regions by what was
+	// going on, and guarded holds the light of each region as the guard
+	// measures it over the last half second.
+	causes  [duringCauses]int
+	guarded [][guardRegions]float64
+	// drawn holds the light of each region as it is rendered over the same
+	// half second, and swungDrawn and swungGuarded add up how far each moved
+	// in the half second before every turn.
+	drawn                    [][]float64
+	swungDrawn, swungGuarded float64
+	warps                    map[*warp][2]float64
+	layers                   map[*layer]float64
+	shake                    [2]float64
 }
 
 func newWatcher(w, h int) *watcher {
@@ -152,7 +185,16 @@ func newWatcher(w, h int) *watcher {
 // look measures the frame s has just drawn, dt seconds after the last.
 func (m *watcher) look(s *State, dt float64) {
 	f := seen{at: s.lis.ear.now, cut: s.cutting && s.next != nil, kick: s.sig.Kick, snap: s.sig.Snap,
-		beat: s.sig.onTheBeat(), combo: s.cur.combo()}
+		beat: s.sig.onTheBeat(), combo: s.cur.combo(), sure: s.sig.Sure, steady: s.sig.Steady}
+	lit, _ := s.guard.measure(s.value, s.tone)
+	way := lightDots
+	if s.cur.halves() || s.next.halves() {
+		way = lightHalf
+	}
+	m.guarded = append(m.guarded, lit[way])
+	if len(m.guarded) > 15 {
+		m.guarded = m.guarded[1:]
+	}
 	cells := cellsOf(s.Render(true), m.w, m.h)
 	if m.cells != nil {
 		var ma, mb float64
@@ -173,11 +215,39 @@ func (m *watcher) look(s *State, dt float64) {
 	m.cells = cells
 
 	light := gridLight(cells, m.w, m.h, meterCols, meterRows)
+	m.drawn = append(m.drawn, light)
+	if len(m.drawn) > 15 {
+		m.drawn = m.drawn[1:]
+	}
 	for k, l := range light {
 		before := len(m.coarse[k].turns)
 		m.coarse[k].add(l, f.at)
 		if f.cut {
 			m.cutTurns += len(m.coarse[k].turns) - before
+		}
+		if len(m.coarse[k].turns) > before {
+			lo, hi := math.Inf(1), math.Inf(-1)
+			for _, g := range m.guarded {
+				lo, hi = math.Min(lo, g[k]), math.Max(hi, g[k])
+			}
+			dlo, dhi := math.Inf(1), math.Inf(-1)
+			for _, d := range m.drawn {
+				dlo, dhi = math.Min(dlo, d[k]), math.Max(dhi, d[k])
+			}
+			m.swungDrawn, m.swungGuarded = m.swungDrawn+dhi-dlo, m.swungGuarded+hi-lo
+			plain := true
+			count := func(cause int, on bool) {
+				if on {
+					m.causes[cause]++
+					plain = false
+				}
+			}
+			count(duringCut, f.cut)
+			count(duringFade, s.next != nil && !f.cut)
+			count(duringPalette, s.cur.toPalette != nil)
+			count(duringGlyphs, s.cur.glyphs != s.cur.toGlyphs)
+			count(duringUnseen, hi-lo < 0.05)
+			count(duringPlain, plain)
 		}
 		if m.light != nil {
 			f.step = math.Max(f.step, math.Abs(l-m.light[k]))
@@ -329,8 +399,8 @@ func (m *watcher) report(name string, keep func(seen) bool) string {
 	sort.Strings(comps)
 	// Thirty frames a second, and two turns to a flash.
 	flick := float64(flicks) / 2 / float64(fineCols*fineRows) / (float64(max(n, 1)) / 30)
-	return fmt.Sprintf("%-22s frames %6d cut %4d | flick %.3f | beat %3d%% kick %s snap %s | on screen %s | change %s | churn %s | throw %s | punch %s | turn %s | shake %s | speed %s | step %.3f in cuts %.3f",
-		name, n, cuts, flick, 100*beats/max(n, 1),
+	return fmt.Sprintf("%-22s frames %6d cut %4d | flick %.3f | beat %3d%% sure %.2f steady %.2f kick %s snap %s | on screen %s | change %s | churn %s | throw %s | punch %s | turn %s | shake %s | speed %s | step %.3f in cuts %.3f",
+		name, n, cuts, flick, 100*beats/max(n, 1), get(func(f seen) float64 { return f.sure }).mean, get(func(f seen) float64 { return f.steady }).mean,
 		get(func(f seen) float64 { return f.kick }), get(func(f seen) float64 { return f.snap }), strings.Join(comps, ", "),
 		get(func(f seen) float64 { return f.change }), get(func(f seen) float64 { return f.churn }),
 		get(func(f seen) float64 { return f.throw }), get(func(f seen) float64 { return f.punch }),
@@ -346,8 +416,38 @@ func (m *watcher) flashLine() string {
 	}
 	cw, ct, ca := flashes(m.coarse, secs)
 	fw, ft, fa := flashes(m.fine, secs)
-	return fmt.Sprintf("flashes a second, worst second / worst ten / whole: %dx%d %.1f %.2f %.3f | %dx%d %.1f %.2f %.3f | turns during cuts %d",
-		meterCols, meterRows, cw, ct, ca, fineCols, fineRows, fw, ft, fa, m.cutTurns)
+	var causes []string
+	turns := 0
+	for i, n := range m.causes {
+		causes = append(causes, fmt.Sprintf("%s %d", turnNames[i], n))
+	}
+	for k := range m.coarse {
+		turns += len(m.coarse[k].turns)
+	}
+	causes = append(causes, fmt.Sprintf("light moved %.3f as drawn and %.3f as the guard measures it in the half second before a turn",
+		m.swungDrawn/math.Max(float64(turns), 1), m.swungGuarded/math.Max(float64(turns), 1)))
+	return fmt.Sprintf("flashes a second, worst second / worst ten / whole: %dx%d %.1f %.2f %.3f | %dx%d %.1f %.2f %.3f | turns during cuts %d | turns by what was going on: %s",
+		meterCols, meterRows, cw, ct, ca, fineCols, fineRows, fw, ft, fa, m.cutTurns, strings.Join(causes, ", "))
+}
+
+// lift reports how much stronger the picture is just after at than once it
+// has settled: the mean of pick over the first two bars after at, of four
+// beats of beat seconds, against its mean over bars nine to sixteen.
+func (m *watcher) lift(pick func(seen) float64, at, beat float64) float64 {
+	first := m.spreadOf(pick, func(f seen) bool { return f.at >= at && f.at < at+8*beat }).mean
+	later := m.spreadOf(pick, func(f seen) bool { return f.at >= at+32*beat && f.at < at+64*beat }).mean
+	if later == 0 {
+		return 0
+	}
+	return first / later
+}
+
+// lifts is the lift of the change, the churn and the throw after at.
+func (m *watcher) lifts(at, beat float64) string {
+	return fmt.Sprintf("after %.1f s: change %.2f churn %.2f throw %.2f", at,
+		m.lift(func(f seen) float64 { return f.change }, at, beat),
+		m.lift(func(f seen) float64 { return f.churn }, at, beat),
+		m.lift(func(f seen) float64 { return f.throw }, at, beat))
 }
 
 // A tweak changes a visualiser before each frame, to measure a run without
@@ -498,12 +598,11 @@ func heardFloor(g groove, secs float64) []Reading {
 }
 
 // floorCase is a planned dance track at one tempo, whose kicks stop from 24 s
-// to 40 s. The cue where they come back is marked as a hard boundary, so it
+// to floorBack. The cue where they come back is marked as a hard boundary, so it
 // is cut to at once.
 func floorCase(t *testing.T, bpm float64) (*Plan, groove, []Reading, []float64) {
 	t.Helper()
-	const secs = 64
-	g, blocks := floor(bpm, secs, 24, 40)
+	g, blocks := floor(bpm, floorSecs, 24, floorBack)
 	p := NewPlan(blocks)
 	p.curve = nil
 	var due []float64
@@ -515,8 +614,12 @@ func floorCase(t *testing.T, bpm float64) (*Plan, groove, []Reading, []float64) 
 	if len(due) > 0 {
 		p.Bounds = append(p.Bounds, Boundary{At: due[len(due)-1], Strength: 1, Major: true, Hard: true})
 	}
-	return p, g, heardFloor(g, secs), due
+	return p, g, heardFloor(g, floorSecs), due
 }
+
+// floorSecs is the length of a floorCase track, and floorBack where its
+// kicks come back: sixteen bars before the end at the slowest tempo.
+const floorSecs, floorBack = 76, 40
 
 // A planned four-on-the-floor track at each dance tempo is played through a
 // stop and a return of its kicks, and what its frames look like is logged.
@@ -540,8 +643,9 @@ func TestAPlannedDanceTrackIsMeasuredAtEachTempo(t *testing.T) {
 				bpm, p.Tempo, due, d.cuts, 100*share, lag)
 			t.Log(m.flashLine())
 			t.Log(m.report("whole", nil))
-			t.Log(m.report("kicked", func(f seen) bool { return f.at < 24 || f.at >= 40 }))
-			t.Log(m.report("break", func(f seen) bool { return f.at >= 24 && f.at < 40 }))
+			t.Log(m.report("kicked", func(f seen) bool { return f.at < 24 || f.at >= floorBack }))
+			t.Log(m.report("break", func(f seen) bool { return f.at >= 24 && f.at < floorBack }))
+			t.Log("lift " + m.lifts(floorBack, 60/bpm))
 			if share < 0.9 {
 				t.Errorf("%.0f%% of the kicks from 4 s to 22 s were answered, want at least 90%%", 100*share)
 			}
