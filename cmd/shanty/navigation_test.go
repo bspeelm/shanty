@@ -264,3 +264,23 @@ func TestAddingToAPlaylistFromAnAlbumStaysOnTheAlbum(t *testing.T) {
 		t.Errorf("the add's answer took the screen to %s", a.ui.Screen())
 	}
 }
+
+func TestAPlaylistBeingAddedToOpensFromTheList(t *testing.T) {
+	a, _ := withPlaylists(t, map[string][]string{"Evening": {"tr-1", "tr-2", "tr-3"}})
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+	a = settle(t, a, enter)
+	a = settle(t, a, keyRunes("e"))
+	if a.ui.Editing().ID == "" {
+		t.Fatal("e did not start adding to the playlist on screen")
+	}
+
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("p"))
+	a = settle(t, a, enter)
+	if a.ui.Screen() != tui.ScreenPlaylist {
+		t.Fatalf("the playlist being added to did not open; the screen is %s", a.ui.Screen())
+	}
+	a = settle(t, a, keyRunes("j"))
+	if strings.Contains(a.ui.View(), "opening") {
+		t.Errorf("the screen still says the playlist is opening:\n%s", a.ui.View())
+	}
+}

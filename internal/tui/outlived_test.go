@@ -629,3 +629,23 @@ func cursorsWithinTheirLists(m Model) error {
 	}
 	return nil
 }
+
+func TestAPlaylistBeingAddedToCanBeOpened(t *testing.T) {
+	lists := []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}}
+	m := onPlaylists(t, send(t, loaded(t), PlaylistsLoaded(lists)))
+	m, ask := opened(t, m)
+	m = send(t, m, Opened{Ask: ask, Loaded: PlaylistLoaded(eveningOf(3))})
+	m, _ = press(t, m, "e")
+	if m.Editing().ID != "pl-1" {
+		t.Fatal("e did not start adding to the playlist on screen")
+	}
+
+	m, ask = opened(t, onPlaylists(t, m))
+	m = send(t, m, Opened{Ask: ask, Loaded: PlaylistLoaded(eveningOf(3))})
+	if m.Screen() != ScreenPlaylist {
+		t.Fatalf("the playlist being added to did not open; the screen is %s", m.Screen())
+	}
+	if strings.Contains(m.Status(), "opening") {
+		t.Errorf("the last row still says %q", m.Status())
+	}
+}
