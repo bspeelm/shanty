@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/subsonic"
+	"github.com/bspeelm/shanty/internal/subsonic/fake"
 	"github.com/bspeelm/shanty/internal/tui"
 )
 
@@ -128,5 +130,33 @@ func TestWhatAJumpAsksForCannotUndoAKeyPressedBeforeItIsAnswered(t *testing.T) {
 	a = deliver(t, a, jumped, left)
 	if a.ui.Screen() != tui.ScreenLibrary {
 		t.Errorf("esc straight after gb was undone; the screen is %s", a.ui.Screen())
+	}
+}
+
+// requests counts the calls to one endpoint after the first n.
+func requests(srv *fake.Server, after int, endpoint string) int {
+	n := 0
+	for _, r := range srv.Requests()[after:] {
+		if r.Endpoint == endpoint {
+			n++
+		}
+	}
+	return n
+}
+
+func TestAFinishedScanAsksForTheLibraryOnce(t *testing.T) {
+	a, _, srv := wired(t)
+	a = settle(t, settle(t, a, keyRunes("g")), keyRunes("a"))
+	a = settle(t, a, a.fetchArtists()())
+	a = settle(t, a, keyRunes("j"))
+	before := len(srv.Requests())
+
+	a = settle(t, a, scanning{status: subsonic.Scan{Count: 4}})
+
+	if n := requests(srv, before, "getArtists"); n != 1 {
+		t.Errorf("a finished scan asked for the artists %d times, want once", n)
+	}
+	if a.ui.Cursor() != 1 || !strings.Contains(a.ui.Status(), "reloaded") {
+		t.Errorf("the cursor is on row %d and the last row says %q", a.ui.Cursor(), a.ui.Status())
 	}
 }
