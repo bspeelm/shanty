@@ -419,7 +419,12 @@ func TestASearchOrAnEditArrivingAbandonsWhatWasBeingOpened(t *testing.T) {
 		"edit":   EditingPlaylist(eveningOf(3)),
 	} {
 		m := onStarred(t, send(t, loaded(t), starredChanged()))
-		m, ask := opened(t, m)
+		m, msg := press(t, m, "enter")
+		open, ok := msg.(OpenArtist)
+		if !ok || open.ID != "ar-1" {
+			t.Fatalf("%s: enter on the starred artist emitted %#v", name, msg)
+		}
+		ask := open.Ask
 		m = send(t, m, arrives)
 		was := m.Screen()
 		if was == ScreenStarred {
@@ -701,5 +706,27 @@ func TestAListOrANoticeArrivingDoesNotHideWhatIsBeingOpened(t *testing.T) {
 	m, _ = press(t, m, "j")
 	if !m.loading() || !strings.Contains(m.Status(), "opening Evening") {
 		t.Errorf("after a notice was read: loading %v, %q", m.loading(), m.Status())
+	}
+}
+
+func TestTheQueueIsRefusedInTheSameWordsWhereverItIsNoticed(t *testing.T) {
+	for _, tc := range []struct {
+		tracks, at int
+		wants      string
+	}{
+		{0, 0, "the queue is empty"},
+		{3, 3, "nothing is playing"},
+		{3, 2, "fewer than two tracks follow"},
+		{3, 1, "fewer than two tracks follow"},
+		{3, 0, ""},
+	} {
+		why := QueueRefusal(tc.tracks, tc.at)
+		if (why == "") != (tc.wants == "") || !strings.Contains(why, tc.wants) {
+			t.Errorf("%d tracks at %d: %q, want %q", tc.tracks, tc.at, why, tc.wants)
+		}
+		m := onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()[:tc.tracks], At: tc.at}))
+		if m, _ = press(t, m, "S"); m.status != why {
+			t.Errorf("%d tracks at %d: the interface says %q and the function %q", tc.tracks, tc.at, m.status, why)
+		}
 	}
 }

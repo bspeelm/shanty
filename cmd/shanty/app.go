@@ -285,8 +285,7 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.FetchPlaylists:
 		return a, a.fetchPlaylists()
 	case tui.FetchEveryAlbum:
-		// Asked for once. The list does not change while shanty is open
-		// unless the server is rescanned, and :reload asks again.
+		// The albums are fetched only when the interface holds none.
 		if len(a.ui.Albums()) > 0 {
 			return a, nil
 		}
@@ -1178,7 +1177,7 @@ func (a app) reorderPlaylist(msg tui.ReorderPlaylist) tea.Cmd {
 		}
 		if !sameOrder(idsOf(now.Songs), msg.Was) {
 			return tui.Failed{Message: fmt.Sprintf(
-				"%s changed on the server; nothing was moved\n:reload to see it as it is now",
+				"%s changed on the server; nothing was moved\nesc, then enter opens it as it is now",
 				msg.Name)}
 		}
 		if err := client.ReplacePlaylist(a.ctx, msg.ID, msg.Songs); err != nil {
@@ -1351,13 +1350,8 @@ func (a app) shuffleEverything() tea.Cmd {
 // shuffleRest puts the tracks after the one playing in a random order. The
 // track playing carries on, and mpv is told which track now follows it.
 func (a app) shuffleRest() (tea.Model, tea.Cmd) {
-	switch after := a.queue.Len() - a.queue.At() - 1; {
-	case a.queue.Empty():
-		return a.forward(tui.Failed{Message: "the queue is empty, so there is nothing to shuffle\nenter on a track plays it"})
-	case a.queue.Done():
-		return a.forward(tui.Failed{Message: "nothing is playing, so there is nothing after it to shuffle\nenter on a track plays it"})
-	case after < 2:
-		return a.forward(tui.Failed{Message: "fewer than two tracks follow the one playing, so there is nothing to shuffle\na on a track adds it to the queue"})
+	if why := tui.QueueRefusal(a.queue.Len(), a.queue.At()); why != "" {
+		return a.forward(tui.Failed{Message: why})
 	}
 	a.queue = a.queue.ShuffleRest(a.shuffler())
 	return a, tea.Batch(a.prefetch(), a.queueChanged(),

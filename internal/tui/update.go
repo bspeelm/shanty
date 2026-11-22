@@ -647,17 +647,26 @@ func (m Model) shuffleSelected() (tea.Model, tea.Cmd) {
 }
 
 // shuffleQueue asks for the tracks after the one playing to be put in a random
-// order, or refuses and says why when fewer than two follow it.
+// order, or refuses and says why.
 func (m Model) shuffleQueue() (tea.Model, tea.Cmd) {
-	switch after := len(m.queued) - m.queuedAt - 1; {
-	case len(m.queued) == 0:
-		return m.refuse("the queue is empty, so there is nothing to shuffle — enter on a track plays it"), nil
-	case after < 0:
-		return m.refuse("nothing is playing, so there is nothing after it to shuffle — enter on a track plays it"), nil
-	case after < 2:
-		return m.refuse("fewer than two tracks follow the one playing, so there is nothing to shuffle — a on a track adds it"), nil
+	if why := QueueRefusal(len(m.queued), m.queuedAt); why != "" {
+		return m.refuse(why), nil
 	}
 	return m, emit(ShuffleThis{Scope: ScopeQueue})
+}
+
+// QueueRefusal says why a queue of that many tracks, playing the one at that
+// position, has nothing after it to shuffle. It is empty when there is.
+func QueueRefusal(tracks, at int) string {
+	switch after := tracks - at - 1; {
+	case tracks == 0:
+		return "the queue is empty, so there is nothing to shuffle — enter on a track plays it"
+	case after < 0:
+		return "nothing is playing, so there is nothing after it to shuffle — enter on a track plays it"
+	case after < 2:
+		return "fewer than two tracks follow the one playing, so there is nothing to shuffle — a on a track adds it to the queue"
+	}
+	return ""
 }
 
 // open moves down one screen, or plays the selected track. The album travels

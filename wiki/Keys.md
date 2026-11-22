@@ -304,12 +304,12 @@ a tool such as rsgain, and a scheduled job afterwards keeps new music covered.
 
 ## Shuffling
 
-`S` shuffles the artist, album or playlist under the cursor. On a track it is
-the album or playlist holding it, or every track a search or the starred screen
+`S` shuffles, once, the artist, album or playlist under the cursor. On a track it
+is the album or playlist holding it, or every track a search or the starred screen
 lists. On the queue, or the library's Queue row, it is the tracks after the one
-playing, and needs two. The Starred row is everything starred; the library's
-other rows say where to press it. `:shuffle` is everything, `:playlist shuffle
-Evening` one playlist, `shanty shuffle` a detached session. It is not a mode.
+playing, and needs two. The Starred row is everything starred; other library rows
+say where to press it. `:shuffle` shuffles everything on the server, and `shanty shuffle`
+does so in a session already running detached. `:playlist shuffle Evening` shuffles one.
 
 ## Starred
 
