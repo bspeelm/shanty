@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
@@ -1036,5 +1037,17 @@ func TestThePlaylistOnScreenIsLeftWhenTheServerNoLongerListsIt(t *testing.T) {
 	still := send(t, send(t, m, PlaylistLoaded(subsonic.Playlist{ID: "pl-2", Name: "Morning"})), PlaylistsLoaded(lists[1:]))
 	if still.Screen() != ScreenPlaylist {
 		t.Errorf("a playlist the server still lists was left for %s", still.Screen())
+	}
+}
+
+func TestTheHintLineLeavesNothingOutWhenItFitsExactly(t *testing.T) {
+	m := send(t, loaded(t), AlbumLoaded(tenTracks()))
+	whole := m.hintLine(400)
+	exact := m.hintLine(lipgloss.Width(whole))
+	if exact != whole {
+		t.Errorf("at exactly its own width the line reads %q, want %q", exact, whole)
+	}
+	if shorter := m.hintLine(lipgloss.Width(whole) - 1); !strings.Contains(shorter, "… · ? keys") || lipgloss.Width(shorter) >= lipgloss.Width(whole) {
+		t.Errorf("one column narrower the line reads %q", shorter)
 	}
 }
