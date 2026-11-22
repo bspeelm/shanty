@@ -73,13 +73,60 @@ func (q Queue) InsertNext(t Track) Queue {
 // Append returns a queue with the track added to the end.
 func (q Queue) Append(t Track) Queue { return q.insert(len(q.tracks), t) }
 
-// insert places a track at index i, which must be within the queue.
-func (q Queue) insert(i int, t Track) Queue {
-	tracks := make([]Track, 0, len(q.tracks)+1)
+// AppendAll returns a queue with the tracks added to the end, in order.
+func (q Queue) AppendAll(tracks ...Track) Queue { return q.insert(len(q.tracks), tracks...) }
+
+// InsertAllNext returns a queue with the tracks placed after the one playing,
+// in order. A queue that has finished, and an empty one, take them on the end.
+func (q Queue) InsertAllNext(tracks ...Track) Queue {
+	return q.insert(min(q.at+1, len(q.tracks)), tracks...)
+}
+
+// insert places tracks at index i, which must be within the queue.
+func (q Queue) insert(i int, more ...Track) Queue {
+	tracks := make([]Track, 0, len(q.tracks)+len(more))
 	tracks = append(tracks, q.tracks[:i]...)
-	tracks = append(tracks, t)
+	tracks = append(tracks, more...)
 	tracks = append(tracks, q.tracks[i:]...)
 	q.tracks = tracks
+	return q
+}
+
+// Remove returns a queue without the track at index i. The track that was
+// current stays current. Where the current track is the one removed, the one
+// that followed it is current, and the queue is done if none did. An index
+// outside the queue returns it unchanged.
+func (q Queue) Remove(i int) Queue {
+	if i < 0 || i >= len(q.tracks) {
+		return q
+	}
+	tracks := make([]Track, 0, len(q.tracks)-1)
+	q.tracks = append(append(tracks, q.tracks[:i]...), q.tracks[i+1:]...)
+	if i < q.at {
+		q.at--
+	}
+	return q
+}
+
+// Move returns a queue with the track at index from placed at index to. The
+// track that was current stays current, wherever it now is. An index outside
+// the queue returns it unchanged.
+func (q Queue) Move(from, to int) Queue {
+	if from < 0 || from >= len(q.tracks) || to < 0 || to >= len(q.tracks) {
+		return q
+	}
+	moved, at := q.tracks[from], q.at
+	q = q.Remove(from).insert(to, moved)
+	switch {
+	case from == at:
+		q.at = to
+	case from < at && to >= at:
+		q.at = at - 1
+	case from > at && to <= at:
+		q.at = at + 1
+	default:
+		q.at = at
+	}
 	return q
 }
 

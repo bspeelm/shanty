@@ -77,6 +77,10 @@ type (
 	}
 	// JumpTo asks for the queue to move to one of its own tracks.
 	JumpTo int
+	// RemoveQueued asks for the track at that place in the queue to be taken
+	// out of it, and MoveQueued for the track at From to be put at To.
+	RemoveQueued int
+	MoveQueued   struct{ From, To int }
 	// Search asks the server for anything matching the query.
 	Search string
 	// Resume asks for the queue the server is holding to be taken up.

@@ -465,3 +465,117 @@ func TestShufflingTheRestOfAQueueWithNothingToShuffleReturnsIt(t *testing.T) {
 		}
 	}
 }
+
+// everyPlace calls do with a queue of each length up to six at each position,
+// the finished one included.
+func everyPlace(do func(q Queue)) {
+	for n := range 7 {
+		for at := 0; at <= n; at++ {
+			do(New(tracks(n)...).Jump(at))
+		}
+	}
+}
+
+func TestAddingSeveralTracksKeepsTheirOrderAndWhatIsPlaying(t *testing.T) {
+	more := []Track{{ID: "x-1"}, {ID: "x-2"}, {ID: "x-3"}}
+	everyPlace(func(q Queue) {
+		was, wasPlaying := q.Current()
+
+		end := q.AppendAll(more...)
+		if got := ids(end)[q.Len():]; !reflect.DeepEqual(got, []string{"x-1", "x-2", "x-3"}) {
+			t.Fatalf("%d at %d: the end of the queue is %v", q.Len(), q.At(), got)
+		}
+		next := q.InsertAllNext(more...)
+		from := min(q.At()+1, q.Len())
+		if got := ids(next)[from : from+3]; !reflect.DeepEqual(got, []string{"x-1", "x-2", "x-3"}) {
+			t.Fatalf("%d at %d: after the track playing come %v", q.Len(), q.At(), got)
+		}
+		for _, got := range []Queue{end, next} {
+			if now, playing := got.Current(); wasPlaying && (!playing || now != was) {
+				t.Fatalf("%d at %d: the track playing changed to %v", q.Len(), q.At(), now)
+			}
+			if got.Len() != q.Len()+3 || !reflect.DeepEqual(ids(q), ids(New(q.Tracks()...))) {
+				t.Fatalf("%d at %d: %d tracks, or the queue it came from changed", q.Len(), q.At(), got.Len())
+			}
+		}
+		if !reflect.DeepEqual(ids(q.AppendAll()), ids(q)) || !reflect.DeepEqual(ids(q.InsertAllNext()), ids(q)) {
+			t.Fatalf("%d at %d: adding nothing changed the queue", q.Len(), q.At())
+		}
+	})
+}
+
+func TestRemovingATrackKeepsWhatIsPlayingUnlessItIsTheOneRemoved(t *testing.T) {
+	everyPlace(func(q Queue) {
+		was, wasPlaying := q.Current()
+		before := ids(q)
+		for i := range q.Len() {
+			got := q.Remove(i)
+			want := append(append([]string{}, before[:i]...), before[i+1:]...)
+			if !reflect.DeepEqual(ids(got), want) {
+				t.Fatalf("%d at %d, removing %d: the queue is %v", q.Len(), q.At(), i, ids(got))
+			}
+			now, playing := got.Current()
+			switch {
+			case i == q.At() && i == q.Len()-1:
+				if !got.Done() {
+					t.Fatalf("%d at %d, removing the last and playing track: not done", q.Len(), q.At())
+				}
+			case i == q.At():
+				if !playing || now.ID != before[i+1] {
+					t.Fatalf("%d at %d, removing the playing track: now %v, want %s", q.Len(), q.At(), now, before[i+1])
+				}
+			case wasPlaying:
+				if !playing || now != was {
+					t.Fatalf("%d at %d, removing %d: the track playing changed to %v", q.Len(), q.At(), i, now)
+				}
+			default:
+				if !got.Done() {
+					t.Fatalf("%d at %d, removing %d: a finished queue is playing again", q.Len(), q.At(), i)
+				}
+			}
+		}
+		if !reflect.DeepEqual(ids(q), before) {
+			t.Fatalf("removing changed the queue it came from")
+		}
+		for _, i := range []int{-1, q.Len(), q.Len() + 3} {
+			if got := q.Remove(i); !reflect.DeepEqual(ids(got), before) || got.At() != q.At() {
+				t.Fatalf("%d at %d: removing %d changed the queue", q.Len(), q.At(), i)
+			}
+		}
+	})
+}
+
+func TestMovingATrackKeepsEveryTrackAndWhatIsPlaying(t *testing.T) {
+	everyPlace(func(q Queue) {
+		was, wasPlaying := q.Current()
+		before := ids(q)
+		for from := range q.Len() {
+			for to := range q.Len() {
+				got := q.Move(from, to)
+				if ids(got)[to] != before[from] {
+					t.Fatalf("%d at %d, %d to %d: row %d holds %s", q.Len(), q.At(), from, to, to, ids(got)[to])
+				}
+				rest := append(append([]string{}, ids(got)[:to]...), ids(got)[to+1:]...)
+				want := append(append([]string{}, before[:from]...), before[from+1:]...)
+				if !reflect.DeepEqual(rest, want) {
+					t.Fatalf("%d at %d, %d to %d: the other tracks are %v, want %v", q.Len(), q.At(), from, to, rest, want)
+				}
+				now, playing := got.Current()
+				if playing != wasPlaying || now != was || got.Done() != q.Done() {
+					t.Fatalf("%d at %d, %d to %d: the track playing changed to %v", q.Len(), q.At(), from, to, now)
+				}
+				if from == q.At() && got.At() != to {
+					t.Fatalf("%d at %d, %d to %d: the playing track is at %d", q.Len(), q.At(), from, to, got.At())
+				}
+			}
+		}
+		if !reflect.DeepEqual(ids(q), before) {
+			t.Fatalf("moving changed the queue it came from")
+		}
+		for _, pair := range [][2]int{{-1, 0}, {0, -1}, {q.Len(), 0}, {0, q.Len()}} {
+			if got := q.Move(pair[0], pair[1]); !reflect.DeepEqual(ids(got), before) || got.At() != q.At() {
+				t.Fatalf("%d at %d: moving %d to %d changed the queue", q.Len(), q.At(), pair[0], pair[1])
+			}
+		}
+	})
+}
