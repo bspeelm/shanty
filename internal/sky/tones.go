@@ -173,9 +173,10 @@ func (t tones) step(at float64, top bool) lch {
 	c := lch{l: rampDark + (rampBright-rampDark)*math.Pow(at, t.contrast), h: t.key + t.arc*(at-0.5)}
 	bell := rampEnds + (1-rampEnds)*math.Sin(math.Pi*math.Pow(at, 0.85))
 	c.c = t.peak * bell * (1 - 0.8*math.Pow(at, 6))
-	if top && t.accentSteps > 0 {
-		c.h = t.key + t.arc/2 + math.Copysign(t.accentTurn, t.arc)
-		c.c = t.accent
+	// An accent that would leave the hues a made palette may have is left
+	// out.
+	if h := t.key + t.arc/2 + math.Copysign(t.accentTurn, t.arc); top && t.accentSteps > 0 && h >= bodyFrom && h <= bodyTo {
+		c.h, c.c = h, t.accent
 	}
 	c.h = math.Min(math.Max(c.h, bodyFrom), bodyTo)
 	c.c = math.Min(c.c, ceiling(c.l, c.h))
