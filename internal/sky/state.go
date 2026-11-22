@@ -36,10 +36,16 @@ type State struct {
 	bearing float64
 	// habit follows how steadily the picture has been moved on the beat.
 	habit steadiness
-	w, h  int
-	f     frame
-	value []float64
-	tone  []float64
+	// drawn is the made palette cells are drawn in while drawing is set,
+	// which follows the palettes of the scenes on screen, and wash is the
+	// time the places of its members on the screen have drifted for.
+	drawn   tones
+	drawing bool
+	wash    float64
+	w, h    int
+	f       frame
+	value   []float64
+	tone    []float64
 	// held is the value and the tone of every pixel as they were last
 	// drawn, and holding says they are those of the scene on screen.
 	held    [2][]float64
@@ -209,6 +215,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 		s.post.apply(&s.f, s.value, sig, s.lis.shape.lift, dt)
 		s.hold(dt, sig.Steady)
 		s.guard.apply(s.value, s.tone, dt, s.cur.halves())
+		s.tint(dt)
 		return
 	}
 	s.next.step(&s.f)
@@ -226,6 +233,7 @@ func (s *State) Step(w, h int, dt float64, now time.Time, track string) {
 	}
 	s.hold(dt, sig.Steady)
 	s.guard.apply(s.value, s.tone, dt, s.cur.halves() || s.next.halves())
+	s.tint(dt)
 	if s.fade >= 1 {
 		s.cutting = false
 		s.cur, s.next = s.next, nil
@@ -252,6 +260,87 @@ func (s *State) resize(w, h int) {
 	s.post.resize(f)
 	s.guard.resize(f.fw, f.fh)
 }
+
+// tint moves the palette drawn towards the palettes of the scenes on screen,
+// while those are made. Its numbers follow theirs at once, but the key hue
+// of each of its members moves no faster than hueRate, so that the hue of a
+// crossfade or a growing scene arrives after its light. Through a cut, and
+// when a made palette first comes on screen, it is theirs at once.
+func (s *State) tint(dt float64) {
+	s.wash += dt
+	to := s.cur.tones
+	made := to.made()
+	if s.next != nil {
+		if made = made && s.next.tones.made(); made {
+			to = mixTones(to, s.next.tones, smooth(0, 1, s.fade))
+		}
+	}
+	switch {
+	case !made:
+		s.drawing = false
+	case !s.drawing || s.cutting:
+		s.drawn, s.drawing = to, true
+	default:
+		step := hueRate * dt
+		chase := func(from, towards float64) float64 { return from + math.Max(-step, math.Min(step, towards-from)) }
+		first := chase(s.drawn.key, to.key)
+		second := chase(s.drawn.key+s.drawn.mate, to.key+to.mate)
+		s.drawn = to
+		s.drawn.key, s.drawn.mate = first, second-first
+		if to.mate == 0 {
+			s.drawn.matePeak = to.peak
+		}
+	}
+}
+
+// colours returns the colours the frame is drawn in, and how far a pixel's
+// tone moves it along its ramp. A landscape's tones place its pixels; a made
+// palette's do not.
+func (s *State) colours() ([]RGB, float64) {
+	if s.drawing {
+		return s.drawn.table(), s.drawn.land
+	}
+	of := func(sc *scene) ([]RGB, float64) {
+		if sc.tones.made() {
+			return sc.tones.table(), sc.tones.land
+		}
+		return sc.palette, 1
+	}
+	a, toned := of(s.cur)
+	if s.next == nil {
+		return a, toned
+	}
+	// A crossfade to or from a palette that is not made goes colour by
+	// colour, each ramp of the one towards the ramp of the other.
+	b, tonedB := of(s.next)
+	t := smooth(0, 1, s.fade)
+	out := make([]RGB, 0, max(len(a), len(b)))
+	for at := 0; at < cap(out); at += paletteSize {
+		out = append(out, blendPalettes(a[at%len(a):at%len(a)+paletteSize], b[at%len(b):at%len(b)+paletteSize], t)...)
+	}
+	return out, toned + (tonedB-toned)*t
+}
+
+// placed returns how far from the first member of the palette drawn to its
+// second a cell is drawn, by where it is from 0 to 1 across and down the
+// picture. The places of the two members are broad bands that turn and
+// drift slowly.
+func (s *State) placed(x, y float64) float64 {
+	turn := float64(s.seed%360)*math.Pi/180 + washTurn*s.wash
+	sn, cs := math.Sincos(turn)
+	across, along := x*cs+y*sn, y*cs-x*sn
+	wave := math.Sin(2*math.Pi*washBands*across+washDrift*s.wash) + 0.5*math.Sin(2*math.Pi*1.7*washBands*along-0.6*washDrift*s.wash)
+	return 0.5 + 0.5*wave
+}
+
+// washBands is how many bands of each member cross the picture, washTurn
+// how fast the bands turn, in radians a second, and washDrift how fast they
+// move across, in radians of their wave a second.
+const (
+	washBands = 0.6
+	washTurn  = 0.02
+	washDrift = 0.05
+)
 
 // hold slows how fast a pixel's value and tone may move for steady music. A
 // pixel follows what the scene draws over holdRise seconds where it rises and
@@ -341,20 +430,12 @@ func (s *State) Render(colour bool) Picture {
 		return Picture{}
 	}
 	k := look{glyphs: s.cur.glyphs, next: s.cur.toGlyphs, fade: smooth(0, 1, s.cur.glyphsAt),
-		colour: colour, shift: s.shift}
-	palette := s.cur.palette
+		colour: colour, shift: s.shift, place: s.placed}
 	if s.next != nil {
-		t := smooth(0, 1, s.fade)
-		k.glyphs, k.next, k.fade = s.cur.drawnGlyphs(), s.next.drawnGlyphs(), t
-		// A crossfade between two made palettes goes by way of the palettes
-		// between them. A cut, and a crossfade to or from any other palette,
-		// goes colour by colour.
-		if !s.cutting && s.cur.tones.made() && s.next.tones.made() {
-			palette = mixTones(s.cur.tones, s.next.tones, t).ramp()
-		} else {
-			palette = blendPalettes(s.cur.palette, s.next.palette, t)
-		}
+		k.glyphs, k.next, k.fade = s.cur.drawnGlyphs(), s.next.drawnGlyphs(), smooth(0, 1, s.fade)
 	}
+	palette, toned := s.colours()
+	k.levels, k.toned = len(palette)/paletteSize, toned
 	lines := render(s.value, s.tone, s.f.fw, s.f.fh, s.w, s.h, k)
 	if s.cur.label != "" && s.label < labelFor && s.next == nil {
 		lines[s.h-1] = overlay(lines[s.h-1], " "+s.cur.label+" ", s.w)

@@ -140,22 +140,48 @@ func TestEveryMadePaletteKeepsTheRulesAndSoDoesEveryTurnAndEveryMorph(t *testing
 			}
 			if c.Drive == 1 {
 				driven++
-				if a.peak <= greyPeak {
+				if a.peak <= greyPeak || a.matePeak <= greyPeak {
 					greys++
 				}
 			}
+			// Every palette between the first member and the second is held
+			// to the rules, and so every colour a cell may be drawn in.
 			fail := func(what string, t2 tones) {
-				if b := broken(t2); len(b) > 0 {
-					t.Errorf("%+v seed %d, %s: %s\n  %+v", c, seed, what, strings.Join(b, "; "), t2)
+				for l := range setLevels {
+					level := mixTones(t2.member(false), t2.member(true), float64(l)/(setLevels-1))
+					if b := broken(level); len(b) > 0 {
+						t.Errorf("%+v seed %d, %s, level %d: %s\n  %+v", c, seed, what, l, strings.Join(b, "; "), t2)
+					}
+					checked++
 				}
-				checked++
+				if got := len(t2.table()); got != setLevels*paletteSize && t2.mate != 0 {
+					t.Errorf("%+v seed %d, %s: the table has %d colours, want %d", c, seed, what, got, setLevels*paletteSize)
+				}
 			}
+			// The members of a palette as drawn or turned are far enough
+			// apart to read as two colours, never opposed, and both keyed
+			// between teal and violet. Greys have no hue to be apart by.
+			apart := func(what string, t2 tones) {
+				second := t2.key + t2.mate
+				coloured := t2.peak > greyPeak && t2.matePeak > greyPeak
+				if d := math.Abs(t2.mate); coloured && (d < mateLeast-0.01 || d > mateMost+0.01) {
+					t.Errorf("%+v seed %d, %s: the members are %.0f degrees apart, want %v to %v", c, seed, what, d, mateLeast, mateMost)
+				}
+				if coloured && (second < keyFrom-0.01 || second > keyTo+0.01) {
+					t.Errorf("%+v seed %d, %s: the second member is keyed at %.0f", c, seed, what, second)
+				}
+				if t2.mate == 0 {
+					t.Errorf("%+v seed %d, %s: the palette has one member", c, seed, what)
+				}
+			}
+			apart("as drawn", a)
 			fail("as drawn", a)
 			rng := rand.New(rand.NewPCG(seed, 11))
 			turned := a
 			for n := range 6 {
 				turned = turned.turned((rng.Float64() - 0.5) * 2 * turnMost)
 				fail(fmt.Sprintf("after %d turns", n+1), turned)
+				apart(fmt.Sprintf("after %d turns", n+1), turned)
 				fail("half way to a turn", mixTones(a, turned, 0.5))
 			}
 			b := madeFor(characters[rng.IntN(len(characters))], seed+1000)
@@ -167,15 +193,15 @@ func TestEveryMadePaletteKeepsTheRulesAndSoDoesEveryTurnAndEveryMorph(t *testing
 			}
 		}
 	}
-	if checked < 1000 && !testing.Short() {
+	if checked < 5000 && !testing.Short() {
 		t.Errorf("only %d palettes were checked", checked)
 	}
-	if share := float64(greys) / float64(max(driven, 1)); math.Abs(share-greyShare) > 0.08 {
-		t.Errorf("%.2f of the driving palettes were greys, want about %.2f", share, greyShare)
+	if share := float64(greys) / float64(max(driven, 1)); math.Abs(share-2*greyShare) > 0.1 {
+		t.Errorf("%.2f of the driving palettes had greys for one member, want about %.2f", share, 2*greyShare)
 	}
 }
 
-func TestAPaletteOfGreysHasAlmostNoColour(t *testing.T) {
+func TestAMemberOfGreysHasAlmostNoColour(t *testing.T) {
 	found := false
 	for seed := range uint64(40) {
 		a := madeFor(Character{Drive: 1}, seed)
@@ -183,14 +209,14 @@ func TestAPaletteOfGreysHasAlmostNoColour(t *testing.T) {
 			continue
 		}
 		found = true
-		for i, col := range a.ramp() {
+		for i, col := range a.member(false).ramp() {
 			if c := lchOf(col).c; c > 0.02 {
-				t.Errorf("seed %d: step %d of a palette of greys has a chroma of %.3f", seed, i, c)
+				t.Errorf("seed %d: step %d of a member of greys has a chroma of %.3f", seed, i, c)
 			}
 		}
 	}
 	if !found {
-		t.Error("no seed in forty drew a palette of greys")
+		t.Error("no seed in forty drew a palette whose first member is of greys")
 	}
 }
 
