@@ -37,15 +37,17 @@ type State struct {
 	// habit follows how steadily the picture has been moved on the beat.
 	habit steadiness
 	// drawn is the made palette cells are drawn in while drawing is set,
-	// which follows the palettes of the scenes on screen, and wash is the
-	// time the places of its members on the screen have drifted for.
+	// which follows the palettes of the scenes on screen.
 	drawn   tones
 	drawing bool
-	wash    float64
-	w, h    int
-	f       frame
-	value   []float64
-	tone    []float64
+	// place is how far, from the first member of the palette drawn to the
+	// second, each pixel is drawn, and weave what works it out.
+	place []float64
+	weave weaver
+	w, h  int
+	f     frame
+	value []float64
+	tone  []float64
 	// held is the value and the tone of every pixel as they were last
 	// drawn, and holding says they are those of the scene on screen.
 	held    [2][]float64
@@ -257,6 +259,8 @@ func (s *State) resize(w, h int) {
 	f.radius = math.Min(float64(f.fw)/2, float64(f.fh)*f.aspect/2)
 	s.value, s.tone = make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)
 	s.held, s.holding = [2][]float64{make([]float64, f.fw*f.fh), make([]float64, f.fw*f.fh)}, false
+	s.place = make([]float64, f.fw*f.fh)
+	s.weave.resize(f.fw, f.fh)
 	s.post.resize(f)
 	s.guard.resize(f.fw, f.fh)
 }
@@ -267,7 +271,7 @@ func (s *State) resize(w, h int) {
 // crossfade or a growing scene arrives after its light. Through a cut, and
 // when a made palette first comes on screen, it is theirs at once.
 func (s *State) tint(dt float64) {
-	s.wash += dt
+	s.weave.settle(s.value, s.place)
 	to := s.cur.tones
 	made := to.made()
 	if s.next != nil {
@@ -322,27 +326,6 @@ func (s *State) colours() ([]RGB, float64) {
 	}
 	return out, toned + (tonedB-toned)*t
 }
-
-// placed returns how far from the first member of the palette drawn to its
-// second a cell is drawn, by where it is from 0 to 1 across and down the
-// picture. The places of the two members are broad bands that turn and
-// drift slowly.
-func (s *State) placed(x, y float64) float64 {
-	turn := float64(s.seed%360)*math.Pi/180 + washTurn*s.wash
-	sn, cs := math.Sincos(turn)
-	across, along := x*cs+y*sn, y*cs-x*sn
-	wave := math.Sin(2*math.Pi*washBands*across+washDrift*s.wash) + 0.5*math.Sin(2*math.Pi*1.7*washBands*along-0.6*washDrift*s.wash)
-	return 0.5 + 0.5*wave
-}
-
-// washBands is how many bands of each member cross the picture, washTurn
-// how fast the bands turn, in radians a second, and washDrift how fast they
-// move across, in radians of their wave a second.
-const (
-	washBands = 0.6
-	washTurn  = 0.02
-	washDrift = 0.05
-)
 
 // hold slows how fast a pixel's value and tone may move for steady music. A
 // pixel follows what the scene draws over holdRise seconds where it rises and
@@ -432,7 +415,7 @@ func (s *State) Render(colour bool) Picture {
 		return Picture{}
 	}
 	k := look{glyphs: s.cur.glyphs, next: s.cur.toGlyphs, fade: smooth(0, 1, s.cur.glyphsAt),
-		colour: colour, shift: s.shift, place: s.placed}
+		colour: colour, shift: s.shift, place: s.place}
 	if s.next != nil {
 		k.glyphs, k.next, k.fade = s.cur.drawnGlyphs(), s.next.drawnGlyphs(), smooth(0, 1, s.fade)
 	}

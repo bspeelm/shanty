@@ -110,7 +110,7 @@ type family struct {
 var (
 	// cool runs from teal through blue to violet, its darks leaning to
 	// blue-violet. Its accents keep clear of the green-blues.
-	cool = family{from: 183, to: 308, keyFrom: 186, keyTo: 300, accentFrom: 200, dark: 265, mateLeast: 55, mateMost: 90, gamut: 0.7, crest: 0.85}
+	cool = family{from: 183, to: 308, keyFrom: 186, keyTo: 300, accentFrom: 200, dark: 265, mateLeast: 57, mateMost: 110, gamut: 0.7, crest: 0.85}
 	// ember runs from ember red through orange to amber, its darks leaning
 	// to red and its lights to a hot yellow.
 	ember = family{from: 25, to: 92, keyFrom: 36, keyTo: 66, accentFrom: 25, dark: 20, mateLeast: 15, mateMost: 30, gamut: 0.95, crest: 1.6}
@@ -124,7 +124,7 @@ var (
 const (
 	// A cell is drawn in one of setLevels palettes from the first member of
 	// a palette to the second.
-	setLevels = 5
+	setLevels = 7
 	// Towards the pinks, from plumFrom up, a cool colour is held to less
 	// chroma, down to plumMost at the end of the family.
 	plumFrom, plumMost = 290.0, 0.085

@@ -223,6 +223,101 @@ type hued struct {
 	// the cells to its right and below it: in light, and in palette colour
 	// with lightness left out between cells that are both drawn.
 	roughLight, roughHue float64
+	// A cell's family is the twelfth of the hue circle its colour is in, or
+	// the greys. regions is how many patches of at least three joined cells
+	// of one family the frame has, and patch the mean size of them in
+	// cells. bounds is the share of pairs of neighbouring coloured cells
+	// that are of two families, angle the mean angle between the hues of
+	// neighbouring coloured cells, in degrees, and edged how much more the
+	// light differs across a boundary between families than between
+	// neighbours of one family: above 1, the families change where the
+	// forms do.
+	regions, patch, bounds, angle, edged float64
+}
+
+// familyOf is the family of a cell: a twelfth of the hue circle, hueBins
+// for the greys, or -1 for a cell that is not drawn or too dark to tell.
+func familyOf(t tinted) int {
+	if t.n == 0 || t.ink == 0 {
+		return -1
+	}
+	s := t.own[0]
+	switch {
+	case s.c >= colouredFrom:
+		return int(s.h/360*hueBins) % hueBins
+	case s.l > 0.3:
+		return hueBins
+	}
+	return -1
+}
+
+// mingled measures how the families of colour lie among one another in a
+// frame w cells wide, with the light of each cell.
+func mingled(now []tinted, light []float64, w int, out *hued) {
+	fam := make([]int, len(now))
+	for i, t := range now {
+		fam[i] = familyOf(t)
+	}
+	var pairs, crossing, angles, lightAcross, lightWithin, within float64
+	for i := range now {
+		for _, j := range []int{i + 1, i + w} {
+			if j >= len(now) || (j == i+1 && j%w == 0) || fam[i] < 0 || fam[j] < 0 {
+				continue
+			}
+			pairs++
+			d := math.Abs(light[i] - light[j])
+			if fam[i] != fam[j] {
+				crossing++
+				lightAcross += d
+			} else {
+				within++
+				lightWithin += d
+			}
+			if fam[i] < hueBins && fam[j] < hueBins {
+				angles += apart(now[i].own[0].h, now[j].own[0].h)
+			}
+		}
+	}
+	if pairs > 0 {
+		out.bounds, out.angle = crossing/pairs, angles/pairs
+	}
+	if crossing > 0 && within > 0 && lightWithin > 0 {
+		out.edged = (lightAcross / crossing) / (lightWithin / within)
+	}
+	// Patches are found by flooding from each cell not yet in one.
+	seen := make([]bool, len(now))
+	var stack []int
+	cells := 0.0
+	for start := range now {
+		if seen[start] || fam[start] < 0 {
+			continue
+		}
+		size := 0
+		stack = append(stack[:0], start)
+		seen[start] = true
+		for len(stack) > 0 {
+			i := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			size++
+			for _, j := range []int{i - 1, i + 1, i - w, i + w} {
+				if j < 0 || j >= len(now) || seen[j] || fam[j] != fam[start] {
+					continue
+				}
+				if (j == i-1 && i%w == 0) || (j == i+1 && j%w == 0) {
+					continue
+				}
+				seen[j] = true
+				stack = append(stack, j)
+			}
+		}
+		if size >= 3 {
+			out.regions++
+			cells += float64(size)
+		}
+	}
+	if out.regions > 0 {
+		out.patch = cells / out.regions
+	}
 }
 
 // huesOf measures the colours of a frame w cells wide, with the light of
@@ -325,5 +420,6 @@ func huesOf(now, was []tinted, light []float64, w int) hued {
 	if hues > 0 {
 		out.roughHue /= hues
 	}
+	mingled(now, light, w, &out)
 	return out
 }
