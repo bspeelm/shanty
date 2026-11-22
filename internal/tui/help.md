@@ -91,8 +91,8 @@ where the kicks stop, and draws loud music without a steady kick faster,
 brighter and shaking.
 
 It limits how fast large parts of the picture change brightness, to at most
-about two flashes a second. The limit holds on a dark terminal background in
-full colour.
+about two flashes a second. The limit is measured for a dark terminal
+background in full colour.
 
 Some scenes are landscapes: a lake under the moon, a sea at dawn, a storm, an
 aurora. Their light and weather follow the music: cloud gathers as it builds,

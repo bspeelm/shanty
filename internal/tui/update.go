@@ -730,8 +730,8 @@ func (m Model) editSelected(add bool) (tea.Model, tea.Cmd) {
 
 // removeSelected takes the selected track out of the playlist being edited,
 // the queue, or the playlist on screen. A playlist on screen is asked about
-// first. On the queue a count takes out that many tracks from the cursor
-// down.
+// first. On the queue a count takes out that many of the rows shown, from the
+// cursor down.
 func (m Model) removeSelected(count int) (tea.Model, tea.Cmd) {
 	u := m.under()
 	switch {
