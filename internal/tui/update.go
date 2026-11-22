@@ -108,7 +108,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.settled(ScreenStarred), nil
 	case SearchLoaded:
 		m = m.show(ScreenSearch)
-		m.found, m.query = flatten(msg.Results), msg.Query
+		m.found, m.query, m.filter = flatten(msg.Results), msg.Query, ""
 		return m.selecting(ScreenSearch, firstSelectable(m.found)), nil
 	case Reload:
 		// What was selected is remembered, so a reload leaves the cursor
@@ -215,10 +215,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.turnSky()
 	case ShowWiki:
 		m = m.show(ScreenWiki)
-		m.topic = ""
+		m.topic, m.filter = "", ""
 		return m.selecting(ScreenWiki, 0).ontoARow(), nil
 	case ShowMessages:
-		return m.show(ScreenMessages).selecting(ScreenMessages, 0), nil
+		m = m.show(ScreenMessages)
+		m.filter = ""
+		return m.selecting(ScreenMessages, 0), nil
 	case QueueChanged:
 		m.queued, m.queuedAt, m.queuedFrom = msg.Tracks, msg.At, msg.From
 		return m.settled(ScreenQueue), nil
