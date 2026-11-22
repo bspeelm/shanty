@@ -5,10 +5,12 @@ import (
 	"math/rand/v2"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/queue"
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
@@ -19,13 +21,73 @@ import (
 type actor struct {
 	r       *rand.Rand
 	waiting []tea.Msg
+	// q is the queue, kept with the functions the program keeps it with.
+	// selected is the track the cursor was on when a key that edits the queue
+	// was pressed, and broke is the first thing found wrong with an edit.
+	q        queue.Queue
+	selected string
+	broke    string
+	// did names an edit of the queue just made, to be counted.
+	did string
+}
+
+// queued is the queue as the interface is sent it.
+func (a *actor) queued() QueueChanged {
+	return QueueChanged{Tracks: a.q.Tracks(), At: a.q.At()}
+}
+
+// tracksOf is the songs of an album as tracks of the queue.
+func tracksOf(album subsonic.Album) []queue.Track {
+	var out []queue.Track
+	for _, s := range album.Songs {
+		out = append(out, queue.Track{ID: s.ID, Title: s.Title})
+	}
+	return out
+}
+
+// edited takes an edit of the queue and holds it against what an edit of that
+// kind should leave current: the same track, or the one that followed it when
+// it was the one taken out.
+func (a *actor) edited(next queue.Queue, removed, from, to int) {
+	before, at := a.q.Tracks(), a.q.At()
+	want := ""
+	switch {
+	case removed == at && at+1 < len(before):
+		want = before[at+1].ID
+	case removed != at && at < len(before):
+		want = before[at].ID
+	}
+	touched := max(removed, from)
+	if now, _ := next.Current(); now.ID != want && a.broke == "" {
+		a.broke = fmt.Sprintf("with %q current, an edit of row %d left %q current, want %q", idOf(before, at), touched, now.ID, want)
+	}
+	if id := idOf(before, touched); a.selected != "" && id != a.selected && a.broke == "" {
+		a.broke = fmt.Sprintf("the cursor was on %q and the edit named row %d, which held %q", a.selected, touched, id)
+	}
+	if from >= 0 && to >= 0 && to < len(before) && idOf(next.Tracks(), to) != idOf(before, from) && a.broke == "" {
+		a.broke = fmt.Sprintf("moving row %d to %d left %q there", from, to, idOf(next.Tracks(), to))
+	}
+	a.q = next
+}
+
+// idOf is the identifier of the track at a place, or nothing where there is
+// none.
+func idOf(tracks []queue.Track, i int) string {
+	if i < 0 || i >= len(tracks) {
+		return ""
+	}
+	return tracks[i].ID
 }
 
 // twoLists is the playlists the actor's server holds.
 var twoLists = []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
 
 func (a *actor) artist(id string) ArtistLoaded {
-	return ArtistLoaded{ID: id, Name: "Aoi", Albums: library()[0].Albums[:min(2, a.r.IntN(5))]}
+	albums := append([]subsonic.Album(nil), library()[0].Albums[:min(2, a.r.IntN(5))]...)
+	for i := range albums {
+		albums[i].ID = id + "/" + albums[i].ID
+	}
+	return ArtistLoaded{ID: id, Name: "artist " + id, Albums: albums}
 }
 
 func (a *actor) album(id string) AlbumLoaded {
@@ -61,7 +123,8 @@ func (a *actor) found(query string) SearchLoaded {
 
 func (a *actor) queue() QueueChanged {
 	tracks := queued()[:a.r.IntN(4)]
-	return QueueChanged{Tracks: tracks, At: a.r.IntN(len(tracks) + 1)}
+	a.q = queue.New(tracks...).Jump(a.r.IntN(len(tracks) + 1))
+	return a.queued()
 }
 
 // opened holds the answer to an open: usually what was asked for, sometimes
@@ -138,8 +201,50 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 		}
 	case ToggleStar:
 		a.waiting = append(a.waiting, a.starred())
-	case PlayFrom, PlayNext, Enqueue, JumpTo, Shuffle, ShuffleThis, ShuffleSongs, SkipNext, SkipPrev:
-		a.waiting = append(a.waiting, a.queue())
+	case PlayFrom:
+		a.q = queue.New(tracksOf(intent.Album)...).Jump(intent.Index)
+		return a.queued()
+	case Enqueue:
+		a.q = a.q.AppendAll(tracksOf(intent.Album)[intent.Index])
+		return a.queued()
+	case PlayNext:
+		a.q = a.q.InsertAllNext(tracksOf(intent.Album)[intent.Index])
+		return a.queued()
+	case QueueThis:
+		if intent.Next {
+			a.q = a.q.InsertAllNext(queued()...)
+		} else {
+			a.q = a.q.AppendAll(queued()...)
+		}
+		return a.queued()
+	case RemoveQueued:
+		a.did = "a track taken out of the queue"
+		if int(intent) == a.q.At() {
+			a.did = "the playing track taken out of the queue"
+		}
+		a.edited(a.q.Remove(int(intent)), int(intent), -1, -1)
+		return a.queued()
+	case MoveQueued:
+		a.did = "a track moved in the queue"
+		a.edited(a.q.Move(intent.From, intent.To), -1, intent.From, intent.To)
+		return a.queued()
+	case JumpTo:
+		a.q = a.q.Jump(int(intent))
+		return a.queued()
+	case SkipNext:
+		a.q = a.q.Next()
+		return a.queued()
+	case SkipPrev:
+		a.q = a.q.Previous()
+		return a.queued()
+	case ShuffleThis:
+		if intent.Scope == ScopeQueue {
+			a.q = a.q.ShuffleRest(a.r)
+			return a.queued()
+		}
+		return a.queue()
+	case Shuffle, ShuffleSongs:
+		return a.queue()
 	case ShowArt:
 		return FullArt{"a picture filling the screen"}
 	case SeekToPercent:
@@ -278,9 +383,28 @@ func (r *run) send(msg tea.Msg) {
 			r.failf(msg, "%v", err)
 		}
 		r.check(was, msg)
+		if r.m.screen == ScreenWiki && r.m.topic == "" && r.m.filter == "" && was.screen != ScreenWiki {
+			listed := listedKeys(r.m, "")
+			for _, j := range jumps() {
+				if !listed["g"+j.key] {
+					r.failf(msg, "g%s is a jump and the keys screen does not list it", j.key)
+				}
+			}
+		}
+		emitted := msg
 		msg = nil
 		if cmd != nil && (was.ShowingSky() || !r.m.ShowingSky()) {
 			msg = r.app.answer(r.m, cmd())
+			if r.app.did != "" {
+				r.kinds[r.app.did]++
+				if r.app.did == "the playing track taken out of the queue" {
+					r.kinds["a track taken out of the queue"]++
+				}
+				r.app.did = ""
+			}
+			if r.app.broke != "" {
+				r.failf(emitted, "%s", r.app.broke)
+			}
 		}
 	}
 }
@@ -317,15 +441,67 @@ func (r *run) press(keys ...string) {
 		default:
 			r.keys[r.m.Screen()]++
 		}
+		plain := !typing && !r.m.Confirming() && !r.m.ShowingSky() && !r.m.ShowingArt()
+		r.app.selected = ""
+		if plain && r.m.screen == ScreenQueue && r.m.editing.ID == "" {
+			r.app.selected = r.m.under().id
+		}
+		// Back with nothing else for it to leave returns to the place that
+		// was left last, holding what it held.
+		was, goesBack := r.m, plain && (key == "esc" || key == "h") && !r.m.reordering &&
+			r.m.filter == "" && r.m.topic == "" && len(r.m.trail) > 0
 		switch key {
 		case " ":
 			r.send(tea.KeyMsg{Type: tea.KeySpace})
 		case "ctrl+c":
 			r.send(tea.KeyMsg{Type: tea.KeyCtrlC})
+		case "ctrl+d":
+			r.send(tea.KeyMsg{Type: tea.KeyCtrlD})
+		case "ctrl+u":
+			r.send(tea.KeyMsg{Type: tea.KeyCtrlU})
 		default:
 			r.send(keyOf(key))
 		}
+		if goesBack {
+			r.kinds["a back to a place that was left"]++
+			p := was.trail[len(was.trail)-1]
+			switch {
+			case r.m.screen != p.screen:
+				r.failf(keyOf(key), "back went to %s, want %s", r.m.screen, p.screen)
+			case p.screen == ScreenAlbums && r.m.artist.ID != p.artist.ID:
+				r.failf(keyOf(key), "back shows the albums of %q, and those of %q were left", r.m.artist.ID, p.artist.ID)
+			case p.screen == ScreenTracks && r.m.album.ID != p.album.ID:
+				r.failf(keyOf(key), "back shows the tracks of %q, and those of %q were left", r.m.album.ID, p.album.ID)
+			}
+			if p.screen == ScreenAlbums && p.artist.ID != was.artist.ID {
+				r.kinds["a back to an artist other than the one held"]++
+			}
+		}
+		if r.m.screen == ScreenAlbums {
+			for _, album := range r.m.artist.Albums {
+				if !strings.HasPrefix(album.ID, r.m.artist.ID+"/") || r.m.heading() != "artist "+r.m.artist.ID {
+					r.failf(keyOf(key), "the albums of %q are shown under the heading of another artist", album.ID)
+				}
+			}
+		}
 	}
+}
+
+// reachesTheLibrary reports whether back, pressed often enough, ends on the
+// library from here. Nothing answers what the presses ask for.
+func reachesTheLibrary(m Model) bool {
+	for range trailKept + 12 {
+		key := keyOf("esc")
+		if m.Confirming() {
+			key = keyOf("n")
+		}
+		next, _ := m.Update(key)
+		m = next.(Model)
+		if m.screen == ScreenLibrary && m.mode == modeNormal && !m.showSky && len(m.bigArt) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // command types a line on the command line and runs it.
@@ -377,6 +553,30 @@ func (r *run) step() {
 		r.send(tea.WindowSizeMsg{Width: pick(r.r, 24, 40, 80, 200), Height: 4 + r.r.IntN(30)})
 		return
 	}
+	// An artist, and then one of their albums, is opened and waited for.
+	if (r.m.screen == ScreenArtists || r.m.screen == ScreenAlbums) && r.r.IntN(4) == 0 {
+		r.press(pick(r.r, "j", "k"), "enter")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		return
+	}
+	// From a screen opened from a row, another artist is opened from the
+	// starred list and the way back is walked.
+	if deep(r.m.screen) && r.m.screen != ScreenPlaylist && r.m.artist.ID != "ar-1" && r.r.IntN(3) == 0 {
+		r.send(starredChanged())
+		r.press("g", "s", "enter")
+		for len(r.app.waiting) > 0 {
+			r.deliver()
+		}
+		r.press("esc", "esc", "esc")
+		return
+	}
+	// The track playing, and others, are taken out of the queue and moved.
+	if r.m.screen == ScreenQueue && r.r.IntN(3) == 0 {
+		r.press(pick(r.r, "r", "r", "K", "J", "j", "k"))
+		return
+	}
 	// A seek with nothing playing fails while something is being opened.
 	if r.m.waiting != 0 && r.r.IntN(5) == 0 {
 		r.press("5", "%")
@@ -391,7 +591,7 @@ func (r *run) step() {
 			r.press("g", "v")
 			return
 		}
-		r.press("g", pick(r.r, "l", "a", "b", "p", "p", "q", "s", "g"))
+		r.press("g", pick(r.r, "l", "a", "b", "p", "p", "q", "q", "s", "g", "/"))
 	case n < 40:
 		line := pick(r.r, "reload", "reload", "search water", "playlist", "messages", "wiki", "wiki",
 			"playlist edit Evening", "playlist delete", "playlist rename Dusk", "art", "nosuchthing")
@@ -416,15 +616,27 @@ func (r *run) step() {
 		if r.m.playlist.ID != "" && r.r.IntN(2) == 0 {
 			changed.ID = r.m.playlist.ID
 		}
-		r.send(pick[tea.Msg](r.r, r.app.queue(), r.app.starred(), Notice("playing Ballast next"),
-			Failed{Message: "mpv stopped"}, ArtistsLoaded(library()[:r.r.IntN(4)]),
-			PlaylistChanged(changed), PlaylistChanged(changed),
-			Confirm{Question: "delete it?", Do: Notice("deleted")}))
+		switch r.r.IntN(8) {
+		case 0:
+			r.send(r.app.queue())
+		case 1:
+			r.send(r.app.starred())
+		case 2:
+			r.send(Notice("playing Ballast next"))
+		case 3:
+			r.send(Failed{Message: "mpv stopped"})
+		case 4:
+			r.send(ArtistsLoaded(library()[:r.r.IntN(4)]))
+		case 5:
+			r.send(Confirm{Question: "delete it?", Do: Notice("deleted")})
+		default:
+			r.send(PlaylistChanged(changed))
+		}
 	case n < 53:
 		r.send(pick[tea.Msg](r.r, ShowVisualiser{}, FullArt{"a picture filling the screen"}))
 	default:
 		keys := []string{"j", "j", "j", "k", "k", "enter", "enter", "enter", "h", "G", "home",
-			"end", "pgup", "pgdown", "S", "*", "a", "A", "r", "e", "J", "K", "?", "5", "%", " ", "n", "x"}
+			"end", "pgup", "pgdown", "ctrl+d", "ctrl+u", "S", "*", "a", "A", "r", "e", "J", "K", "?", "5", "%", " ", "n", "x"}
 		switch r.m.Screen() {
 		case ScreenWiki, ScreenPlaylists, ScreenArtists, ScreenAlbums:
 			keys = append(keys, "enter", "enter", "enter", "G")
@@ -452,6 +664,11 @@ var kindsWanted = []string{
 	"a changed playlist during a reorder of it",
 	"a changed playlist while adding to it",
 	"a reorder entered",
+	"a back to a place that was left",
+	"a back to an artist other than the one held",
+	"a track taken out of the queue",
+	"the playing track taken out of the queue",
+	"a track moved in the queue",
 	"a question answered",
 	"a resize",
 	"a key under the visualiser",
@@ -488,6 +705,9 @@ func TestNoRunOfKeysAndAnswersBreaksWhatEachMessageMayDo(t *testing.T) {
 			r.send(ArtistsLoaded(library()))
 			for r.steps < randomMessages {
 				r.step()
+				if r.steps%20 == 0 && !reachesTheLibrary(r.m) {
+					r.failf(nil, "back does not reach the library from here, with %d places remembered", len(r.m.trail))
+				}
 			}
 		}()
 	}
