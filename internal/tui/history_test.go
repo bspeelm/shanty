@@ -276,3 +276,37 @@ func TestTheJumpToANarrowedQueueLandsOnARowOfIt(t *testing.T) {
 
 // selectedIndex is the place in the whole list of the row the cursor is on.
 func (m Model) selectedIndex() int { return m.matches()[m.cursor[m.screen]] }
+
+func TestANewSearchDropsTheFilterKeptOnTheOldResults(t *testing.T) {
+	m := send(t, loaded(t), SearchLoaded{Query: "water", Results: results()})
+	m = narrowed(t, m, "water")
+	m, _ = press(t, m, "enter")
+	m = send(t, m, AlbumLoaded(library()[0].Albums[1]))
+
+	// Fewer results than the old filter's row, and none that it matches.
+	m = send(t, m, SearchLoaded{Query: "bilge", Results: subsonic.Results{
+		Artists: []subsonic.Artist{{ID: "ar-2", Name: "The Bilge Pumps"}},
+	}})
+	if m.Screen() != ScreenSearch || m.Filter() != "" || m.rows() != 2 {
+		t.Fatalf("the new results are on %s narrowed by %q to %d rows", m.Screen(), m.Filter(), m.rows())
+	}
+	if err := cursorsWithinTheirLists(m); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"enter", "a", "A", "S", "*", "r"} {
+		_, _ = press(t, m, key)
+	}
+}
+
+func TestTheWikiAndTheMessagesOpenWithoutTheFilterLeftOnThem(t *testing.T) {
+	m := narrowed(t, send(t, loaded(t), ShowWiki{}), "shuffle")
+	m = send(t, onArtists(t, m), ShowWiki{})
+	if m.Filter() != "" || m.rows() < 50 {
+		t.Errorf("the wiki opened narrowed by %q to %d rows", m.Filter(), m.rows())
+	}
+	m = narrowed(t, send(t, m, Notice("one"), Notice("two"), ShowMessages{}), "one")
+	m = send(t, onArtists(t, m), ShowMessages{})
+	if m.Filter() != "" || m.rows() != 2 {
+		t.Errorf("the messages opened narrowed by %q to %d rows", m.Filter(), m.rows())
+	}
+}
