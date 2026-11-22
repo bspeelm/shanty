@@ -1042,8 +1042,11 @@ func (a app) scanSaid(msg scanning) (tea.Model, tea.Cmd) {
 		next, _ := a.forward(tui.Notice(fmt.Sprintf("scanning: %s so far", tracks(msg.status.Count))))
 		return next, a.watchScan()
 	}
-	next, _ := a.forward(tui.Notice(fmt.Sprintf("the scan finished: %s", tracks(msg.status.Count))))
-	return next, tea.Batch(emit(tui.Reload{}), a.reload())
+	// The interface is told a reload is under way, then that the scan
+	// finished, and the fetch is made here, once.
+	told, _ := a.forward(tui.Reload{})
+	next, _ := told.(app).forward(tui.Notice(fmt.Sprintf("the scan finished: %s", tracks(msg.status.Count))))
+	return next, next.(app).reload()
 }
 
 // tracks counts what a scan has looked at, in words.
