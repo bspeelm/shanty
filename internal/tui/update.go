@@ -179,9 +179,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		loaded := subsonic.Playlist(msg)
 		if m.editing.ID == loaded.ID && m.editing.ID != "" {
 			m.editing, m.inPlaylist = loaded, holding(loaded)
-			if m.screen != ScreenPlaylist {
-				return m, nil
-			}
 		}
 		if m.screen == ScreenPlaylist && loaded.ID == m.playlist.ID {
 			return m.say("").refreshed(loaded), nil
