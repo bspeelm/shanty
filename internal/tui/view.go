@@ -27,11 +27,7 @@ func (m Model) chrome() int {
 // art. It does not count the art, so that the decision to show art can be made
 // from it without asking itself.
 func (m Model) chromeBase() int {
-	n := chromeLines
-	if m.mode == modeCommand {
-		n += len(m.completions(m.viewWidth()))
-	}
-	return n
+	return chromeLines + len(m.completions(m.viewWidth()))
 }
 
 // minTracksBesideArt is how much of a track list has to remain for a cover to
@@ -107,10 +103,8 @@ func (m Model) View() string {
 	// changes how many rows the list has, so starting a track used to shift
 	// every row below the cursor up by one.
 	b.WriteString(m.progress(w) + "\n")
-	if m.mode == modeCommand {
-		for _, row := range m.completions(w) {
-			b.WriteString(faint().Render(fit(row, w)) + "\n")
-		}
+	for _, row := range m.completions(w) {
+		b.WriteString(faint().Render(fit(row, w)) + "\n")
 	}
 	b.WriteString(m.footer(w))
 	return b.String()
@@ -127,26 +121,37 @@ func (m Model) View() string {
 // command set learnable without a manual, so it wraps rather than cutting off
 // the commands that do not fit on one row.
 func (m Model) completions(w int) []string {
-	found := matching(m.line)
-	if len(found) == 0 {
-		return []string{"  no command starts with that"}
-	}
-	// Narrowed to one, it says what the command does. This used to depend on
-	// the command taking an argument, so the ones that take none -- `art`,
-	// `wiki`, `resume` -- never explained themselves at any point.
-	if len(found) == 1 {
-		return []string{"  " + spelled(found[0]) + "   " + found[0].summary}
+	var items []string
+	switch {
+	case m.pending != "":
+		// A jump begun lists every key that finishes it.
+		for _, j := range jumps() {
+			items = append(items, j.key+" "+j.short)
+		}
+	case m.mode != modeCommand:
+		return nil
+	default:
+		found := matching(m.line)
+		if len(found) == 0 {
+			return []string{"  no command starts with that"}
+		}
+		// Narrowed to one, it says what the command does.
+		if len(found) == 1 {
+			return []string{"  " + spelled(found[0]) + "   " + found[0].summary}
+		}
+		for _, c := range found {
+			items = append(items, spelled(c))
+		}
 	}
 
 	var rows []string
 	row := "  "
-	for _, c := range found {
-		name := spelled(c)
-		if lipgloss.Width(row)+lipgloss.Width(name)+3 > w && row != "  " {
+	for _, item := range items {
+		if lipgloss.Width(row)+lipgloss.Width(item)+3 > w && row != "  " {
 			rows = append(rows, strings.TrimRight(row, " "))
 			row = "  "
 		}
-		row += name + "   "
+		row += item + "   "
 	}
 	return append(rows, strings.TrimRight(row, " "))
 }
@@ -171,15 +176,12 @@ func (m Model) footer(w int) string {
 	if m.mode == modeConfirm {
 		return alarm().Render(fit(Sanitise(m.asking)+"  [y/N]", w))
 	}
-	if m.pending != "" {
-		var to []string
-		for _, j := range jumps() {
-			to = append(to, j.key+" "+j.short)
+	if m.pending != "" || m.count != "" {
+		prefix := ""
+		if m.pending != "" {
+			prefix = m.first("go-prefix")
 		}
-		return statusStyle.Render(fit(m.count+m.pending+" …  "+strings.Join(to, " · "), w))
-	}
-	if m.count != "" {
-		return statusStyle.Render(fit(m.count+" …", w))
+		return statusStyle.Render(fit(m.count+prefix+" …", w))
 	}
 	if arriving := m.arriving(); m.status == "" && arriving != "" {
 		return statusStyle.Render(fit(arriving, w))
@@ -188,18 +190,17 @@ func (m Model) footer(w int) string {
 		// Editing is a mode, and a mode that cannot be seen is not allowed to
 		// change what a key does (ADR-019). The artist and album lists carry
 		// no track marks, so this row is the only sign of it there.
-		if m.reordering {
-			return statusStyle.Render(fit("reordering "+Sanitise(m.playlist.Name)+
-				" — K/J move, enter saves, esc discards", w))
-		}
-		if m.showSky {
-			if m.paused {
-				return statusStyle.Render(fit("paused — space resumes · esc leaves", w))
-			}
-			return faint().Render(fit("esc leaves · space pauses", w))
-		}
-		if m.editing.ID != "" {
-			return statusStyle.Render(fit(editingHint(m.editing.Name), w))
+		switch {
+		case m.showSky && m.paused:
+			return statusStyle.Render(fit(m.skyHint(), w))
+		case m.showSky:
+			return faint().Render(fit(m.skyHint(), w))
+		case len(m.bigArt) > 0:
+			return faint().Render(fit(m.coverHint(), w))
+		case m.reordering:
+			return statusStyle.Render(fit(m.reorderHint(), w))
+		case m.editing.ID != "":
+			return statusStyle.Render(fit(m.editingHint(m.editing.Name), w))
 		}
 		return faint().Render(fit(m.hintLine(w), w))
 	}
@@ -208,12 +209,6 @@ func (m Model) footer(w int) string {
 		return alarm().Render(fit(Sanitise(oneLine), w))
 	}
 	return statusStyle.Render(fit(Sanitise(oneLine), w))
-}
-
-// editingHint is the row shown while a playlist is being edited. It names the
-// playlist and the three keys that act on it.
-func editingHint(name string) string {
-	return "adding to " + Sanitise(name) + " — a adds, r removes, e leaves"
 }
 
 // blankLike is an empty block the same shape as a rendered cover. The width is
@@ -366,6 +361,9 @@ func (m Model) heading() string {
 	case ScreenPlaylist:
 		return Sanitise(m.playlist.Name) + " · " + plural(len(m.playlist.Songs), "track")
 	case ScreenWiki:
+		if m.topicText != "" {
+			return "wiki · " + m.topic
+		}
 		if m.topic != "" {
 			return "wiki · :" + m.topic
 		}
@@ -478,7 +476,7 @@ func (m Model) row(i int) (string, string) {
 			Sanitise(s.Artist) + " · " + clock(time.Duration(s.Duration)*time.Second)
 	case ScreenWiki:
 		if m.topic != "" {
-			return helpLines(m.topic, m.viewWidth())[i], ""
+			return m.pageLines()[i], ""
 		}
 		r := m.grouped()[i]
 		if r.kind == kindHeading {

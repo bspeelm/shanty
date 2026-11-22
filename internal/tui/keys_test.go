@@ -181,23 +181,124 @@ func TestTheKeysScreenIsNarrowedByWhatAKeyDoes(t *testing.T) {
 	}
 }
 
-func TestOnTheKeysScreenACommandOpensItsPageAndAKeySaysItIsNotOne(t *testing.T) {
+func TestOnTheKeysScreenEnterOpensAPageForACommandOrAKey(t *testing.T) {
 	m := send(t, loaded(t), ShowWiki{})
-	if r := m.keyRows()[m.Cursor()]; r.kind != kindKey {
-		t.Fatalf("the cursor starts on %+v, want the first key", r)
-	}
-	said, msg := press(t, m, "enter")
-	if msg != nil || said.topic != "" || said.Status() == "" {
-		t.Errorf("enter on a key emitted %#v and said %q", msg, said.Status())
-	}
-
 	page, _ := press(t, onCommand(t, m, "search"), "enter")
 	if page.topic != "search" || !strings.Contains(page.View(), "wiki · :search") {
 		t.Errorf("enter on a command did not open its page:\n%s", page.View())
 	}
 	back, _ := press(t, page, "esc")
-	if back.Screen() != ScreenWiki || back.topic != "" || !back.keyRows()[back.Cursor()].selectable() {
+	if back.Screen() != ScreenWiki || back.topic != "" || back.keyRows()[back.Cursor()].id != "search" {
 		t.Errorf("esc from a page went to %s on row %d", back.Screen(), back.Cursor())
+	}
+}
+
+// TestEveryKeyRowCanBeReadInFullAtAnyWidth opens the page of each key row at
+// a narrow and a wide terminal, and holds the page to every word of the row.
+func TestEveryKeyRowCanBeReadInFullAtAnyWidth(t *testing.T) {
+	for _, w := range []int{64, 200} {
+		m := send(t, loaded(t), tea.WindowSizeMsg{Width: w, Height: 12}, ShowWiki{})
+		cut := 0
+		for i, r := range m.keyRows() {
+			if r.kind != kindKey {
+				continue
+			}
+			at := m.selecting(ScreenWiki, i)
+			if strings.Contains(stripSGR(at.View()), "…\n") {
+				cut++
+			}
+			page, msg := press(t, at, "enter")
+			if msg != nil || !page.reading() {
+				t.Fatalf("at %d columns enter on %q emitted %#v and opened nothing", w, r.name, msg)
+			}
+			text := strings.Join(strings.Fields(strings.Join(page.pageLines(), " ")), " ")
+			if text != strings.Join(strings.Fields(r.detail), " ") || !strings.Contains(page.View(), "wiki · "+r.name) {
+				t.Errorf("at %d columns the page for %q reads %q, want %q", w, r.name, text, r.detail)
+			}
+			if back, _ := press(t, page, "esc"); back.Cursor() != i || back.reading() {
+				t.Errorf("at %d columns esc from the page for %q went to row %d", w, r.name, back.Cursor())
+			}
+		}
+		if w == 64 && cut == 0 {
+			t.Error("no row is cut at 64 columns, so the narrow case measures nothing")
+		}
+	}
+}
+
+func TestAPageOpenedFromANarrowedListIsWholeAndTheListComesBackNarrowed(t *testing.T) {
+	m := narrowed(t, send(t, loaded(t), ShowWiki{}), "headless")
+	at := m.Cursor()
+	page, _ := press(t, m, "enter")
+	if page.Filter() != "" || page.rows() < 3 {
+		t.Fatalf("the page opened narrowed by %q to %d rows", page.Filter(), page.rows())
+	}
+	back, _ := press(t, page, "esc")
+	if back.Filter() != "headless" || back.Cursor() != at || back.reading() {
+		t.Errorf("esc came back with the filter %q on row %d", back.Filter(), back.Cursor())
+	}
+}
+
+func TestEveryRowOfTheKeysScreenSaysWhatItIsWithoutItsHeading(t *testing.T) {
+	m := send(t, loaded(t), ShowWiki{})
+	seenRows := map[string]bool{}
+	under := ""
+	for _, r := range m.keyRows() {
+		if r.kind == kindHeading {
+			under = strings.ToLower(r.name)
+			continue
+		}
+		row := r.name + " | " + r.detail
+		if seenRows[row] {
+			t.Errorf("two rows read %q", row)
+		}
+		seenRows[row] = true
+		moded := strings.Contains(under, "typing") || strings.Contains(under, "question") ||
+			strings.Contains(under, "reordering") || strings.Contains(under, "adding") || strings.Contains(under, "visualiser")
+		if moded && !strings.HasPrefix(r.detail, under+": ") {
+			t.Errorf("the row %q under %q does not say which mode it is about", row, under)
+		}
+	}
+}
+
+// TestACountIsListedForEveryKeyThatTakesOne walks the actions that use a
+// number typed before them, and holds each to being listed and to doing
+// something different with the number.
+func TestACountIsListedForEveryKeyThatTakesOne(t *testing.T) {
+	next, _ := New().Update(tea.WindowSizeMsg{Width: 64, Height: 10})
+	base := send(t, next.(Model), AlbumLoaded(tenTracks()), keyOf("j"), keyOf("j"), keyOf("j"), keyOf("j"), keyOf("j"))
+	text := base.rowsText()
+	if !strings.Contains(text, "0-9  type a number") {
+		t.Errorf("the keys screen does not list the digits:\n%s", text)
+	}
+	counted := 0
+	for _, a := range Actions() {
+		if a.Count == "" {
+			continue
+		}
+		counted++
+		if !strings.Contains(text, "{n} "+strings.Join(base.keysFor(a.Name), " ")+"  "+a.Count) {
+			t.Errorf("%s takes a count and the keys screen does not list it", a.Name)
+		}
+		key := keyOf(a.Keys[0])
+		if a.Keys[0] == "ctrl+u" || a.Keys[0] == "ctrl+d" {
+			key = tea.KeyMsg{Type: map[string]tea.KeyType{"ctrl+u": tea.KeyCtrlU, "ctrl+d": tea.KeyCtrlD}[a.Keys[0]]}
+		}
+		plain, cmd := base.Update(key)
+		with := send(t, base, keyOf("2"))
+		numbered, counting := with.Update(key)
+		var one, two tea.Msg
+		if cmd != nil {
+			one = cmd()
+		}
+		if counting != nil {
+			two = counting()
+		}
+		if reflect.DeepEqual(seen(plain.(Model), one), seen(numbered.(Model), two)) {
+			t.Errorf("a number before %s changes nothing, and it is listed as taking one", a.Name)
+		}
+	}
+	if counted < 7 {
+		t.Errorf("only %d actions say what a count does", counted)
 	}
 }
 
@@ -210,7 +311,7 @@ func TestTheLastRowNamesTheKeysOfTheScreenShowingFirst(t *testing.T) {
 		"an artist":             {"enter open", "a queue", "A next", "S shuffle", "* star"},
 		"a track in the queue":  {"enter play", "r remove", "K up", "J down", "S shuffle"},
 		"a track in a playlist": {"enter play", "a queue", "r remove", "e add"},
-		"the library":           {"enter open", "esc back", "/ filter", ": command", "space pause"},
+		"the library":           {"enter open", "/ filter", ": command", "space pause"},
 		"the messages":          {"esc back", "/ filter"},
 	} {
 		line := rows[name].hintLine(400)
@@ -232,12 +333,96 @@ func TestTheLastRowNamesTheKeysOfTheScreenShowingFirst(t *testing.T) {
 	}
 }
 
-func TestAJumpBegunListsWhereItCanGo(t *testing.T) {
-	m, _ := press(t, send(t, loaded(t), tea.WindowSizeMsg{Width: 200, Height: 12}), "g")
-	rows := strings.Split(stripSGR(m.View()), "\n")
-	for _, j := range jumps() {
-		if !strings.Contains(rows[len(rows)-1], j.key+" "+j.short) {
-			t.Errorf("the last row does not offer %s %s: %q", j.key, j.short, rows[len(rows)-1])
+func TestAJumpBegunListsEveryPlaceItCanGoAtAnyWidth(t *testing.T) {
+	for _, w := range []int{40, 64, 80, 200} {
+		m, _ := press(t, send(t, loaded(t), tea.WindowSizeMsg{Width: w, Height: 14}), "g")
+		frame := stripSGR(m.View())
+		for _, j := range jumps() {
+			if !strings.Contains(frame, j.key+" "+j.short) {
+				t.Errorf("at %d columns the frame does not offer %s %s:\n%s", w, j.key, j.short, frame)
+			}
 		}
+		rows := strings.Split(frame, "\n")
+		if len(rows) != 14 || !strings.HasPrefix(rows[len(rows)-1], "g …") {
+			t.Errorf("at %d columns the frame is %d rows ending %q", w, len(rows), rows[len(rows)-1])
+		}
+	}
+}
+
+// lastRow is the last row of the frame, without its styling.
+func lastRow(m Model) string {
+	rows := strings.Split(stripSGR(m.View()), "\n")
+	return rows[len(rows)-1]
+}
+
+func TestUnderACoverTheLastRowSaysWhatWorksThere(t *testing.T) {
+	m := send(t, deepIn(t), FullArt{"a picture filling the screen"})
+	if got := lastRow(m); got != "esc leaves · space pauses · any other key takes the cover away" {
+		t.Errorf("under a cover the last row reads %q", got)
+	}
+}
+
+func TestTheLibraryDoesNotOfferBackAndOtherScreensDo(t *testing.T) {
+	if line := sized(New()).hintLine(400); strings.Contains(line, "back") {
+		t.Errorf("the library offers back, which does nothing there: %q", line)
+	}
+	if line := loaded(t).hintLine(400); !strings.Contains(line, "esc back") {
+		t.Errorf("the artists do not offer back: %q", line)
+	}
+}
+
+// TestTheLastRowAndTheKeysScreenFollowEveryRebinding binds the keys the
+// hints name to other keys, and holds each hint to the key bound now.
+func TestTheLastRowAndTheKeysScreenFollowEveryRebinding(t *testing.T) {
+	keys, wrong := Bind(map[string][]string{
+		"back": {"x"}, "pause": {"z"}, "open": {"o"}, "go-prefix": {";"},
+		"queue-append": {"i"}, "playlist-remove": {"d"}, "playlist-edit": {"w"},
+		"playlist-move-up": {"U"}, "playlist-move-down": {"D"},
+	})
+	if len(wrong) > 0 {
+		t.Fatal(wrong)
+	}
+	bound := func(m Model) Model { return send(t, m.WithKeys(keys), tea.WindowSizeMsg{Width: 200, Height: 14}) }
+
+	if got := lastRow(reordering(t, bound(evening3(t)))); got != "reordering Evening — U/D move, o saves, x discards" {
+		t.Errorf("reordering: %q", got)
+	}
+	editing := send(t, bound(loaded(t)), EditingPlaylist(eveningOf(1)), keyOf("j"))
+	if got := lastRow(editing); got != "adding to Evening — i adds, d removes, w leaves" {
+		t.Errorf("adding to a playlist: %q", got)
+	}
+	sky := send(t, bound(loaded(t)), ShowVisualiser{})
+	if got := lastRow(sky); got != "x leaves · z pauses" {
+		t.Errorf("the visualiser: %q", got)
+	}
+	if got := lastRow(send(t, sky, PausedChanged(true))); got != "paused — z resumes · x leaves" {
+		t.Errorf("the visualiser, paused: %q", got)
+	}
+	if got := lastRow(send(t, bound(loaded(t)), FullArt{"a picture"})); !strings.HasPrefix(got, "x leaves · z pauses") {
+		t.Errorf("a cover: %q", got)
+	}
+
+	jumping, _ := press(t, bound(loaded(t)), ";")
+	if got := lastRow(jumping); got != "; …" || jumping.Pending() == "" {
+		t.Errorf("a jump begun with the key bound to it: %q", got)
+	}
+	if text := bound(loaded(t)).rowsText(); !strings.Contains(text, ";l  go to the library") || strings.Contains(text, "gl  ") {
+		t.Errorf("the keys screen does not list the jumps with the prefix bound now:\n%s", text)
+	}
+
+	long, _ := Bind(map[string][]string{"go-prefix": {"ctrl+g"}})
+	if text := loaded(t).WithKeys(long).rowsText(); !strings.Contains(text, "ctrl+g l  go to the library") {
+		t.Errorf("a prefix of more than one character runs into the key after it:\n%s", text)
+	}
+}
+
+func TestAnActionLeftWithNoKeyIsStillListed(t *testing.T) {
+	keys, wrong := Bind(map[string][]string{"pause": {"n"}})
+	if len(wrong) != 1 {
+		t.Fatalf("binding pause to the key next holds reported %v", wrong)
+	}
+	text := loaded(t).WithKeys(keys).rowsText()
+	if !strings.Contains(text, "(no key)  pause, or resume if already paused") {
+		t.Errorf("pause has no key and the keys screen does not list it as such:\n%s", text)
 	}
 }

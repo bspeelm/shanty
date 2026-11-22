@@ -58,14 +58,21 @@ func helpLines(name string, w int) []string {
 			out = append(out, "")
 			continue
 		}
-		wrapped := lipgloss.NewStyle().Width(max(20, w-4)).Render(strings.Join(strings.Fields(para), " "))
-		for _, line := range strings.Split(wrapped, "\n") {
-			out = append(out, "  "+line)
-		}
-		out = append(out, "")
+		out = append(append(out, wrapped(para, w)...), "")
 	}
 	if len(out) > 0 && out[len(out)-1] == "" {
 		out = out[:len(out)-1]
+	}
+	return out
+}
+
+// wrapped is a paragraph as rows no wider than w, each indented as a page of
+// the wiki is.
+func wrapped(para string, w int) []string {
+	var out []string
+	text := lipgloss.NewStyle().Width(max(20, w-4)).Render(strings.Join(strings.Fields(para), " "))
+	for _, line := range strings.Split(text, "\n") {
+		out = append(out, "  "+line)
 	}
 	return out
 }

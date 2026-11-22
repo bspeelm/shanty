@@ -23,6 +23,9 @@ type Action struct {
 	Summary string
 	// Keys are the keys bound to it out of the box.
 	Keys []string
+	// Count is what a number typed before the key does, for the actions
+	// that use one.
+	Count string
 	// do performs it. repeat is the count typed before the key, and counted
 	// says whether one was typed at all.
 	do func(m Model, repeat int, counted bool) (tea.Model, tea.Cmd)
@@ -34,23 +37,23 @@ type Action struct {
 // dispatching through.
 func Actions() []Action {
 	return []Action{
-		{Name: "move-up", Summary: "move the selection up one row", Keys: []string{"up", "k"},
+		{Name: "move-up", Count: "repeat the movement that many times", Summary: "move the selection up one row", Keys: []string{"up", "k"},
 			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) { return m.move(-repeat), nil }},
-		{Name: "move-down", Summary: "move the selection down one row", Keys: []string{"down", "j"},
+		{Name: "move-down", Count: "repeat the movement that many times", Summary: "move the selection down one row", Keys: []string{"down", "j"},
 			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) { return m.move(repeat), nil }},
 		{Name: "move-top", Summary: "jump to the first row", Keys: []string{"home"},
 			do: func(m Model, _ int, _ bool) (tea.Model, tea.Cmd) { return m.moveTo(0).ontoARow(), nil }},
 		{Name: "move-bottom", Summary: "jump to the last row", Keys: []string{"end", "G"},
 			do: func(m Model, _ int, _ bool) (tea.Model, tea.Cmd) { return m.moveTo(m.rows() - 1), nil }},
-		{Name: "move-page-up", Summary: "move up by one screenful", Keys: []string{"pgup"},
+		{Name: "move-page-up", Count: "repeat the movement that many times", Summary: "move up by one screenful", Keys: []string{"pgup"},
 			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) { return m.move(-m.page() * repeat), nil }},
-		{Name: "move-page-down", Summary: "move down by one screenful", Keys: []string{"pgdown"},
+		{Name: "move-page-down", Count: "repeat the movement that many times", Summary: "move down by one screenful", Keys: []string{"pgdown"},
 			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) { return m.move(m.page() * repeat), nil }},
-		{Name: "move-half-up", Summary: "move up by half a screenful", Keys: []string{"ctrl+u"},
+		{Name: "move-half-up", Count: "repeat the movement that many times", Summary: "move up by half a screenful", Keys: []string{"ctrl+u"},
 			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) {
 				return m.move(-max(1, m.page()/2) * repeat), nil
 			}},
-		{Name: "move-half-down", Summary: "move down by half a screenful", Keys: []string{"ctrl+d"},
+		{Name: "move-half-down", Count: "repeat the movement that many times", Summary: "move down by half a screenful", Keys: []string{"ctrl+d"},
 			do: func(m Model, repeat int, _ bool) (tea.Model, tea.Cmd) {
 				return m.move(max(1, m.page()/2) * repeat), nil
 			}},
@@ -145,7 +148,7 @@ func Actions() []Action {
 			do: sends(func(int) tea.Msg { return VolumeBy{Delta: 5} })},
 		{Name: "volume-down", Summary: "decrease the volume by five percent", Keys: []string{"-", "_"},
 			do: sends(func(int) tea.Msg { return VolumeBy{Delta: -5} })},
-		{Name: "seek-percent", Summary: "seek to a percentage of the track, as in 50%", Keys: []string{"%"},
+		{Name: "seek-percent", Count: "seek to that percentage of the track", Summary: "seek to a percentage of the track, as in 50%", Keys: []string{"%"},
 			do: func(m Model, repeat int, counted bool) (tea.Model, tea.Cmd) {
 				if !counted {
 					return m.say("type a percentage first, as in 50%"), nil

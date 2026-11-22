@@ -202,9 +202,12 @@ type Model struct {
 	// keep is what was selected when a reload was asked for, so the cursor can
 	// go back to it once the answer arrives.
 	keep string
-	// topic is the command :wiki is explaining. Empty means it is showing the
-	// list of them.
-	topic string
+	// topic is the command or the keys :wiki is explaining. Empty means it is
+	// showing the list. topicText is what is said about keys, which have no
+	// page of their own, and listed is the list as it was left for the page.
+	topic     string
+	topicText string
+	listed    place
 	// keys is what each key does. It is nil until something replaces the
 	// default bindings. keyList is the rows of the screen that lists them.
 	keys    map[string]Action
@@ -373,7 +376,7 @@ func (m Model) allRows() int {
 		return len(m.playlist.Songs)
 	case ScreenWiki:
 		if m.topic != "" {
-			return len(helpLines(m.topic, m.viewWidth()))
+			return len(m.pageLines())
 		}
 		return len(m.grouped())
 	}
@@ -406,11 +409,19 @@ func (m Model) rowName(i int) string {
 		return m.playlist.Songs[i].Title
 	case ScreenWiki:
 		if m.topic != "" {
-			return helpLines(m.topic, m.viewWidth())[i]
+			return m.pageLines()[i]
 		}
 		return m.grouped()[i].name
 	}
 	return ""
+}
+
+// pageLines is the page of the wiki being read, as rows.
+func (m Model) pageLines() []string {
+	if m.topicText != "" {
+		return wrapped(m.topicText, m.viewWidth())
+	}
+	return helpLines(m.topic, m.viewWidth())
 }
 
 // saidAt maps a row of the messages screen to a message. The newest is at the
