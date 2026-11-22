@@ -731,7 +731,13 @@ func (m Model) removeSelected(count int) (tea.Model, tea.Cmd) {
 	case m.reordering:
 		return m.say("a track cannot be taken out while the playlist is being reordered — enter saves, esc discards"), nil
 	case u.scope == ScopeQueue:
-		return m, emit(RemoveQueued{At: u.index, ID: u.id, Count: count})
+		// The rows shown, from the cursor down.
+		var out []Queued
+		rows := m.matches()
+		for _, at := range rows[m.shown():min(len(rows), m.shown()+max(1, count))] {
+			out = append(out, Queued{At: at, ID: m.queued[at].ID})
+		}
+		return m, emit(RemoveQueued{Tracks: out})
 	case u.scope == ScopePlaylist:
 		m.mode, m.asking = modeConfirm, "take "+u.name+" out of "+m.playlist.Name+"?"
 		m.agreed = EditPlaylist{ID: m.playlist.ID, SongID: u.id, Add: false, At: u.index}

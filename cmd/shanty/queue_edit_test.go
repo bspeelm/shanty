@@ -25,7 +25,7 @@ func TestTakingThePlayingTrackOutOfTheQueueStartsTheOneThatFollows(t *testing.T)
 	a = sixQueued(t, a)
 	said := len(rec.said())
 
-	a = settle(t, a, tui.RemoveQueued{At: 1, ID: "tr-2"})
+	a = settle(t, a, tui.RemoveQueued{Tracks: []tui.Queued{{At: 1, ID: "tr-2"}}})
 
 	if want := []string{"tr-1", "tr-3", "tr-4", "tr-5", "tr-6"}; !reflect.DeepEqual(ids(a), want) {
 		t.Fatalf("the queue is %v, want %v", ids(a), want)
@@ -47,7 +47,7 @@ func TestTakingThePlayingTrackOutOfTheQueueStartsTheOneThatFollows(t *testing.T)
 // no play of it is reported.
 func TestWhenTheQueueEndsUnderATrackThePlayerIsStopped(t *testing.T) {
 	for name, ends := range map[string]tea.Msg{
-		"the last and playing track is taken out": tui.RemoveQueued{At: 5, ID: "tr-6"},
+		"the last and playing track is taken out": tui.RemoveQueued{Tracks: []tui.Queued{{At: 5, ID: "tr-6"}}},
 		"the last track is skipped":               tui.SkipNext{},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -102,9 +102,9 @@ func TestTakingAnotherTrackOutOrMovingOneDoesNotStartThePlayingTrackAgain(t *tes
 		at       int
 		prefetch bool
 	}{
-		"one before":      {edit: &tui.RemoveQueued{At: 0, ID: "tr-1"}, want: []string{"tr-2", "tr-3", "tr-4", "tr-5", "tr-6"}, at: 0},
-		"the one after":   {edit: &tui.RemoveQueued{At: 2, ID: "tr-3"}, want: []string{"tr-1", "tr-2", "tr-4", "tr-5", "tr-6"}, at: 1, prefetch: true},
-		"one further on":  {edit: &tui.RemoveQueued{At: 4, ID: "tr-5"}, want: []string{"tr-1", "tr-2", "tr-3", "tr-4", "tr-6"}, at: 1},
+		"one before":      {edit: &tui.RemoveQueued{Tracks: []tui.Queued{{At: 0, ID: "tr-1"}}}, want: []string{"tr-2", "tr-3", "tr-4", "tr-5", "tr-6"}, at: 0},
+		"the one after":   {edit: &tui.RemoveQueued{Tracks: []tui.Queued{{At: 2, ID: "tr-3"}}}, want: []string{"tr-1", "tr-2", "tr-4", "tr-5", "tr-6"}, at: 1, prefetch: true},
+		"one further on":  {edit: &tui.RemoveQueued{Tracks: []tui.Queued{{At: 4, ID: "tr-5"}}}, want: []string{"tr-1", "tr-2", "tr-3", "tr-4", "tr-6"}, at: 1},
 		"moved to follow": {move: &tui.MoveQueued{From: 5, To: 2, ID: "tr-6"}, want: []string{"tr-1", "tr-2", "tr-6", "tr-3", "tr-4", "tr-5"}, at: 1, prefetch: true},
 		"moved across":    {move: &tui.MoveQueued{From: 0, To: 4, ID: "tr-1"}, want: []string{"tr-2", "tr-3", "tr-4", "tr-5", "tr-1", "tr-6"}, at: 0},
 		"the playing one": {move: &tui.MoveQueued{From: 1, To: 3, ID: "tr-2"}, want: []string{"tr-1", "tr-3", "tr-4", "tr-2", "tr-5", "tr-6"}, at: 3, prefetch: true},
@@ -151,7 +151,7 @@ func TestTakingOutATrackThatIsNotThereSaysSoAndChangesNothing(t *testing.T) {
 	a = sixQueued(t, a)
 	said := len(rec.said())
 
-	a = settle(t, a, tui.RemoveQueued{At: 9, ID: "tr-9"})
+	a = settle(t, a, tui.RemoveQueued{Tracks: []tui.Queued{{At: 9, ID: "tr-9"}}})
 	a = settle(t, a, tui.MoveQueued{From: 9, To: 0, ID: "tr-9"})
 	if a.queue.Len() != 6 || a.queue.At() != 1 || len(rec.said()) != said {
 		t.Errorf("the queue is %v at %d and the player was told %v", ids(a), a.queue.At(), rec.said()[said:])
@@ -253,7 +253,7 @@ func TestACountTakesThatManyTracksOutOfTheQueue(t *testing.T) {
 
 	// Three from the first: the one before the playing track, the playing
 	// track, and the one after it.
-	a = settle(t, a, tui.RemoveQueued{At: 0, ID: "tr-1", Count: 3})
+	a = settle(t, a, tui.RemoveQueued{Tracks: []tui.Queued{{At: 0, ID: "tr-1"}, {At: 1, ID: "tr-2"}, {At: 2, ID: "tr-3"}}})
 
 	if want := []string{"tr-4", "tr-5", "tr-6"}; !reflect.DeepEqual(ids(a), want) || a.queue.At() != 0 {
 		t.Fatalf("the queue is %v at %d, want %v at 0", ids(a), a.queue.At(), want)
@@ -265,9 +265,10 @@ func TestACountTakesThatManyTracksOutOfTheQueue(t *testing.T) {
 		t.Errorf("it said %q", a.ui.Status())
 	}
 
-	a = settle(t, a, tui.RemoveQueued{At: 1, ID: "tr-5", Count: 9})
-	if want := []string{"tr-4"}; !reflect.DeepEqual(ids(a), want) {
-		t.Errorf("a count past the end left %v, want %v", ids(a), want)
+	// Tracks that are not next to each other, as a narrowed queue names them.
+	a = settle(t, a, tui.RemoveQueued{Tracks: []tui.Queued{{At: 0, ID: "tr-4"}, {At: 2, ID: "tr-6"}}})
+	if want := []string{"tr-5"}; !reflect.DeepEqual(ids(a), want) {
+		t.Errorf("taking out the first and the third left %v, want %v", ids(a), want)
 	}
 }
 
@@ -277,7 +278,7 @@ func TestAnEditThatNamesATrackNoLongerAtThatPlaceIsRefused(t *testing.T) {
 	said := len(rec.said())
 
 	for _, edit := range []tea.Msg{
-		tui.RemoveQueued{At: 2, ID: "tr-6", Count: 1},
+		tui.RemoveQueued{Tracks: []tui.Queued{{At: 1, ID: "tr-2"}, {At: 2, ID: "tr-6"}}},
 		tui.MoveQueued{From: 2, To: 3, ID: "tr-6"},
 	} {
 		a = settle(t, a, edit)
@@ -299,7 +300,7 @@ func TestAQueueWithNothingInItIsNotMarkedAsComingFromAPlaylist(t *testing.T) {
 		t.Fatalf("the playlist playing is not marked:\n%s", a.ui.View())
 	}
 
-	a = settle(t, a, tui.RemoveQueued{At: 0, ID: "tr-1", Count: 2})
+	a = settle(t, a, tui.RemoveQueued{Tracks: []tui.Queued{{At: 0, ID: "tr-1"}, {At: 1, ID: "tr-2"}}})
 	if a.queue.Len() != 0 || strings.Contains(a.ui.View(), "▶ Evening") {
 		t.Errorf("with %d tracks queued the playlist is still marked:\n%s", a.queue.Len(), a.ui.View())
 	}

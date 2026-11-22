@@ -383,19 +383,23 @@ func (a app) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.requeued(a.queue.AppendAll(found...), a.queue.Done(),
 			fmt.Sprintf("added %s, %s, to the end of the queue", msg.what, tracks(int64(len(found)))))
 	case tui.RemoveQueued:
-		held := a.queue.Tracks()
-		if msg.At < 0 || msg.At >= len(held) || held[msg.At].ID != msg.ID {
-			return a, emit(tui.Failed{Message: "the queue changed since it was shown, so nothing was taken out"})
+		held, next, restart := a.queue.Tracks(), a.queue, false
+		// From the last place named to the first, so that taking one out
+		// does not move the others that are named.
+		for i := len(msg.Tracks) - 1; i >= 0; i-- {
+			t := msg.Tracks[i]
+			if t.At < 0 || t.At >= len(held) || held[t.At].ID != t.ID || (i > 0 && msg.Tracks[i-1].At >= t.At) {
+				return a, emit(tui.Failed{Message: "the queue changed since it was shown, so nothing was taken out"})
+			}
+			next, restart = next.Remove(t.At), restart || t.At == a.queue.At()
 		}
-		n := max(1, min(msg.Count, len(held)-msg.At))
-		next, said := a.queue, "took "+held[msg.At].Title+" out of the queue"
-		for range n {
-			next = next.Remove(msg.At)
+		switch len(msg.Tracks) {
+		case 0:
+			return a, emit(tui.Failed{Message: "there is no track there to take out of the queue"})
+		case 1:
+			return a.requeued(next, restart, "took "+held[msg.Tracks[0].At].Title+" out of the queue")
 		}
-		if n > 1 {
-			said = "took " + tracks(int64(n)) + " out of the queue"
-		}
-		return a.requeued(next, a.queue.At() >= msg.At && a.queue.At() < msg.At+n, said)
+		return a.requeued(next, restart, "took "+tracks(int64(len(msg.Tracks)))+" out of the queue")
 	case tui.MoveQueued:
 		if held := a.queue.Tracks(); msg.From < 0 || msg.From >= len(held) || held[msg.From].ID != msg.ID {
 			return a, emit(tui.Failed{Message: "the queue changed since it was shown, so nothing was moved"})

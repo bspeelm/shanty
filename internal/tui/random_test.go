@@ -217,14 +217,20 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 		}
 		return a.queued()
 	case RemoveQueued:
-		a.did = "a track taken out of the queue"
-		if intent.At == a.q.At() {
-			a.did = "the playing track taken out of the queue"
+		for i := len(intent.Tracks) - 1; i >= 0; i-- {
+			t := intent.Tracks[i]
+			a.did = "a track taken out of the queue"
+			if t.At == a.q.At() {
+				a.did = "the playing track taken out of the queue"
+			}
+			if idOf(a.q.Tracks(), t.At) != t.ID && a.broke == "" {
+				a.broke = fmt.Sprintf("row %d was named as %q and holds %q", t.At, t.ID, idOf(a.q.Tracks(), t.At))
+			}
+			if i > 0 {
+				a.selected = ""
+			}
+			a.edited(a.q.Remove(t.At), t.At, -1, -1)
 		}
-		if idOf(a.q.Tracks(), intent.At) != intent.ID && a.broke == "" {
-			a.broke = fmt.Sprintf("row %d was named as %q and holds %q", intent.At, intent.ID, idOf(a.q.Tracks(), intent.At))
-		}
-		a.edited(a.q.Remove(intent.At), intent.At, -1, -1)
 		return a.queued()
 	case MoveQueued:
 		a.did = "a track moved in the queue"
