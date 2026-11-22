@@ -54,13 +54,21 @@ type scene struct {
 	bx    []float64
 	by    []float64
 	// glyphs is how cells are drawn, moving to toGlyphs as glyphsAt goes
-	// from 0 to 1. palette moves from fromPalette to toPalette the same way
-	// with paletteAt.
-	glyphs, toGlyphs       glyphs
-	glyphsAt               float64
+	// from 0 to 1.
+	glyphs, toGlyphs glyphs
+	glyphsAt         float64
+	// palette is the colours cells are drawn in, which are those of tones.
+	// While the tones move from fromTones to toTones, paletteAt goes from 0
+	// to 1 over paletteOver seconds, paletteFor is how long they have been
+	// moving, and fromPalette and toPalette are the palettes they are
+	// moving between.
 	palette                []RGB
 	fromPalette, toPalette []RGB
+	tones                  tones
+	fromTones, toTones     tones
 	paletteAt              float64
+	paletteOver            float64
+	paletteFor             float64
 	label                  string
 	clock                  float64
 	// grounded is set while the scene is arranged around a landscape.
@@ -100,7 +108,8 @@ func newScene(rng *rand.Rand, st *style, c Character, mood Signals) *scene {
 	energy := clamp01(0.6*mood.Level + 0.6*mood.Busy)
 	g := glyphs(pick(rng, st.glyphs[:]))
 	s := &scene{glyphs: g, toGlyphs: g, glide: st.glide, morph: st.morph, lock: st.lock, hits: st.hits, char: c}
-	s.palette = st.palette(rng, c)
+	s.tones = st.tones(rng, c)
+	s.palette = s.tones.ramp()
 	count := 2 + rng.IntN(2)
 	if energy > 0.4 {
 		count++
@@ -157,7 +166,8 @@ func rareScene(rng *rand.Rand, st *style, c Character) *scene {
 	if rng.IntN(2) == 0 {
 		g = glyphShade
 	}
-	return &scene{palette: st.palette(rng, c), glyphs: g, toGlyphs: g, label: k.name,
+	t := st.tones(rng, c)
+	return &scene{tones: t, palette: t.ramp(), glyphs: g, toGlyphs: g, label: k.name,
 		layers: []*layer{l}, glide: st.glide, morph: st.morph, hits: st.hits, char: c}
 }
 
@@ -248,9 +258,11 @@ func (s *scene) ground() {
 	land.blend, land.weight, land.quiet = blendAdd, param{base: landWeight}, true
 	s.grounded = true
 	if set := settings[land.name]; s.toPalette != nil {
-		s.toPalette = set.paletteOf(s.toPalette)
+		s.toTones.stops, s.toTones.land = set.colours, 1
+		s.moveTo(s.toTones)
 	} else {
-		s.palette = set.paletteOf(s.palette)
+		s.tones.stops, s.tones.land = set.colours, 1
+		s.palette = s.tones.ramp()
 	}
 	for _, w := range s.warps {
 		w.goal = 0
@@ -361,13 +373,17 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 		s.warps = append(s.warps, newWarp(rng, st))
 	}
 
-	s.fromPalette = s.palette
 	if rng.IntN(2) == 0 && !far {
-		s.toPalette = turnPalette(s.palette, rng)
+		// A scene that grows out of another keeps a likeness of its colours,
+		// with their hue turned.
+		if s.tones.made() {
+			s.moveTo(s.tones.turned((rng.Float64() - 0.5) * 2 * turnMost))
+		} else {
+			s.moveTo(tones{fixed: turnPalette(s.palette, rng)})
+		}
 	} else {
-		s.toPalette = st.palette(rng, c)
+		s.moveTo(st.tones(rng, c))
 	}
-	s.paletteAt = 0
 	land := s.landed()
 	redraw := far || rng.Float64() < 0.35
 	if g := s.drawnGlyphs(); redraw || land && g != glyphBraille && g != glyphHalf {
@@ -390,7 +406,7 @@ func (s *scene) evolve(rng *rand.Rand, st *style, c Character) {
 // palette moves to one of the style's.
 func (s *scene) unground(rng *rand.Rand, st *style) {
 	s.grounded = false
-	s.toPalette = st.palette(rng, s.char)
+	s.moveTo(st.tones(rng, s.char))
 	s.warps = append(s.warps, newWarp(rng, st))
 	for _, l := range s.layers {
 		if l.quiet && !isLandscape(l.name) {
@@ -430,7 +446,27 @@ func (s *scene) changing() bool {
 			return true
 		}
 	}
-	return s.toPalette != nil
+	return s.toPalette != nil && s.paletteFor < s.morph
+}
+
+// hueRate is the most a palette's key hue moves in a second while a scene's
+// colours change, in degrees.
+const hueRate = 8.0
+
+// moveTo starts the scene's colours moving to those of to. The move takes as
+// long as a change of the scene does. Between two made palettes it takes
+// longer where the key hue has further to go than hueRate allows in that
+// time; the key hue of a landscape's colours does not count, as far as they
+// are the landscape's.
+func (s *scene) moveTo(to tones) {
+	s.fromTones, s.toTones = s.tones, to
+	s.fromPalette, s.toPalette = s.palette, to.ramp()
+	s.paletteAt, s.paletteFor = 0, 0
+	far := 0.0
+	if s.tones.made() && to.made() {
+		far = math.Abs(turnTo(s.tones.key, to.key)) * (1 - clamp01(math.Max(s.tones.land, to.land)))
+	}
+	s.paletteOver = math.Max(math.Max(s.morph, far/hueRate), 0.1)
 }
 
 // step draws the scene's next frame into value and tone.
@@ -596,10 +632,19 @@ func (s *scene) advance(dt float64) {
 	}
 	s.warps = warps
 	if s.toPalette != nil {
-		s.paletteAt += dt / s.morph
-		s.palette = blendPalettes(s.fromPalette, s.toPalette, smooth(0, 1, s.paletteAt))
+		s.paletteFor += dt
+		s.paletteAt += dt / s.paletteOver
+		// Two made palettes move by their numbers. Any other pair moves
+		// colour by colour, and what is on screen meanwhile is held as it is.
+		if w := smooth(0, 1, s.paletteAt); s.fromTones.made() && s.toTones.made() {
+			s.tones = mixTones(s.fromTones, s.toTones, w)
+			s.palette = s.tones.ramp()
+		} else {
+			s.palette = blendPalettes(s.fromPalette, s.toPalette, w)
+			s.tones = tones{fixed: s.palette}
+		}
 		if s.paletteAt >= 1 {
-			s.palette, s.fromPalette, s.toPalette = s.toPalette, nil, nil
+			s.tones, s.palette, s.fromPalette, s.toPalette = s.toTones, s.toPalette, nil, nil
 		}
 	}
 	if s.glyphs != s.toGlyphs {

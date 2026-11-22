@@ -166,22 +166,62 @@ func (s *style) param(rng *rand.Rand) param {
 	return p
 }
 
-// palette makes a gradient from dark to bright. Its hue family comes from one
-// axis, drawn by the character's weights; its saturation and contrast are the
-// style's.
-func (s *style) palette(rng *rand.Rand, c Character) []RGB {
+// The hues a family of made palettes is keyed in, in degrees, and how far
+// its hue moves from the dark end of a ramp to the bright end.
+const (
+	// Calm is keyed from blue to blue-violet.
+	calmFrom, calmTo, calmArc = 200.0, 280.0, 30.0
+	// Drive is keyed from teal to violet, with the widest arc, and one in
+	// greyShare of its palettes is of greys.
+	driveFrom, driveTo, driveArc, driveArcMost = keyFrom, keyTo, 40.0, 60.0
+	greyShare                                  = 0.25
+	// chromaLeast is the peak chroma of a style with no saturation, and
+	// chromaSpan how much a style of full saturation adds.
+	chromaLeast, chromaSpan = 0.05, 0.08
+	// turnMost is how far a scene that grows out of another may turn the key
+	// hue of a made palette, in degrees either way.
+	turnMost = 54.0
+)
+
+// tones draws a palette. Its family comes from one axis, drawn by the
+// character's weights; its chroma and contrast are the style's. Calm and
+// Drive palettes are made from numbers. Grit palettes, of reds, oranges and
+// hot whites, and Flow palettes, of golds, ambers and soft greens, are
+// gradients round the colour wheel.
+func (s *style) tones(rng *rand.Rand, c Character) tones {
 	axes := c.sharpened().axes()
-	var hue, wander float64
+	t := tones{peak: chromaLeast + chromaSpan*s.sat, contrast: s.contrast}
+	// part returns a second number from 0 to 1 drawn out of one already
+	// drawn, so that a family takes as many draws as it always has.
+	part := func(v float64) float64 { return math.Mod(v*97, 1) }
 	switch pick(rng, axes[:]) {
-	case 0: // deep blues, violets and teals
-		hue, wander = 0.45+0.3*rng.Float64(), 0.2
-	case 1: // anything, wandering widely
-		hue, wander = rng.Float64(), 0.6+0.4*rng.Float64()
-	case 2: // reds, oranges and hot whites
-		hue, wander = 0.92+0.15*rng.Float64(), 0.15
-	default: // golds, ambers and soft greens
-		hue, wander = 0.05+0.2*rng.Float64(), 0.25
+	case 0:
+		t.key, t.arc = calmFrom+(calmTo-calmFrom)*rng.Float64(), calmArc
+	case 1:
+		v, u := rng.Float64(), rng.Float64()
+		t.key, t.arc = driveFrom+(driveTo-driveFrom)*v, driveArc+(driveArcMost-driveArc)*u
+		switch {
+		case part(v) < greyShare:
+			t.key, t.peak = greyKey, greyPeak
+		case part(u) < 0.5:
+			t.accentSteps, t.accentTurn, t.accent = 1+int(2*part(u*7)), 20+10*part(u*13), 0.6*t.peak
+		}
+	case 2:
+		return tones{fixed: s.wheel(0.92+0.15*rng.Float64(), 0.15)}
+	default:
+		return tones{fixed: s.wheel(0.05+0.2*rng.Float64(), 0.25)}
 	}
+	t.arc = leaning(t.key, t.arc)
+	return t
+}
+
+// palette makes a gradient from dark to bright in the style.
+func (s *style) palette(rng *rand.Rand, c Character) []RGB { return s.tones(rng, c).ramp() }
+
+// wheel makes a gradient from dark to bright whose hue starts wander/2
+// before hue on the colour wheel, as a share of the way round, and ends as
+// far after it. Its saturation and contrast are the style's.
+func (s *style) wheel(hue, wander float64) []RGB {
 	p := make([]RGB, paletteSize)
 	for i := range p {
 		t := float64(i) / float64(paletteSize-1)

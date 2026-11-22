@@ -316,7 +316,14 @@ func (s *State) Render(colour bool) Picture {
 	if s.next != nil {
 		t := smooth(0, 1, s.fade)
 		k.glyphs, k.next, k.fade = s.cur.drawnGlyphs(), s.next.drawnGlyphs(), t
-		palette = blendPalettes(s.cur.palette, s.next.palette, t)
+		// A crossfade between two made palettes goes by way of the palettes
+		// between them. A cut, and a crossfade to or from any other palette,
+		// goes colour by colour.
+		if !s.cutting && s.cur.tones.made() && s.next.tones.made() {
+			palette = mixTones(s.cur.tones, s.next.tones, t).ramp()
+		} else {
+			palette = blendPalettes(s.cur.palette, s.next.palette, t)
+		}
 	}
 	lines := render(s.value, s.tone, s.f.fw, s.f.fh, s.w, s.h, k)
 	if s.cur.label != "" && s.label < labelFor && s.next == nil {
