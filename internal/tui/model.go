@@ -98,7 +98,8 @@ type Model struct {
 	album subsonic.Album
 	// art is the cover for album, already rendered, one string per row, or a
 	// blank block of its shape. artOf is the album whose cover it is, and is
-	// empty while the block is blank.
+	// empty while the block is blank. Both are set by covered and nowhere
+	// else.
 	art   []string
 	artOf string
 	// showSky says the visualiser is filling the screen and sky is its state.
