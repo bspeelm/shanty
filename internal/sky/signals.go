@@ -43,6 +43,11 @@ type Signals struct {
 	// intensity, from -0.5 to 0.25, lower still for a part with no sound,
 	// and 0 where the parts are not known.
 	Weight float64
+	// Steady is how regularly and how often the picture has been moved on
+	// the beat over the last several seconds, from 0 to 1. It is 0 for the
+	// first beats after a gap, a drop or a cut, and for a track carried by
+	// its arrangement.
+	Steady float64
 }
 
 // The sources a scene can route to a parameter, in the order Signals.source

@@ -111,6 +111,11 @@ func TestReplayIntensity(t *testing.T) {
 				fmt.Fprintf(&b, "   timing: %d kicked beats answered %.1f%%, %+.1f ms after the beat (spread %.1f); %d cuts for %d cues, %d within a second, mean %.0f ms from the cue\n",
 					len(kicked), 100*share, lag, spread, len(d.cuts), len(cues), n, 1000*off/math.Max(float64(n), 1))
 				fmt.Fprintf(&b, "   %s\n", look.flashLine())
+				if p.Tempo > 0 {
+					for _, cue := range cues {
+						fmt.Fprintf(&b, "   lift %s\n", look.lifts(cue, 60/p.Tempo))
+					}
+				}
 				fmt.Fprintf(&b, "   %s\n", look.report("whole", nil))
 				fmt.Fprintf(&b, "   %s\n", look.report("drummed", on))
 				fmt.Fprintf(&b, "   %s\n", look.report("not drummed", func(f seen) bool { return !on(f) }))
