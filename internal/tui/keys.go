@@ -46,7 +46,12 @@ func jumps() []jump {
 		{"p", "playlists", "go to the playlists", to(ScreenPlaylists, FetchPlaylists{})},
 		{"q", "queue", "go to the queue, on the track playing", func(m Model) (tea.Model, tea.Cmd) {
 			m = m.show(ScreenQueue)
-			return m.selecting(ScreenQueue, max(0, min(len(m.queued)-1, m.queuedAt))), nil
+			for row, i := range m.matches() {
+				if i == m.queuedAt {
+					return m.selecting(ScreenQueue, row), nil
+				}
+			}
+			return m.selecting(ScreenQueue, max(0, min(len(m.queued)-1, m.queuedAt))).settled(ScreenQueue), nil
 		}},
 		{"s", "starred", "go to what is starred", to(ScreenStarred, nil)},
 		{"/", "search", "go back to the last search", func(m Model) (tea.Model, tea.Cmd) {

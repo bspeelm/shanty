@@ -232,6 +232,7 @@ func New() Model {
 		now:      time.Now,
 	}
 	m.keyList = m.keyRows()
+	m.cursor[ScreenWiki] = firstSelectable(m.keyList)
 	return m
 }
 
