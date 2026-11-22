@@ -1011,3 +1011,15 @@ func TestBackToAnAlbumOpenedAgainBeforeItsCoverCameAsksForTheCover(t *testing.T)
 		t.Errorf("back to %q emitted %#v, want its cover asked for", m.Album().Name, asked)
 	}
 }
+
+func TestANewSearchEndsTheWaitForARowOpenedFromTheOldResults(t *testing.T) {
+	m, ask := opened(t, searched(t))
+	m = send(t, m, SearchLoaded{Query: "bail", Results: results()})
+	if m.loading() || m.waiting != 0 {
+		t.Fatalf("the new results still wait for open %d", m.waiting)
+	}
+	m = send(t, m, Opened{Ask: ask, Loaded: ArtistLoaded(library()[0])})
+	if m.Screen() != ScreenSearch || m.query != "bail" {
+		t.Errorf("the open asked for from the old results took the screen to %s", m.Screen())
+	}
+}

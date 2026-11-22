@@ -120,7 +120,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.settled(ScreenStarred), nil
 	case SearchLoaded:
 		m = m.show(ScreenSearch)
-		m.found, m.query, m.filter = flatten(msg.Results), msg.Query, ""
+		m.found, m.query, m.filter, m.waiting = flatten(msg.Results), msg.Query, "", 0
 		return m.selecting(ScreenSearch, firstSelectable(m.found)), nil
 	case Reload:
 		return m.reloading(), nil
