@@ -90,20 +90,7 @@ const landTint = 0.15
 
 // paletteOf returns the setting's palette: its colours spread evenly from the
 // first step to the last, with landTint of tint mixed into each step.
-func (set setting) paletteOf(tint []RGB) []RGB {
-	p := make([]RGB, paletteSize)
-	stops := len(set.colours) - 1
-	for i := range p {
-		u := float64(i) / float64(paletteSize-1) * float64(stops)
-		k := min(int(u), stops-1)
-		c := blendPalettes(set.colours[k:k+1], set.colours[k+1:k+2], u-float64(k))
-		if i < len(tint) {
-			c = blendPalettes(c, tint[i:i+1], landTint)
-		}
-		p[i] = c[0]
-	}
-	return p
-}
+func (set setting) paletteOf(tint []RGB) []RGB { return stopped(set.colours, tint) }
 
 // Whether a landscape has a sun, a moon or neither.
 const (
