@@ -186,7 +186,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Editing shows the library, because that is where the music is.
 		m.editing, m.inPlaylist = subsonic.Playlist(msg), holding(subsonic.Playlist(msg))
 		m = m.show(ScreenArtists)
-		return m.say(editingHint(m.editing.Name)).remember(editingHint(m.editing.Name)), nil
+		return m.say(m.editingHint(m.editing.Name)).remember(m.editingHint(m.editing.Name)), nil
 	case Confirm:
 		m.mode, m.asking, m.agreed = modeConfirm, msg.Question, msg.Do
 		return m, nil
@@ -230,7 +230,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.turnSky()
 	case ShowWiki:
 		m = m.show(ScreenWiki)
-		m.topic, m.filter = "", ""
+		m.topic, m.topicText, m.filter = "", "", ""
 		return m.selecting(ScreenWiki, 0).ontoARow(), nil
 	case ShowMessages:
 		m = m.show(ScreenMessages)
@@ -641,11 +641,14 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		if m.topic != "" {
 			return m, nil
 		}
+		// A command opens its page, and a key a page of what its row says.
+		// The list is kept as it is, to come back to.
 		r := m.grouped()[at]
+		m.listed = m.here()
+		m.topic, m.topicText, m.filter = r.id, "", ""
 		if r.kind != kindCommand {
-			return m.say("that is a key, not a page — press it on the screen it works on"), nil
+			m.topic, m.topicText = r.name, r.detail
 		}
-		m.topic = r.id
 		return m.selecting(ScreenWiki, 0), nil
 	case ScreenSearch, ScreenStarred:
 		r := m.grouped()[at]
@@ -871,8 +874,8 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		return m.unfiltered().say(""), nil
 	}
 	if m.screen == ScreenWiki && m.topic != "" {
-		m.topic = ""
-		return m.say("").selecting(ScreenWiki, 0).ontoARow(), nil
+		m.topic, m.topicText = "", ""
+		return m.returned(m.listed), nil
 	}
 	p := place{screen: ScreenLibrary, cursor: m.cursor[ScreenLibrary]}
 	if n := len(m.up); n > 0 {
@@ -1180,5 +1183,5 @@ func (m Model) answer(yes bool) (tea.Model, tea.Cmd) {
 func (m Model) editPlaylist(p subsonic.Playlist) (tea.Model, tea.Cmd) {
 	m.editing, m.inPlaylist = p, holding(p)
 	m = m.show(ScreenArtists)
-	return m.say(editingHint(p.Name)).remember(editingHint(p.Name)), nil
+	return m.say(m.editingHint(p.Name)).remember(m.editingHint(p.Name)), nil
 }
