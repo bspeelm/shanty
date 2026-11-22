@@ -232,7 +232,7 @@ func TestGoldenScreens(t *testing.T) {
 			{ID: "pl-2", Name: "Long Watch", SongCount: 41},
 		}))},
 		{"playlists-none", send(t, artists, keyOf("g"), keyOf("p"), PlaylistsLoaded(nil))},
-		{"playlist", send(t, artists, PlaylistLoaded(subsonic.Playlist{
+		{"playlist", send(t, artists, keyOf("g"), keyOf("p"), PlaylistLoaded(subsonic.Playlist{
 			ID: "pl-1", Name: "Evening", Songs: []subsonic.Song{
 				{ID: "tr-1", Title: "Slipway", Artist: "Aoi", Duration: 180},
 				{ID: "tr-9", Title: "Low Water", Artist: "The Bilge Pumps", Duration: 220},

@@ -78,7 +78,7 @@ func (m Model) View() string {
 	// cover filling the screen back to one above a track list draws art in
 	// both frames, and without this both pictures end up on screen.
 	b.WriteString(m.clearArt)
-	b.WriteString(titleStyle.Render(fit("shanty · "+m.heading(), w)))
+	b.WriteString(titleStyle.Render(fit("shanty · "+m.path(w-lipgloss.Width("shanty · ")), w)))
 	b.WriteString("\n" + rule(w) + "\n")
 
 	// The visualiser fills the screen the way a cover does. The player line and
@@ -170,6 +170,9 @@ func (m Model) footer(w int) string {
 	}
 	if m.mode == modeConfirm {
 		return alarm().Render(fit(Sanitise(m.asking)+"  [y/N]", w))
+	}
+	if m.pending != "" || m.count != "" {
+		return statusStyle.Render(fit(m.count+m.pending+" …", w))
 	}
 	if arriving := m.arriving(); m.status == "" && arriving != "" {
 		return statusStyle.Render(fit(arriving, w))
@@ -289,6 +292,49 @@ func (m Model) artLines() []string {
 // reading reports whether the screen is a page of prose rather than a list.
 func (m Model) reading() bool { return m.screen == ScreenWiki && m.topic != "" }
 
+// crumb is what a place is called in the path.
+func (p place) crumb() string {
+	switch p.screen {
+	case ScreenAlbums:
+		return Sanitise(p.artist.Name)
+	case ScreenTracks:
+		return Sanitise(p.album.Name)
+	case ScreenPlaylist:
+		return Sanitise(p.playlist.Name)
+	}
+	return p.screen.String()
+}
+
+// deep reports whether a screen is reached by opening a row of another:
+// one artist's albums, a track list or a playlist.
+func deep(s Screen) bool {
+	return s == ScreenAlbums || s == ScreenTracks || s == ScreenPlaylist
+}
+
+// path is the heading of the screen showing, with the filter kept on it.
+// Before the heading of a screen that was opened from a row come the screens
+// it was opened through, back to the list they started from. Where the path
+// is wider than w its oldest screens give way to an ellipsis.
+func (m Model) path(w int) string {
+	var parts []string
+	for i := len(m.trail) - 1; i >= 0 && deep(m.screen); i-- {
+		parts = append([]string{m.trail[i].crumb()}, parts...)
+		if !deep(m.trail[i].screen) {
+			break
+		}
+	}
+	parts = append(parts, m.heading())
+	if m.filter != "" && m.mode == modeNormal {
+		parts[len(parts)-1] += " · /" + Sanitise(m.filter)
+	}
+	whole := strings.Join(parts, " › ")
+	for len(parts) > 1 && lipgloss.Width(whole) > w {
+		parts = parts[1:]
+		whole = "… › " + strings.Join(parts, " › ")
+	}
+	return whole
+}
+
 func (m Model) heading() string {
 	switch m.screen {
 	case ScreenLibrary:
@@ -301,6 +347,9 @@ func (m Model) heading() string {
 		}
 		return fmt.Sprintf("every album · %s", plural(len(m.albums), "album"))
 	case ScreenTracks:
+		if n := len(m.trail); n > 0 && m.trail[n-1].screen == ScreenAlbums {
+			return Sanitise(m.album.Name)
+		}
 		return Sanitise(m.album.Artist) + " · " + Sanitise(m.album.Name)
 	case ScreenSearch:
 		return searchHeading(m.query, m.found)
@@ -480,6 +529,11 @@ func (m Model) libraryCount(s Screen) string {
 	case ScreenQueue:
 		// Nothing queued is a count rather than an absence, so it is shown.
 		return strconv.Itoa(len(m.queued))
+	case ScreenSearch:
+		if m.query == "" {
+			return ""
+		}
+		return strconv.Itoa(selectable(m.found))
 	}
 	return ""
 }

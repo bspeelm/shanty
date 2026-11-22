@@ -123,14 +123,20 @@ func (m Model) isGrouped() bool {
 	return m.screen == ScreenSearch || m.screen == ScreenStarred
 }
 
-// starredHeading is the title bar for the starred screen.
-func starredHeading(rows []result) string {
-	found := 0
+// selectable is how many of those rows the cursor may rest on.
+func selectable(rows []result) int {
+	n := 0
 	for _, r := range rows {
 		if r.selectable() {
-			found++
+			n++
 		}
 	}
+	return n
+}
+
+// starredHeading is the title bar for the starred screen.
+func starredHeading(rows []result) string {
+	found := selectable(rows)
 	if found == 0 {
 		return "starred · nothing yet"
 	}
@@ -139,12 +145,7 @@ func starredHeading(rows []result) string {
 
 // searchHeading is the title bar for a set of results.
 func searchHeading(query string, rows []result) string {
-	found := 0
-	for _, r := range rows {
-		if r.selectable() {
-			found++
-		}
-	}
+	found := selectable(rows)
 	if found == 0 {
 		return fmt.Sprintf("search · nothing matches %q", Sanitise(query))
 	}

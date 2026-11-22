@@ -91,10 +91,9 @@ type Model struct {
 	// albums is every album on the server, for the screen that lists them all.
 	// It is separate from artist.Albums, which is one artist's.
 	albums []subsonic.Album
-	// fromTracks is the screen an open album was reached from, so that leaving
-	// it returns there rather than always to one artist's album list.
-	fromTracks Screen
-	album      subsonic.Album
+	// trail is the screens that were left to reach this one, oldest first.
+	trail []place
+	album subsonic.Album
 	// art is the cover for album, already rendered, one string per row.
 	art []string
 	// showSky says the visualiser is filling the screen and sky is its state.
@@ -325,6 +324,7 @@ var libraryRows = []libraryRow{
 	{"Albums", "b", ScreenEveryAlbum},
 	{"Starred", "s", ScreenStarred},
 	{"Queue", "q", ScreenQueue},
+	{"Search", "/", ScreenSearch},
 }
 
 // allRows is how many items the current screen has before filtering.

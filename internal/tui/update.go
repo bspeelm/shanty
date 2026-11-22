@@ -532,8 +532,12 @@ func (m Model) goTo(key string) (tea.Model, tea.Cmd) {
 		m = m.show(ScreenQueue)
 		return m.selecting(ScreenQueue, max(0, min(len(m.queued)-1, m.queuedAt))), nil
 	case "s":
-		m = m.show(ScreenStarred)
-		return m.selecting(ScreenStarred, firstSelectable(m.starredRows)), nil
+		return m.show(ScreenStarred), nil
+	case "/":
+		if m.query == "" {
+			return m.say("nothing has been searched for yet — type :search <words>"), nil
+		}
+		return m.show(ScreenSearch), nil
 	}
 	return m, nil
 }
@@ -692,11 +696,9 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 		m = m.opening("opening " + m.artists[at].Name)
 		return m, emit(OpenArtist{ID: m.artists[at].ID, Ask: m.waiting})
 	case ScreenAlbums:
-		m.fromTracks = ScreenAlbums
 		m = m.opening("opening " + m.artist.Albums[at].Name)
 		return m, emit(OpenAlbum{ID: m.artist.Albums[at].ID, Ask: m.waiting})
 	case ScreenEveryAlbum:
-		m.fromTracks = ScreenEveryAlbum
 		m = m.opening("opening " + m.albums[at].Name)
 		return m, emit(OpenAlbum{ID: m.albums[at].ID, Ask: m.waiting})
 	case ScreenTracks:
@@ -722,7 +724,6 @@ func (m Model) open() (tea.Model, tea.Cmd) {
 			m = m.opening("opening " + r.name)
 			return m, emit(OpenArtist{ID: r.id, Ask: m.waiting})
 		case kindAlbum:
-			m.fromTracks = m.screen
 			m = m.opening("opening " + r.name)
 			return m, emit(OpenAlbum{ID: r.id, Ask: m.waiting})
 		case kindSong:
@@ -838,7 +839,66 @@ func asAlbum(p subsonic.Playlist) subsonic.Album {
 	return subsonic.Album{ID: p.ID, Name: p.Name, Songs: p.Songs}
 }
 
-// back moves up one screen. At the top it does nothing.
+// place is a screen that was left, with what it was showing.
+type place struct {
+	screen Screen
+	// cursor and filter are the row selected and the filter kept there.
+	cursor int
+	filter string
+	// artist, album, art and playlist are what was held when the screen was
+	// left. Each is shown again only on the screen that shows it.
+	artist   subsonic.Artist
+	album    subsonic.Album
+	art      []string
+	playlist subsonic.Playlist
+}
+
+// trailKept is how many screens back are remembered.
+const trailKept = 32
+
+// here is the screen showing, as a place to come back to.
+func (m Model) here() place {
+	return place{m.screen, m.cursor[m.screen], m.filter, m.artist, m.album, m.art, m.playlist}
+}
+
+// returned is the model showing a place that was left. What that place held
+// is put back unless the same thing is still held.
+func (m Model) returned(p place) Model {
+	m.screen, m.filter = p.screen, p.filter
+	switch {
+	case p.screen == ScreenAlbums && p.artist.ID != m.artist.ID:
+		m.artist = p.artist
+	case p.screen == ScreenTracks && p.album.ID != m.album.ID:
+		m.album, m.art = p.album, p.art
+	case p.screen == ScreenPlaylist && p.playlist.ID != m.playlist.ID:
+		m.playlist = p.playlist
+	}
+	return m.say("").selecting(p.screen, p.cursor).settled(p.screen)
+}
+
+// unfiltered drops the filter and leaves the cursor on the row it was on.
+func (m Model) unfiltered() Model {
+	if rows := m.matches(); len(rows) > 0 {
+		m = m.selecting(m.screen, rows[min(m.cursor[m.screen], len(rows)-1)])
+	}
+	m.filter = ""
+	return m.settled(m.screen)
+}
+
+// left is the model once the screen showing has stopped waiting: an open
+// asked for from it is no longer shown when it arrives, a reload of it is
+// forgotten, and its filter is put away.
+func (m Model) left() Model {
+	m.waiting, m.keep, m.stalled, m.saving = 0, "", false, false
+	if m.mode == modeFilter {
+		m.mode = modeNormal
+	}
+	return m.unfiltered()
+}
+
+// back returns to the screen that was showing before this one. A filter kept
+// on the screen showing is dropped first. On the library, with nowhere to go
+// back to, it does nothing.
 func (m Model) back() (tea.Model, tea.Cmd) {
 	if m.showSky {
 		m.showSky = false
@@ -853,55 +913,54 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		m.reordering, m.order, m.drawnFrom = false, nil, nil
 		return m.say("nothing was moved"), nil
 	}
-	switch m.screen {
-	case ScreenTracks:
-		// An album is reached from one artist's list, every album, a search or
-		// the starred list, and back returns to the one it was opened from.
-		up := m.fromTracks
-		if up != ScreenEveryAlbum && up != ScreenSearch && up != ScreenStarred {
-			up = ScreenAlbums
-		}
-		return m.show(up), nil
-	case ScreenAlbums:
-		return m.show(ScreenArtists), nil
-	case ScreenPlaylist:
-		return m.show(ScreenPlaylists), nil
-	case ScreenWiki:
-		// Reading about a command goes back to the list of them before it
-		// leaves the wiki altogether.
-		if m.topic != "" {
-			m.topic = ""
-			return m.say("").selecting(ScreenWiki, 0), nil
-		}
-		return m.show(ScreenLibrary), nil
-	case ScreenArtists, ScreenEveryAlbum, ScreenQueue, ScreenSearch, ScreenStarred,
-		ScreenMessages, ScreenPlaylists:
-		// Each of these is opened from the library, or reached from anywhere,
-		// so back goes up to the library rather than wherever it was opened
-		// from. On the library itself back does nothing, because there is
-		// nothing above it: that is what stops a key held down closing the
-		// program.
-		return m.show(ScreenLibrary), nil
+	if m.filter != "" {
+		return m.unfiltered().say(""), nil
 	}
-	return m, nil
+	if m.screen == ScreenWiki && m.topic != "" {
+		m.topic = ""
+		return m.say("").selecting(ScreenWiki, 0), nil
+	}
+	n := len(m.trail)
+	if n == 0 {
+		m = m.left()
+		m.screen = ScreenLibrary
+		return m.say(""), nil
+	}
+	p := m.trail[n-1]
+	m = m.left()
+	m.trail = m.trail[: n-1 : n-1]
+	return m.returned(p), nil
 }
 
-// show moves to a screen. The filter on the screen being left is dropped with
-// the cursor kept on the row it was on. Leaving a screen stops it waiting: an
-// open asked for from it is no longer shown when it arrives, and a reload of
-// it is forgotten.
+// show moves to a screen and remembers the one being left, so that back
+// returns to it. A screen that is among those remembered is shown as it was
+// left and is remembered once, unless it is one artist's albums, a track list
+// or a playlist, which are opened afresh. Moving to the library forgets them
+// all.
 func (m Model) show(s Screen) Model {
-	if m.filter != "" {
-		if rows := m.matches(); len(rows) > 0 {
-			m = m.selecting(m.screen, rows[min(m.cursor[m.screen], len(rows)-1)])
-		}
-		m.filter = ""
-		m = m.settled(m.screen)
+	if s == m.screen {
+		return m.unfiltered().say("")
 	}
-	if s != m.screen {
-		m.waiting, m.keep, m.stalled, m.saving = 0, "", false, false
-		if m.mode == modeFilter {
-			m.mode = modeNormal
+	from := m.here()
+	m = m.left()
+	at := -1
+	for i, p := range m.trail {
+		if p.screen == s && !deep(s) {
+			at = i
+			break
+		}
+	}
+	switch {
+	case s == ScreenLibrary:
+		m.trail = nil
+	case at >= 0:
+		p := m.trail[at]
+		m.trail = append(append(m.trail[:at:at], m.trail[at+1:]...), from)
+		return m.returned(p)
+	default:
+		m.trail = append(m.trail[:len(m.trail):len(m.trail)], from)
+		if len(m.trail) > trailKept {
+			m.trail = m.trail[1:]
 		}
 	}
 	m.screen = s
