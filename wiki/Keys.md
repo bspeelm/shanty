@@ -1,8 +1,8 @@
 # Keys
 
 shanty opens on the library, which lists your playlists, your artists, every
-album on the server, what you have starred, and the queue, with a count beside
-each. `enter` opens one and `esc` comes back up.
+album on the server, what you have starred, the queue and your last search,
+with a count beside each. `enter` opens one and `esc` comes back.
 
 From there the path is three screens deep: a list of artists, the albums by one
 artist, and the tracks on one album. You move down into them and back out
@@ -59,7 +59,8 @@ the row you had selected there.
 | `g/` | The last search |
 | `gv` | The visualiser |
 
-`?` lists every key, with the keys you have bound, and every command.
+`?` lists every key, with the keys you have bound, the numbers that can be
+typed before a key, and every command. `enter` on a row shows all of it.
 
 ## Seeing music you have just added
 
@@ -92,8 +93,9 @@ failure of its own.
 
 ## Looking a command up
 
-`:wiki` lists every command with what it does. `enter` on one explains it and
-shows how it is typed, `esc` goes back to the list, and `esc` again leaves.
+`:wiki`, like `?`, lists every key and then every command with what it does.
+`enter` on a command explains it and shows how it is typed, `esc` goes back to
+the list, and `esc` again leaves.
 
 It is the same reference as this page, kept inside shanty so that looking
 something up does not mean finding a browser.
@@ -150,28 +152,14 @@ command rather than a key like `/`.
 ## Filtering a list
 
 Press `/` and type. The list narrows to rows containing what you typed,
-matching anywhere in the name and ignoring case. The arrow keys still move
-while you are typing.
+matching anywhere in the name and ignoring case. The arrow keys, `pgup`,
+`pgdown`, `home` and `end` still move while you are typing.
 
 `enter` keeps the filter and returns you to normal movement. `esc` abandons it
-and restores the whole list. Opening an artist or album clears it, because a
-filter belongs to the list it narrowed.
+and restores the whole list. A filter that is kept stays on its list: open a
+row and come back, and the list is still narrowed. Back drops it.
 
 If nothing matches, the screen says so rather than going blank.
-
-## Going to a screen
-
-`g` begins these; press it and then the second key.
-
-| Key | What it does |
-|---|---|
-| `gl` | The library |
-| `ga` | Artists |
-| `gb` | Every album on the server |
-| `gq` | The queue, opened on the track playing |
-| `gp` | Playlists |
-| `gs` | Starred |
-| `gv` | The visualiser |
 
 ## The library and every album
 
@@ -198,8 +186,8 @@ and pausing holds it still. The row above the keys still says what is playing.
 
 While it is open, the player keys and `:` work and the list underneath does
 not. It limits how fast large parts of the picture change brightness, to at
-most about two flashes a second, measured for a dark terminal background in
-full colour.
+most about two flashes a second. The limit holds on a dark terminal background
+in full colour.
 
 ## Cover art
 
@@ -280,7 +268,7 @@ your screen was drawn from, and refuses rather than guessing. The order on
 screen goes back to the server's.
 
 `:playlist delete Evening` asks first, naming the playlist and how many tracks
-it holds. Anything but `y` answers no. **With no name it deletes the playlist
+it holds. Anything but `y` or `Y` answers no. **With no name it deletes the playlist
 you are looking at**, which is the only way to tell two playlists sharing a
 name apart.
 
@@ -346,7 +334,10 @@ the same way search results are.
 
 `gq` shows what is playing and what follows it, with the playing track marked.
 `enter` on a row plays it, `r` takes it out, and `K` and `J` move it up and
-down. Taking out the track that is playing starts the one after it.
+down. A number before `r` takes out that many tracks from the cursor down.
+Taking out the track that is playing starts the one after it, and stops the
+music if it was the last. `K` and `J` do nothing while the queue is narrowed
+by a filter.
 
 `a` and `A` add what you have selected: a track, or every track of an album, an
 artist or a playlist in its own order. `a` puts it at the end; `A` plays it

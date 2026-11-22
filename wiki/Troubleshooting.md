@@ -85,8 +85,8 @@ reports.
 
 ## A key does nothing
 
-Check which screen you are on. Pressing back on the artist list does nothing,
-because there is no screen above it.
+Check which screen you are on. Pressing back on the library does nothing,
+because there is nowhere left to go back to. `?` lists every key.
 
 ## A track or artist name looks wrong
 
