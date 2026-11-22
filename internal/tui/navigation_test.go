@@ -328,15 +328,23 @@ func TestAnArtistThatArrivesAfterItsScreenWasLeftDoesNotTakeTheScreen(t *testing
 }
 
 func TestOfTwoArtistsAskedForOnlyTheLastIsShown(t *testing.T) {
-	m, first := opened(t, loaded(t))
+	m, msg := press(t, loaded(t), "enter")
+	first, ok := msg.(OpenArtist)
+	if !ok || first.ID != "ar-1" {
+		t.Fatalf("the first enter emitted %#v", msg)
+	}
 	m, _ = press(t, m, "j")
-	m, second := opened(t, m)
+	m, msg = press(t, m, "enter")
+	second, ok := msg.(OpenArtist)
+	if !ok || second.ID != "ar-2" || second.Ask == first.Ask {
+		t.Fatalf("the second enter emitted %#v after %#v", msg, first)
+	}
 
-	m = send(t, m, Opened{Ask: first, Loaded: ArtistLoaded(library()[0])})
+	m = send(t, m, Opened{Ask: first.Ask, Loaded: ArtistLoaded(library()[0])})
 	if m.Screen() != ScreenArtists {
 		t.Fatalf("the first artist asked for took the screen to %s", m.Screen())
 	}
-	m = send(t, m, Opened{Ask: second, Loaded: ArtistLoaded(library()[1])})
+	m = send(t, m, Opened{Ask: second.Ask, Loaded: ArtistLoaded(library()[1])})
 	if m.Screen() != ScreenAlbums || m.Artist().ID != "ar-2" {
 		t.Errorf("the last artist asked for is not shown: %s, %q", m.Screen(), m.Artist().ID)
 	}
