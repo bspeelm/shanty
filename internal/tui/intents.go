@@ -85,14 +85,14 @@ type (
 	}
 	// JumpTo asks for the queue to move to one of its own tracks.
 	JumpTo int
-	// RemoveQueued asks for Count tracks to be taken out of the queue, from
-	// the place At down, and MoveQueued for the track at From to be put at
-	// To. ID is the track the screen showed at that place, and nothing is
-	// done if another is there now.
-	RemoveQueued struct {
-		At    int
-		ID    string
-		Count int
+	// RemoveQueued asks for those tracks to be taken out of the queue, and
+	// MoveQueued for the track at From to be put at To. Each track is named
+	// by its place and by the identifier the screen showed there, and nothing
+	// is done if another track is at one of those places now.
+	RemoveQueued struct{ Tracks []Queued }
+	Queued       struct {
+		At int
+		ID string
 	}
 	MoveQueued struct {
 		From, To int

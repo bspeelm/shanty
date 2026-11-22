@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bspeelm/shanty/internal/queue"
 	"github.com/bspeelm/shanty/internal/subsonic"
 )
 
@@ -140,7 +142,7 @@ func TestEnterOnATrackFoundPlaysFromTheTracksListedThere(t *testing.T) {
 func TestTheQueueIsEditedWithTheKeysThatEditAPlaylist(t *testing.T) {
 	m := down(t, onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()})), 1)
 
-	if _, msg := press(t, m, "r"); msg != (RemoveQueued{At: 1, ID: "tr-2", Count: 1}) {
+	if _, msg := press(t, m, "r"); !reflect.DeepEqual(msg, RemoveQueued{Tracks: []Queued{{1, "tr-2"}}}) {
 		t.Errorf("r on the second track emitted %#v", msg)
 	}
 	up, msg := press(t, m, "K")
@@ -158,8 +160,7 @@ func TestTheQueueIsEditedWithTheKeysThatEditAPlaylist(t *testing.T) {
 		t.Errorf("K on the first row emitted %#v", msg)
 	}
 
-	// Narrowed to the two tracks by one artist, the second row shown is the
-	// second track of the queue, and the row after the filter is the third.
+	// Narrowed to one track, the row shown is the third track of the queue.
 	kept := narrowed(t, onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()})), "low")
 	if kept.rows() != 1 {
 		t.Fatalf("the filter leaves %d rows, want only the third track", kept.rows())
@@ -168,14 +169,37 @@ func TestTheQueueIsEditedWithTheKeysThatEditAPlaylist(t *testing.T) {
 	if msg != nil || !strings.Contains(said.Status(), "narrowed") {
 		t.Errorf("J on a narrowed queue emitted %#v and said %q", msg, said.Status())
 	}
-	if _, msg := press(t, kept, "r"); msg != (RemoveQueued{At: 2, ID: "tr-9", Count: 1}) {
+	if _, msg := press(t, kept, "r"); !reflect.DeepEqual(msg, RemoveQueued{Tracks: []Queued{{2, "tr-9"}}}) {
 		t.Errorf("r on a narrowed queue emitted %#v, want the track's own place in the queue", msg)
 	}
 
 	counted := onQueue(t, send(t, loaded(t), QueueChanged{Tracks: queued()}))
 	counted, _ = press(t, counted, "2")
-	if _, msg := press(t, counted, "r"); msg != (RemoveQueued{At: 0, ID: "tr-1", Count: 2}) {
+	if _, msg := press(t, counted, "r"); !reflect.DeepEqual(msg, RemoveQueued{Tracks: []Queued{{0, "tr-1"}, {1, "tr-2"}}}) {
 		t.Errorf("2r emitted %#v, want two tracks taken from the cursor down", msg)
+	}
+}
+
+// TestACountTakesOutTheRowsShownNotTheTracksAFilterHides is a queue of six
+// with every other track matching the filter. Two from the top of the
+// narrowed list are the first and the third of the queue.
+func TestACountTakesOutTheRowsShownNotTheTracksAFilterHides(t *testing.T) {
+	var six []queue.Track
+	for i, title := range []string{"Water 1", "Stone", "Water 2", "Sand", "Water 3", "Dust"} {
+		six = append(six, queue.Track{ID: fmt.Sprintf("tr-%d", i+1), Title: title})
+	}
+	m := narrowed(t, onQueue(t, send(t, loaded(t), QueueChanged{Tracks: six})), "water")
+	m, _ = press(t, m, "home")
+	m, _ = press(t, m, "2")
+	_, msg := press(t, m, "r")
+	if want := (RemoveQueued{Tracks: []Queued{{0, "tr-1"}, {2, "tr-3"}}}); !reflect.DeepEqual(msg, want) {
+		t.Errorf("2r on the narrowed queue emitted %#v, want %#v", msg, want)
+	}
+
+	m, _ = press(t, down(t, m, 2), "9")
+	_, msg = press(t, m, "r")
+	if want := (RemoveQueued{Tracks: []Queued{{4, "tr-5"}}}); !reflect.DeepEqual(msg, want) {
+		t.Errorf("9r on the last row shown emitted %#v, want %#v", msg, want)
 	}
 }
 
