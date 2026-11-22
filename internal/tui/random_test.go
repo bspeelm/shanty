@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"fmt"
 	"math/rand/v2"
+	"reflect"
+	"sort"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,7 +25,7 @@ type actor struct {
 var twoLists = []subsonic.Playlist{{ID: "pl-1", Name: "Evening"}, {ID: "pl-2", Name: "Morning"}}
 
 func (a *actor) artist(id string) ArtistLoaded {
-	return ArtistLoaded{ID: id, Name: "Aoi", Albums: library()[0].Albums[:a.r.IntN(3)]}
+	return ArtistLoaded{ID: id, Name: "Aoi", Albums: library()[0].Albums[:min(2, a.r.IntN(5))]}
 }
 
 func (a *actor) album(id string) AlbumLoaded {
@@ -32,8 +35,11 @@ func (a *actor) album(id string) AlbumLoaded {
 }
 
 func (a *actor) playlist(id string) subsonic.Playlist {
-	p := eveningOf(a.r.IntN(4))
+	p := eveningOf(1 + a.r.IntN(3))
 	p.ID = id
+	if a.r.IntN(3) == 0 {
+		p.Songs = p.Songs[:a.r.IntN(len(p.Songs)+1)]
+	}
 	return p
 }
 
@@ -62,7 +68,7 @@ func (a *actor) queue() QueueChanged {
 // twice, and sometimes a failure.
 func (a *actor) opened(ask int, loaded tea.Msg) {
 	switch a.r.IntN(8) {
-	case 0:
+	case 0, 2:
 		a.waiting = append(a.waiting, Failed{Message: "the server did not answer", Ask: ask})
 	case 1:
 		a.waiting = append(a.waiting, Opened{Ask: ask, Loaded: loaded}, Opened{Ask: ask, Loaded: loaded})
@@ -106,7 +112,7 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 	case OpenPlaylist:
 		a.opened(intent.Ask, PlaylistLoaded(a.playlist(intent.ID)))
 	case FetchPlaylists:
-		a.waiting = append(a.waiting, PlaylistsLoaded(twoLists[:a.r.IntN(3)]))
+		a.waiting = append(a.waiting, PlaylistsLoaded(twoLists[:min(2, a.r.IntN(6))]))
 	case FetchEveryAlbum:
 		a.waiting = append(a.waiting, AlbumsLoaded(everyAlbum()[:a.r.IntN(4)]))
 	case Reload:
@@ -136,10 +142,26 @@ func (a *actor) answer(m Model, intent tea.Msg) tea.Msg {
 		a.waiting = append(a.waiting, a.queue())
 	case ShowArt:
 		return FullArt{"a picture filling the screen"}
+	case SeekToPercent:
+		return Failed{Message: "nothing is playing to seek in"}
 	case ShowWiki, ShowMessages, ShowVisualiser, Notice:
 		return intent
 	}
 	return nil
+}
+
+// held is what an answer that is dropped must leave as it was.
+type held struct {
+	screen                  Screen
+	cursor                  map[Screen]int
+	artist, album, playlist string
+	albums, songs, tracks   int
+	waiting                 int
+}
+
+func holding2(m Model) held {
+	return held{m.screen, m.cursor, m.artist.ID, m.album.ID, m.playlist.ID,
+		len(m.artist.Albums), len(m.album.Songs), len(m.playlist.Songs), m.waiting}
 }
 
 // run is one seeded run of the interface with the actor answering it.
@@ -151,60 +173,168 @@ type run struct {
 	app   actor
 	steps int
 	// keys counts the keys each screen received with no overlay over it and
-	// no line being typed, and reorders the times a reorder was entered.
-	keys     map[Screen]int
-	reorders int
+	// no line being typed. kinds counts what was delivered and done, by name.
+	keys  map[Screen]int
+	kinds map[string]int
 }
 
-// send applies one message, draws the frame, checks every cursor, and has the
-// actor answer whatever was emitted. The visualiser's own clock is not run.
+// failf stops the run, saying where it had reached.
+func (r *run) failf(msg tea.Msg, format string, args ...any) {
+	r.t.Helper()
+	r.t.Fatalf("seed %d, message %d: %s, showing the %s screen, after %#v",
+		r.seed, r.steps, fmt.Sprintf(format, args...), r.m.Screen(), msg)
+}
+
+// check holds what a message did against what that kind of message may do.
+func (r *run) check(was Model, msg tea.Msg) {
+	r.t.Helper()
+	before, after := holding2(was), holding2(r.m)
+	switch msg := msg.(type) {
+	case Opened:
+		if msg.Ask == 0 || msg.Ask != was.waiting {
+			r.kinds["an open's answer that was not waited for"]++
+			if !reflect.DeepEqual(before, after) {
+				r.failf(msg, "an answer nobody was waiting for changed %+v to %+v", before, after)
+			}
+			return
+		}
+		r.kinds["an open's answer that was waited for"]++
+		want, id := ScreenAlbums, after.artist
+		switch loaded := msg.Loaded.(type) {
+		case ArtistLoaded:
+			want, id = ScreenAlbums, loaded.ID
+			if after.artist != id {
+				r.failf(msg, "the artist held is %q, want %q", after.artist, id)
+			}
+		case AlbumLoaded:
+			want, id = ScreenTracks, loaded.ID
+			if after.album != id {
+				r.failf(msg, "the album held is %q, want %q", after.album, id)
+			}
+		case PlaylistLoaded:
+			want, id = ScreenPlaylist, loaded.ID
+			if after.playlist != id {
+				r.failf(msg, "the playlist held is %q, want %q", after.playlist, id)
+			}
+		}
+		if after.screen != want || r.m.loading() || after.waiting != 0 {
+			r.failf(msg, "the open waited for left the screen on %s, loading %v, waiting for %d",
+				after.screen, r.m.loading(), after.waiting)
+		}
+	case Reloaded:
+		r.kinds["a reload's answer"]++
+		if after.screen != before.screen {
+			r.failf(msg, "a reload's answer moved the screen from %s", before.screen)
+		}
+	case PlaylistChanged:
+		r.kinds["a changed playlist"]++
+		if was.reordering && was.playlist.ID == msg.ID {
+			r.kinds["a changed playlist during a reorder of it"]++
+		}
+		if was.editing.ID == msg.ID {
+			r.kinds["a changed playlist while adding to it"]++
+		}
+		if after.screen != before.screen {
+			r.failf(msg, "a changed playlist moved the screen from %s", before.screen)
+		}
+	case Failed:
+		switch {
+		case msg.Ask == 0:
+			r.kinds["a failure with no number"]++
+			if after.waiting != before.waiting {
+				r.failf(msg, "a failure about something else ended the wait for open %d", before.waiting)
+			}
+			if before.waiting != 0 {
+				r.kinds["a failure with no number while an open was waited for"]++
+			}
+		case msg.Ask == before.waiting:
+			r.kinds["the failure of the open waited for"]++
+			if after.waiting != 0 {
+				r.failf(msg, "the open that failed is still waited for")
+			}
+		default:
+			r.kinds["the failure of an open not waited for"]++
+			if !reflect.DeepEqual(before, after) {
+				r.failf(msg, "the failure of an open nobody was waiting for changed %+v to %+v", before, after)
+			}
+		}
+	}
+}
+
+// send applies one message, draws the frame, checks every cursor and what the
+// message was allowed to do, and has the actor answer whatever was emitted.
+// The command that starts the visualiser's clock is not run.
 func (r *run) send(msg tea.Msg) {
 	for depth := 0; msg != nil && depth < 4; depth++ {
-		was := r.m.Reordering()
+		was := r.m
 		next, cmd := r.m.Update(msg)
 		r.m = next.(Model)
 		r.steps++
-		if !was && r.m.Reordering() {
-			r.reorders++
+		if !was.Reordering() && r.m.Reordering() {
+			r.kinds["a reorder entered"]++
 		}
 		_ = r.m.View()
 		if err := cursorsWithinTheirLists(r.m); err != nil {
-			r.t.Fatalf("seed %d, step %d: %v, showing the %s screen, after %#v",
-				r.seed, r.steps, err, r.m.Screen(), msg)
+			r.failf(msg, "%v", err)
 		}
+		r.check(was, msg)
 		msg = nil
-		if cmd != nil && !r.m.ShowingSky() {
+		if cmd != nil && (was.ShowingSky() || !r.m.ShowingSky()) {
 			msg = r.app.answer(r.m, cmd())
 		}
 	}
 }
 
-// press sends keys one at a time, counting those that reach a list.
+// deliver sends one of the answers the actor is holding, not always the
+// oldest. When none is left, nothing may still be drawn as loading.
+func (r *run) deliver() {
+	i := r.r.IntN(len(r.app.waiting))
+	msg := r.app.waiting[i]
+	r.app.waiting = append(r.app.waiting[:i:i], r.app.waiting[i+1:]...)
+	r.send(msg)
+	if len(r.app.waiting) == 0 && r.m.loading() {
+		r.failf(msg, "every answer has arrived and the screen is still loading, waiting for open %d, reload %q",
+			r.m.waiting, r.m.keep)
+	}
+}
+
+// press sends keys one at a time, counting where each one landed.
 func (r *run) press(keys ...string) {
 	for _, key := range keys {
-		typing := r.m.Filtering() || r.m.Commanding() || r.m.Confirming()
-		if !typing && !r.m.ShowingSky() && !r.m.ShowingArt() {
+		typing := r.m.Filtering() || r.m.Commanding()
+		switch {
+		case r.m.Confirming():
+			r.kinds["a question answered"]++
+		case typing && key == "ctrl+c":
+			r.kinds["ctrl+c while typing"]++
+		case typing && key == "tab":
+			r.kinds["tab while typing"]++
+		case typing:
+		case r.m.ShowingSky():
+			r.kinds["a key under the visualiser"]++
+		case r.m.ShowingArt():
+			r.kinds["a key under a cover"]++
+		default:
 			r.keys[r.m.Screen()]++
 		}
-		if key == " " {
+		switch key {
+		case " ":
 			r.send(tea.KeyMsg{Type: tea.KeySpace})
-			continue
+		case "ctrl+c":
+			r.send(tea.KeyMsg{Type: tea.KeyCtrlC})
+		default:
+			r.send(keyOf(key))
 		}
-		r.send(keyOf(key))
 	}
 }
 
 // command types a line on the command line and runs it.
 func (r *run) command(line string) {
-	r.send(keyOf(":"))
+	r.press(":")
 	for _, c := range line {
-		if c == ' ' {
-			r.send(tea.KeyMsg{Type: tea.KeySpace})
-			continue
-		}
-		r.send(keyOf(string(c)))
+		r.press(string(c))
 	}
-	r.send(keyOf("enter"))
+	r.press("enter")
 }
 
 // pick is one of the choices, at random.
@@ -212,84 +342,173 @@ func pick[T any](r *rand.Rand, choices ...T) T { return choices[r.IntN(len(choic
 
 // step does one thing a person or the server could do next.
 func (r *run) step() {
-	// An overlay is left soon after it opens.
-	if (r.m.ShowingSky() || r.m.ShowingArt()) && r.r.IntN(3) > 0 {
-		r.press("esc")
+	// An overlay is left soon after it opens, and a question is answered.
+	if (r.m.ShowingSky() || r.m.ShowingArt()) && r.r.IntN(4) > 0 {
+		r.press(pick(r.r, "esc", "esc", "j", " ", "g", "5"))
+		return
+	}
+	if r.m.Confirming() {
+		r.press(pick(r.r, "y", "n"))
+		return
+	}
+	// A playlist being reordered is moved about, saved, or changed by somebody
+	// else, and one on screen is sometimes reordered.
+	if r.m.Reordering() && r.r.IntN(3) > 0 {
+		if r.r.IntN(3) == 0 {
+			r.send(PlaylistChanged(r.app.playlist(r.m.playlist.ID)))
+			return
+		}
+		r.press(pick(r.r, "J", "K", "j", "enter"))
+		return
+	}
+	if r.m.Screen() == ScreenPlaylist && !r.m.Reordering() && r.r.IntN(4) == 0 {
+		r.command("playlist reorder")
+		return
+	}
+	// The playlist being added to is looked for in the list of playlists.
+	if r.m.Editing().ID != "" && r.m.Screen() != ScreenPlaylists && r.r.IntN(6) == 0 {
+		r.press("g", "p")
+		return
+	}
+	// A page of the wiki is read to its end and the window is resized.
+	if r.m.reading() && r.r.IntN(3) == 0 {
+		r.press("G")
+		r.kinds["a resize"]++
+		r.send(tea.WindowSizeMsg{Width: pick(r.r, 24, 40, 80, 200), Height: 4 + r.r.IntN(30)})
+		return
+	}
+	// A seek with nothing playing fails while something is being opened.
+	if r.m.waiting != 0 && r.r.IntN(5) == 0 {
+		r.press("5", "%")
 		return
 	}
 	switch n := r.r.IntN(100); {
-	case n < 40 && len(r.app.waiting) > 0:
-		i := r.r.IntN(len(r.app.waiting))
-		msg := r.app.waiting[i]
-		r.app.waiting = append(r.app.waiting[:i:i], r.app.waiting[i+1:]...)
-		r.send(msg)
-	case n < 50:
-		// An open answered before anything else is pressed.
-		r.press("enter")
-		for len(r.app.waiting) > 0 {
-			msg := r.app.waiting[0]
-			r.app.waiting = r.app.waiting[1:]
-			r.send(msg)
+	case n < 22 && len(r.app.waiting) > 0:
+		r.deliver()
+	case n < 30:
+		if r.r.IntN(30) == 0 {
+			r.kinds["gv pressed"]++
+			r.press("g", "v")
+			return
 		}
-	case n < 56:
-		r.press("g", pick(r.r, "l", "a", "b", "p", "q", "s", "g"))
-	case n < 63:
-		line := pick(r.r, "reload", "search water", "playlist", "messages", "wiki", "playlist edit Evening",
-			"playlist delete", "nosuchthing")
+		r.press("g", pick(r.r, "l", "a", "b", "p", "p", "q", "s", "g"))
+	case n < 40:
+		line := pick(r.r, "reload", "reload", "search water", "playlist", "messages", "wiki", "wiki",
+			"playlist edit Evening", "playlist delete", "playlist rename Dusk", "art", "nosuchthing")
 		if r.m.Screen() == ScreenPlaylist && r.r.IntN(2) == 0 {
 			line = "playlist reorder"
 		}
 		r.command(line)
-	case n < 66:
-		r.press("/")
-		r.press(pick(r.r, "a", "w", "zz", "b"))
-		r.press(pick(r.r, "enter", "esc", "backspace"))
-	case n < 68:
+	case n < 43:
+		r.press(pick(r.r, "/", ":"))
+		r.press(pick(r.r, "a", "w", "zz", "b", "pl"))
+		r.press(pick(r.r, "enter", "esc", "backspace", "tab", "ctrl+c"))
+		if r.m.Filtering() || r.m.Commanding() {
+			r.press("esc")
+		}
+	case n < 48:
+		r.kinds["a resize"]++
 		r.send(tea.WindowSizeMsg{Width: pick(r.r, 24, 40, 80, 200), Height: 4 + r.r.IntN(30)})
-	case n < 71:
+	case n < 52:
+		// Something the server sends without being asked, as another client
+		// changing a playlist does.
+		changed := r.app.playlist(pick(r.r, "pl-1", "pl-2"))
+		if r.m.playlist.ID != "" && r.r.IntN(2) == 0 {
+			changed.ID = r.m.playlist.ID
+		}
 		r.send(pick[tea.Msg](r.r, r.app.queue(), r.app.starred(), Notice("playing Ballast next"),
-			Failed{Message: "nothing is playing to seek in"}, ArtistsLoaded(library()[:r.r.IntN(4)])))
-	case n < 72:
+			Failed{Message: "mpv stopped"}, ArtistsLoaded(library()[:r.r.IntN(4)]),
+			PlaylistChanged(changed), PlaylistChanged(changed),
+			Confirm{Question: "delete it?", Do: Notice("deleted")}))
+	case n < 53:
 		r.send(pick[tea.Msg](r.r, ShowVisualiser{}, FullArt{"a picture filling the screen"}))
 	default:
-		r.press(pick(r.r, "j", "j", "j", "k", "k", "enter", "enter", "enter", "h", "G", "home",
-			"end", "pgup", "pgdown", "S", "*", "a", "A", "r", "e", "J", "K", "?", "y", "5", "%", " ", "n", "x"))
+		keys := []string{"j", "j", "j", "k", "k", "enter", "enter", "enter", "h", "G", "home",
+			"end", "pgup", "pgdown", "S", "*", "a", "A", "r", "e", "J", "K", "?", "5", "%", " ", "n", "x"}
+		switch r.m.Screen() {
+		case ScreenWiki, ScreenPlaylists, ScreenArtists, ScreenAlbums:
+			keys = append(keys, "enter", "enter", "enter", "G")
+		}
+		key := pick(r.r, keys...)
+		r.press(key)
+		// An open is often answered before the next key, and often not.
+		if key == "enter" && len(r.app.waiting) > 0 && r.r.IntN(5) < 3 {
+			r.deliver()
+		}
 	}
 }
 
-// TestNoRunOfKeysAndAnswersLeavesACursorOffItsList drives the interface with
-// keys, typed commands and resizes drawn from a seeded generator, with an
-// actor answering what it emits. After every message the frame is drawn and
-// the cursor of every screen is checked against its list.
-func TestNoRunOfKeysAndAnswersLeavesACursorOffItsList(t *testing.T) {
-	seeds, steps := uint64(4), 250
-	keys, reorders := map[Screen]int{}, 0
-	for seed := uint64(1); seed <= seeds; seed++ {
-		r := &run{t: t, seed: seed, r: rand.New(rand.NewPCG(seed, 11)), keys: keys}
+// kindsWanted is everything a set of runs has to have delivered or done for
+// the checks above to have been reached.
+var kindsWanted = []string{
+	"an open's answer that was waited for",
+	"an open's answer that was not waited for",
+	"the failure of the open waited for",
+	"the failure of an open not waited for",
+	"a failure with no number",
+	"a failure with no number while an open was waited for",
+	"a reload's answer",
+	"a changed playlist",
+	"a changed playlist during a reorder of it",
+	"a changed playlist while adding to it",
+	"a reorder entered",
+	"a question answered",
+	"a resize",
+	"a key under the visualiser",
+	"a key under a cover",
+	"gv pressed",
+	"tab while typing",
+	"ctrl+c while typing",
+}
+
+// randomRuns is how many seeded runs the test makes and how many messages
+// each one sends.
+const (
+	randomSeeds    = 6
+	randomMessages = 400
+)
+
+// TestNoRunOfKeysAndAnswersBreaksWhatEachMessageMayDo drives the interface
+// with keys, typed commands and resizes drawn from a seeded generator, with
+// an actor answering what it emits. After every message the frame is drawn,
+// the cursor of every screen is checked against its list, and what the
+// message did is held against what a message of its kind may do.
+func TestNoRunOfKeysAndAnswersBreaksWhatEachMessageMayDo(t *testing.T) {
+	keys, kinds := map[Screen]int{}, map[string]int{}
+	for seed := uint64(1); seed <= randomSeeds; seed++ {
+		r := &run{t: t, seed: seed, r: rand.New(rand.NewPCG(seed, 11)), keys: keys, kinds: kinds}
 		r.app.r = r.r
 		r.m = sized(New())
 		func() {
 			defer func() {
 				if p := recover(); p != nil {
-					t.Fatalf("seed %d, step %d: %v on the %s screen", seed, r.steps, p, r.m.Screen())
+					t.Fatalf("seed %d, message %d: %v on the %s screen", seed, r.steps, p, r.m.Screen())
 				}
 			}()
 			r.send(ArtistsLoaded(library()))
-			for r.steps < steps {
+			for r.steps < randomMessages {
 				r.step()
 			}
 		}()
-		reorders += r.reorders
 	}
 
 	for _, s := range Screens {
 		t.Logf("%-12s %4d keys", s, keys[s])
 		if keys[s] == 0 {
-			t.Errorf("no key was pressed on the %s screen in %d runs", s, seeds)
+			t.Errorf("no key was pressed on the %s screen in %d runs", s, randomSeeds)
 		}
 	}
-	t.Logf("%d reorders entered", reorders)
-	if reorders == 0 {
-		t.Errorf("a reorder was never entered in %d runs", seeds)
+	names := make([]string, 0, len(kinds))
+	for name := range kinds {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		t.Logf("%4d  %s", kinds[name], name)
+	}
+	for _, name := range kindsWanted {
+		if kinds[name] == 0 {
+			t.Errorf("%d runs never reached: %s", randomSeeds, name)
+		}
 	}
 }
